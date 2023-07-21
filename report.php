@@ -592,8 +592,8 @@ if (!$tableallbookings->is_downloading()) {
     }
 
     // ALL USERS - START To make compatible MySQL and PostgreSQL - http://hyperpolyglot.org/db.
-    $fields = 'ba.id, ' . $mainuserfields . ',
-            u.username,
+    $fields = 'ba.id, ' . $mainuserfields . ' as id,
+            u.username as username,
             u.institution,
             u.city,
             u.department,
@@ -813,44 +813,65 @@ if (!$tableallbookings->is_downloading()) {
         }
     }
 
-    $tableallbookings->build_table();
-    $tableallbookings->finish_output();
+    $filtercolumns = [
+        'id' => [
+            'localizedname' => get_string('id', 'local_wunderbyte_table')
+        ],
+        'timecreated' => [ // Columns containing Unix timestamps can be filtered.
+            'localizedname' => get_string('timecreated'),
+            'datepicker' => [
+                'label' => [ // Can be localized and like "Courses starting after:".
+                    'operator' => '<',
+                    'defaultvalue' => '1680130800', // Can also be string "now".
+                    'checkboxlabel' => get_string('apply_filter', 'local_wunderbyte_table'), // Can be localized and will be displayed next to the filter checkbox (ie 'apply filter').
+                ]
+            ]
+        ],
+    ];
 
-    $onlyoneurl = new moodle_url('/mod/booking/view.php',
-            array('id' => $id, 'optionid' => $optionid,
-                'whichview' => 'showonlyone'));
+    $tableallbookings->define_filtercolumns($filtercolumns);
+    $tableallbookings->define_fulltextsearchcolumns(['fullname']);
 
-    // PHP 8.1 compatibility with extra safety if poolurl has changed outside option form.
-    $pollurl = '';
-    if (!empty($bookingoption->option->pollurl)) {
-        $pollurl = trim($bookingoption->option->pollurl);
-    }
-    if (!empty($pollurl)) {
-        echo html_writer::link($pollurl, get_string('copypollurl', 'booking'),
-                array('onclick' => 'copyToClipboard("' . $pollurl . '"); return false;')) .
-                 ($bookingoption->option->pollsend ? ' &#x2713;' : '') . ' | ';
-    }
+    $tableallbookings->out(10, true);
 
-    echo html_writer::link($onlyoneurl, get_string('onlythisbookingoption', 'booking'), array());
-    if (!empty($bookingoption->option->shorturl)) {
-        echo " ({$bookingoption->option->shorturl})";
-    }
-    echo ' | ' . html_writer::link($onlyoneurl, get_string('copyonlythisbookingurl', 'booking'),
-            array('onclick' => 'copyToClipboard("' . htmlspecialchars_decode($onlyoneurl) . '"); return false;'));
+//     $tableallbookings->build_table();
+//     $tableallbookings->finish_output();
 
-    echo ' | ' . html_writer::link($onlyoneurl, get_string('sign_in_sheet_download', 'booking'),
-            array('id' => 'sign_in_sheet_download'));
-    if (!empty($bookingoption->booking->settings->customtemplateid)) {
-        echo ' | ' . html_writer::link(new moodle_url('/mod/booking/report.php',
-                        array('id' => $cm->id, 'optionid' => $optionid, 'action' => 'postcustomreport')),
-                        get_string('customdownloadreport', 'booking'), array('target' => '_blank'));
-    }
+//     $onlyoneurl = new moodle_url('/mod/booking/view.php',
+//             array('id' => $id, 'optionid' => $optionid,
+//                 'whichview' => 'showonlyone'));
 
-    echo "<script>
-  function copyToClipboard(text) {
-    window.prompt('" . get_string('copytoclipboard', 'booking') . "', text);
-  }
-</script>";
+//     // PHP 8.1 compatibility with extra safety if poolurl has changed outside option form.
+//     $pollurl = '';
+//     if (!empty($bookingoption->option->pollurl)) {
+//         $pollurl = trim($bookingoption->option->pollurl);
+//     }
+//     if (!empty($pollurl)) {
+//         echo html_writer::link($pollurl, get_string('copypollurl', 'booking'),
+//                 array('onclick' => 'copyToClipboard("' . $pollurl . '"); return false;')) .
+//                  ($bookingoption->option->pollsend ? ' &#x2713;' : '') . ' | ';
+//     }
+
+//     echo html_writer::link($onlyoneurl, get_string('onlythisbookingoption', 'booking'), array());
+//     if (!empty($bookingoption->option->shorturl)) {
+//         echo " ({$bookingoption->option->shorturl})";
+//     }
+//     echo ' | ' . html_writer::link($onlyoneurl, get_string('copyonlythisbookingurl', 'booking'),
+//             array('onclick' => 'copyToClipboard("' . htmlspecialchars_decode($onlyoneurl) . '"); return false;'));
+
+//     echo ' | ' . html_writer::link($onlyoneurl, get_string('sign_in_sheet_download', 'booking'),
+//             array('id' => 'sign_in_sheet_download'));
+//     if (!empty($bookingoption->booking->settings->customtemplateid)) {
+//         echo ' | ' . html_writer::link(new moodle_url('/mod/booking/report.php',
+//                         array('id' => $cm->id, 'optionid' => $optionid, 'action' => 'postcustomreport')),
+//                         get_string('customdownloadreport', 'booking'), array('target' => '_blank'));
+//     }
+
+//     echo "<script>
+//   function copyToClipboard(text) {
+//     window.prompt('" . get_string('copytoclipboard', 'booking') . "', text);
+//   }
+// </script>";
 
     $signinform = new mod_booking\output\signin_downloadform($bookingoption, $baseurl);
     $renderer = $PAGE->get_renderer('mod_booking');

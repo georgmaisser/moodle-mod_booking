@@ -23,6 +23,7 @@
 namespace mod_booking;
 use mod_booking\output\report_edit_bookingnotes;
 use html_writer;
+use local_wunderbyte_table\wunderbyte_table;
 use moodle_url;
 defined('MOODLE_INTERNAL') || die();
 require_once('../../lib/tablelib.php');
@@ -32,7 +33,7 @@ require_once('../../lib/tablelib.php');
  * @author Andraž Prinčič, David Bogner
  *
  */
-class all_userbookings extends \table_sql {
+class all_userbookings extends wunderbyte_table {
 
     /** @var booking_option|null */
     public $bookingdata = null;
