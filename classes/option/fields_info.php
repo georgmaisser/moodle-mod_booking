@@ -27,10 +27,14 @@ namespace mod_booking\option;
 use coding_exception;
 use core_component;
 use mod_booking\booking_option_settings;
+use mod_booking\settings\optionformconfig\optionformconfig_info;
 use mod_booking\singleton_service;
+use mod_forum\local\managers\capability;
 use moodle_exception;
 use MoodleQuickForm;
 use stdClass;
+use context_coursecat;
+use dml_exception;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -44,6 +48,8 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class fields_info {
+
+    public static array $userfields = [];
 
      /**
       * This function runs through all installed field classes and executes the prepare save function.
@@ -152,6 +158,7 @@ class fields_info {
         $classes = self::get_field_classes();
 
         foreach ($classes as $class) {
+
             $class::instance_form_definition($mform, $formdata, $optionformconfig);
         }
     }
@@ -242,6 +249,9 @@ class fields_info {
      * @return array
      */
     private static function get_field_classes(int $save = -1) {
+
+        self::fetch_userfields();
+
         $fields = core_component::get_component_classes_in_namespace(
             "mod_booking",
             'option\fields'
@@ -263,11 +273,54 @@ class fields_info {
                 }
             }
 
+            if (!empty(self::$userfields) && !in_array($classname::$id, self::$userfields)) {
+                continue;
+            }
+
             $classes[$classname::$id] = $classname;
         }
 
         ksort($classes);
 
         return $classes;
+    }
+
+    /**
+     *
+     * @return void
+     * @throws coding_exception
+     * @throws dml_exception
+     */
+    private static function fetch_userfields() {
+        global $PAGE, $DB;
+
+        // If we have fetched already, we just abort.
+        if (!empty(self::$userfields)) {
+            return;
+        }
+
+        // We need to fetch the right fields for this user and the specific form.
+        if (empty($categoryid)) {
+            $categoryid = $PAGE->category->id;
+        }
+
+        $context = context_coursecat::instance($categoryid);
+
+        // Run through the capabilities and fetch the fields.
+        foreach (optionformconfig_info::$capabilities as $capability) {
+            if (!is_siteadmin() && has_capability('mod/booking:reducedoptionform1', $context)) {
+                $records = $DB->get_record('booking_form_config', [
+                    'area' => 'option',
+                    'capability' => $capability,
+                    'contextid' => $context->id,
+                ]);
+                if (!empty($records)) {
+                    self::$userfields = (array)$records;
+                }
+                break;
+            }
+        }
+
+        // self::$userfields = [1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     }
 }

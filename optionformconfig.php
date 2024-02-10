@@ -24,6 +24,7 @@
  */
 
 use mod_booking\form\optionformconfig_form;
+use mod_booking\settings\optionformconfig\optionformconfig_info;
 
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/adminlib.php');
@@ -44,64 +45,9 @@ $PAGE->set_title(
     format_string($SITE->shortname) . ': ' . get_string('optionformconfig', 'mod_booking')
 );
 
-// This is the actual configuration form.
-$mform = new optionformconfig_form($pageurl);
+echo $OUTPUT->header();
 
-if ($mform->is_cancelled()) {
-    // If cancelled, go back to general booking settings.
-    redirect($settingsurl);
+echo optionformconfig_info::render_list_of_roles();
 
-} else if ($data = $mform->get_data()) {
 
-    // TODO: Insert, delete or update data in DB.
-    foreach ($data as $key => $value) {
-
-        // Remove 'cfg_' part of the key.
-        $key = str_replace('cfg_', '', $key);
-
-        // Do not write empty keys into DB.
-        if (empty($key)) {
-            continue;
-        }
-
-        // Do not add special elements like "submitbutton".
-        if (!is_int($value)) {
-            continue;
-        }
-
-        $el = new stdClass;
-        $el->elementname = $key;
-        $el->active = $value;
-
-        if ($dbrecord = $DB->get_record('booking_optionformconfig', ['elementname' => $key])) {
-            // Record exists: Update.
-            $el->id = $dbrecord->id;
-            $DB->update_record('booking_optionformconfig', $el);
-        } else {
-            // New record: Insert.
-            $DB->insert_record('booking_optionformconfig', $el);
-        }
-    }
-
-    redirect($pageurl, get_string('optionformconfigsaved', 'mod_booking'), 5);
-
-} else {
-    echo $OUTPUT->header();
-    echo $OUTPUT->heading(new lang_string('optionformconfig', 'mod_booking'));
-
-    // Dismissible alert.
-    echo '<div class="alert alert-warning alert-dismissible fade show" role="alert">' .
-    get_string('optionformconfigsubtitle', 'mod_booking') .
-    '<button type="button" class="close" data-dismiss="alert" aria-label="Close">
-    <span aria-hidden="true">&times;</span>
-    </button>
-    </div>';
-
-    if (!$firstinstancefound = $DB->get_records('booking', null, '', '*', 0, 1)) {
-        echo html_writer::div(get_string('optionformconfig:nobooking', 'mod_booking'), 'alert alert-danger');
-    } else {
-        $mform->display();
-    }
-
-    echo $OUTPUT->footer();
-}
+echo $OUTPUT->footer();
