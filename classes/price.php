@@ -34,6 +34,7 @@ use lang_string;
 use local_shopping_cart\shopping_cart;
 use mod_booking\booking_option_settings;
 use local_entities\entitiesrelation_handler;
+use local_shopping_cart\buyfor;
 use mod_booking\booking_campaigns\campaigns_info;
 use mod_booking\booking_campaigns\booking_campaign;
 use User;
@@ -715,7 +716,7 @@ class price {
             if (class_exists('local_shopping_cart\shopping_cart')) {
                 $context = context_system::instance();
                 if (has_capability('local/shopping_cart:cashier', $context)) {
-                    $userid = shopping_cart::return_buy_for_userid();
+                    $userid = buyfor::get_user_id();
                 }
             }
         }
