@@ -28,6 +28,7 @@ use mod_booking\booking_option_settings;
 use mod_booking\customfield\booking_handler;
 use mod_booking\option\field_base;
 use context_module;
+use context;
 use MoodleQuickForm;
 use stdClass;
 
@@ -108,7 +109,7 @@ class customfields extends field_base {
 
         $optionid = $formdata['id'];
 
-        $contextid = context_module::instance($formdata['cmid'])->id;
+        $contextid = context::instance_by_id($formdata['context'])->id;
 
         // Add custom fields.
         $handler = booking_handler::create();

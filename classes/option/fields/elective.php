@@ -166,12 +166,14 @@ class elective extends field_base {
      */
     public static function save_data(stdClass &$formdata, stdClass &$option) {
 
-        $booking = singleton_service::get_instance_of_booking_by_cmid($formdata->cmid);
+        if (!empty($formdata->cmid)) {
+            $booking = singleton_service::get_instance_of_booking_by_cmid($formdata->cmid);
 
-        // Save combination arrays to DB.
-        if (!empty($booking->settings->iselective)) {
-            Mod_bookingElective::addcombinations($option->id, $formdata->mustcombine, 1);
-            Mod_bookingElective::addcombinations($option->id, $formdata->mustnotcombine, 0);
+            // Save combination arrays to DB.
+            if (!empty($booking->settings->iselective)) {
+                Mod_bookingElective::addcombinations($option->id, $formdata->mustcombine, 1);
+                Mod_bookingElective::addcombinations($option->id, $formdata->mustnotcombine, 0);
+            }
         }
     }
 }

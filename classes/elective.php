@@ -105,8 +105,11 @@ class elective {
             }
         } else if (!empty($customdata['optionid'])) {
             $settings = singleton_service::get_instance_of_booking_option_settings($customdata['optionid']);
-            $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($settings->cmid);
-            if (empty($bookingsettings->iselective)) {
+            if (!empty($settings->cmid)) {
+                // This will happen when we load a template.
+                $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($settings->cmid);
+            }
+            if (empty($bookingsettings->iselective ?? null)) {
                 return;
             }
         }

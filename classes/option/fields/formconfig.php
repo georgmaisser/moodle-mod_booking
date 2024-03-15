@@ -28,6 +28,7 @@ use mod_booking\option\field_base;
 use mod_booking\option\fields_info;
 use mod_booking\settings\optionformconfig\optionformconfig_info;
 use context_module;
+use context;
 use MoodleQuickForm;
 use stdClass;
 
@@ -111,7 +112,7 @@ class formconfig extends field_base {
         // Standardfunctionality to add a header to the mform (only if its not yet there).
         fields_info::add_header_to_mform($mform, self::$header);
 
-        $context = context_module::instance($formdata['cmid']);
+        $context = context::instance_by_id($formdata['context']);
         $capability = get_string(optionformconfig_info::return_capability_for_user($context->id), 'mod_booking');
         $mform->addElement('static', 'formconfiglabel', '', get_string('youareusingconfig', 'mod_booking', $capability));
     }

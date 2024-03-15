@@ -24,8 +24,7 @@
 
 namespace mod_booking\option\fields;
 
-use mod_booking\option\fields;
-use mod_booking\option\fields_info;
+use context;
 use mod_booking\option\field_base;
 use mod_booking\utils\wb_payment;
 use MoodleQuickForm;
@@ -112,8 +111,9 @@ class addastemplate extends field_base {
 
         global $DB;
 
+        $context = context::instance_by_id($formdata['context']);
         // Templates - only visible when adding new.
-        if (has_capability('mod/booking:manageoptiontemplates', $formdata['context'])
+        if (has_capability('mod/booking:manageoptiontemplates', $context)
             && $formdata['id'] < 1) {
 
             $mform->addElement('header', 'templateheader',

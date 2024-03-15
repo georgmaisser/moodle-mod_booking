@@ -62,6 +62,14 @@ class option_form extends dynamic_form {
 
         $cmid = $formdata['cmid'] ?? 0;
 
+        if (!empty($formdata['id'])) {
+            $settings = singleton_service::get_instance_of_booking_option_settings($formdata['id']);
+            // Even though we might have a cmid, we want to reset it to the one associated with this particular option.
+            // For templates, its 0.
+            $cmid = $settings->cmid;
+            $formdata['cmid'] = $cmid;
+        }
+
         if (!empty($cmid)) {
             // We need context on this.
             $context = context_module::instance($cmid);
@@ -69,7 +77,7 @@ class option_form extends dynamic_form {
             $context = context_system::instance();
         }
 
-        $formdata['context'] = $context;
+        $formdata['context'] = $context->id;
         $optionid = $formdata['optionid'];
 
         $mform = &$this->_form;

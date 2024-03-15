@@ -135,7 +135,7 @@ class identifier extends field_base {
         if (isset($data['identifier'])) {
             $sql = "SELECT id FROM {booking_options} WHERE id <> :optionid AND identifier = :identifier";
             $params = ['optionid' => $data['id'], 'identifier' => $data['identifier']];
-            if ($DB->get_records_sql($sql, $params)) {
+            if ($DB->record_exists_sql($sql, $params)) {
                 $errors['identifier'] = get_string('error:identifierexists', 'mod_booking');
             }
         }

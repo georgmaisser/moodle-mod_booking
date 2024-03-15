@@ -33,6 +33,7 @@ use MoodleQuickForm;
 use stdClass;
 use context_coursecat;
 use context_module;
+use context_system;
 use dml_exception;
 use Exception;
 use mod_booking\price;
@@ -160,8 +161,7 @@ class fields_info {
      */
     public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata) {
 
-        $context = context_module::instance($formdata['cmid']);
-        $classes = self::get_field_classes($context->id);
+        $classes = self::get_field_classes($formdata['context'] ?? 1);
 
         foreach ($classes as $classname) {
 
@@ -183,7 +183,13 @@ class fields_info {
      */
     public static function validation(array $data, array $files, array &$errors) {
 
-        $context = context_module::instance($data['cmid']);
+        // For templates, cmid is empty.
+        if (!empty(($data['cmid']))) {
+            $context = context_module::instance($data['cmid']);
+        } else {
+            $context = context_system::instance();
+        }
+
         $classes = self::get_field_classes($context->id);
 
         foreach ($classes as $classname) {
