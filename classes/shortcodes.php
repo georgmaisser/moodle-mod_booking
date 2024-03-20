@@ -54,6 +54,99 @@ class shortcodes {
      * @param Closure $next
      * @return string
      */
+    public static function mybookingoptions($shortcode, $args, $content, $env, $next) {
+
+        global $PAGE, $USER;
+
+        $course = $PAGE->course;
+
+        if (
+            !isset($args['perpage'])
+            || !is_int((int)$args['perpage'])
+            || !$perpage = ($args['perpage'])
+        ) {
+            $perpage = 25;
+        }
+
+        $context = $PAGE->context;
+
+        // Create the table.
+        $table = new bookingoptions_wbtable("context_{$context->id}_userid_{$USER->id} mybookingoptionstable");
+
+        list($fields, $from, $where, $params, $filter) =
+                booking::get_options_filter_sql(0, 0, '', null, $context, [], [], $USER->id);
+        $table->set_filter_sql($fields, $from, $where, $filter, $params);
+
+        // These are all possible options to be displayed in the bookingtable.
+        $possibleoptions = [
+            "description",
+            "statusdescription",
+            "teacher",
+            "responsiblecontact",
+            "showdates",
+            "dayofweektime",
+            "location",
+            "institution",
+            "minanswers",
+            "bookingopeningtime",
+            "bookingclosingtime",
+        ];
+        // When calling recommendedin in the frontend we can define exclude params to set options, we don't want to display.
+
+        if (!empty($args['exclude'])) {
+            $exclude = explode(',', $args['exclude']);
+            $optionsfields = array_diff($possibleoptions, $exclude);
+        } else {
+            $optionsfields = $possibleoptions;
+        }
+
+        $defaultorder = SORT_ASC; // Default.
+        if (!empty($args['sortorder'])) {
+            if (strtolower($args['sortorder']) === "desc") {
+                $defaultorder = SORT_DESC;
+            }
+        }
+        if (!empty($args['sortby'])) {
+            $table->sortable(true, $args['sortby'], $defaultorder);
+        } else {
+            $table->sortable(true, 'text', $defaultorder);
+        }
+
+        $showfilter = !empty($args['filter']) ? true : false;
+        $showsort = !empty($args['sort']) ? true : false;
+        $showsearch = !empty($args['search']) ? true : false;
+
+        view::apply_standard_params_for_bookingtable(
+            $table,
+            $optionsfields,
+            $showfilter,
+            $showsearch,
+            $showsort,
+            false,
+        );
+
+        // If "rightside" is in the "exclude" array, then we do not show the rightside area (containing the "Book now" button).
+        if (!empty($exclude) && in_array('rightside', $exclude)) {
+            unset($table->subcolumns['rightside']);
+        }
+
+        $out = $table->outhtml($perpage, true);
+
+        return $out;
+    }
+
+    /**
+     * This shortcode shows a list of booking options, which have a booking customfield...
+     * ... with the shortname "recommendedin" and the value set to the shortname of the course...
+     * ... in which they should appear.
+     *
+     * @param string $shortcode
+     * @param array $args
+     * @param string|null $content
+     * @param object $env
+     * @param Closure $next
+     * @return string
+     */
     public static function recommendedin($shortcode, $args, $content, $env, $next) {
 
         global $PAGE;
@@ -65,7 +158,7 @@ class shortcodes {
             || !is_int((int)$args['perpage'])
             || !$perpage = ($args['perpage'])
         ) {
-            $perpage = 1000;
+            $perpage = 25;
         }
 
         $pageurl = $course->shortname . $PAGE->url->out();
@@ -176,7 +269,7 @@ class shortcodes {
             || !is_int((int)$args['perpage'])
             || !$perpage = ($args['perpage'])
         ) {
-            $perpage = 1000;
+            $perpage = 25;
         }
 
         // First: determine the cohort we want to use.
@@ -293,7 +386,7 @@ class shortcodes {
             || !is_int((int)$args['perpage'])
             || !$perpage = ($args['perpage'])
         ) {
-            $perpage = 1000;
+            $perpage = 25;
         }
 
         // First: determine the cohort we want to use.

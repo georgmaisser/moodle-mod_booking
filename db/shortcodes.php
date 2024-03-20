@@ -27,6 +27,10 @@
 defined('MOODLE_INTERNAL') || die();
 
 $shortcodes = [
+    'mybookingoptions' => [
+        'callback' => 'mod_booking\shortcodes::mybookingoptions',
+        'description' => 'mybookingoptions',
+    ],
     'recommendedin' => [
         'callback' => 'mod_booking\shortcodes::recommendedin',
         'description' => 'recommendedin',
