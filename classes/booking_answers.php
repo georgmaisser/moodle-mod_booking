@@ -28,6 +28,7 @@ namespace mod_booking;
 use context_system;
 use dml_exception;
 use mod_booking\singleton_service;
+use context_module;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -554,6 +555,42 @@ class booking_answers {
             'optionid' => $optionid,
             'statusparam' => $statusparam,
         ];
+
+        return [$fields, $from, $where, $params];
+    }
+
+    /**
+     * Returns the sql to fetch booked users with a certain status.
+     * Orderd by timemodified, to be able to sort them.
+     * @param int $optionid
+     * @param int $statusparam
+     * @return (string|int[])[]
+     */
+    public static function return_sql_for_unbooked_users(int $optionid) {
+
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+
+        $context = context_module::instance($settings->cmid);
+
+        list($sql, $params) = get_enrolled_sql($context);
+
+        $fields = 'id, userid, firstname, lastname, email, :optionid1 as optionid, enrolled';
+        $from = " (SELECT u.id, u.id as userid, u.firstname, u.lastname, u.email,
+        CASE WHEN s2.id IS NULL THEN 0 ELSE 1 END as enrolled
+                    FROM {user} u
+                    LEFT JOIN ($sql) s2
+                    ON s2.id = u.id
+                    LEFT JOIN (SELECT ba.id, ba.userid
+                            FROM {booking_answers} ba
+                            WHERE ba.optionid=:optionid2 AND ba.waitinglist=:statusparam
+                            ORDER BY ba.id ASC
+                            ) s1
+                     ON s1.userid = u.id
+                     WHERE s1.id IS NULL AND u.deleted = 0) s3";
+        $where = '1=1';
+        $params['optionid1'] = $optionid;
+        $params['optionid2'] = $optionid;
+        $params['statusparam'] = MOD_BOOKING_STATUSPARAM_BOOKED;
 
         return [$fields, $from, $where, $params];
     }

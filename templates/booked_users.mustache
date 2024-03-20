@@ -29,7 +29,8 @@
         "waitinglist" : "<div></div>",
         "reservedusers" : "<div></div>",
         "userstonotify" : "<div></div>",
-        "deletedusers" : "<div></div>"
+        "deletedusers" : "<div></div>",
+        "unbookedusers" : "<div></div>",
     }
 }}
 
@@ -57,3 +58,8 @@
 <h5>{{#str}} deletedusers, mod_booking {{/str}}</h5>
     {{{deletedusers}}}
 {{/deletedusers}}
+
+{{#unbooked}}
+<h5>{{#str}} unbooked, mod_booking {{/str}}</h5>
+    {{{unbooked}}}
+{{/unbooked}}

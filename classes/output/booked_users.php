@@ -25,6 +25,7 @@
 
 namespace mod_booking\output;
 
+use local_wunderbyte_table\filters\types\standardfilter;
 use mod_booking\booking_answers;
 use mod_booking\table\manageusers_table;
 use renderer_base;
@@ -58,6 +59,9 @@ class booked_users implements renderable, templatable {
     /** @var string $deletedusers rendered table of deletedusers */
     public $deletedusers;
 
+    /** @var string $unbooked rendered table of unbooked */
+    public $unbooked;
+
     /**
      * Constructor
      *
@@ -67,7 +71,7 @@ class booked_users implements renderable, templatable {
      * @param bool $showreserved
      * @param bool $showtonotifiy
      * @param bool $showdeleted
-     *
+     * @param bool $showunbooked
      */
     public function __construct(
             int $optionid,
@@ -75,7 +79,8 @@ class booked_users implements renderable, templatable {
             bool $showwaiting = false,
             bool $showreserved = false,
             bool $showtonotifiy = false,
-            bool $showdeleted = false) {
+            bool $showdeleted = false,
+            bool $showunbooked = false) {
 
         if ($showreserved) {
             list($fields, $from, $where, $params)
@@ -105,7 +110,10 @@ class booked_users implements renderable, templatable {
             $table->define_columns(['name', 'action_delete']);
             $table->set_sql($fields, $from, $where, $params);
 
-            $html = $table->outhtml(20, false);
+            $table->addcheckboxes = true;
+            $table->pageable(true);
+
+            $html = $table->outhtml(10, false);
             $this->bookedusers = count($table->rawdata) > 0 ? $html : null;
         }
 
@@ -156,8 +164,38 @@ class booked_users implements renderable, templatable {
             $table->define_columns(['name']);
             $table->set_sql($fields, $from, $where, $params);
 
-            $html = $table->outhtml(20, false);
+            $html = $table->outhtml(10, false);
             $this->deletedusers = count($table->rawdata) > 0 ? $html : null;
+        }
+
+        if ($showunbooked) {
+            list($fields, $from, $where, $params)
+                = booking_answers::return_sql_for_unbooked_users($optionid);
+
+            $tablename = 'deleted' . $optionid;
+
+            $table = new manageusers_table($tablename);
+
+            $table->define_cache('mod_booking', 'bookedusertable');
+            $table->define_columns(['name', 'action_bookuser']);
+            $table->set_sql($fields, $from, $where, $params);
+
+            $table->addcheckboxes = true;
+            $table->pageable(true);
+
+            $table->define_fulltextsearchcolumns(['firstname', 'lastname', 'email']);
+
+            $standardfilter = new standardfilter('enrolled', get_string('enrolledinthiscourse', 'mod_booking'));
+            $standardfilter->add_options([
+                1 => get_string('enrolled', 'mod_booking'),
+                0 => get_string('notenrolled', 'mod_booking'),
+            ]);
+            $table->add_filter($standardfilter);
+            $table->apply_filter('{"enrolled":["1"]}');
+            $table->filteronloadinactive = true;
+
+            $html = $table->outhtml(10, false);
+            $this->unbooked = count($table->rawdata) > 0 ? $html : null;
         }
     }
 
@@ -183,6 +221,9 @@ class booked_users implements renderable, templatable {
         }
         if (!empty($this->deletedusers)) {
             $returnarray['deletedusers'] = $this->deletedusers;
+        }
+        if (!empty($this->unbooked)) {
+            $returnarray['unbooked'] = $this->unbooked;
         }
 
         return $returnarray;

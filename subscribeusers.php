@@ -274,7 +274,7 @@ if (is_siteadmin() && $bookanyone) {
 
 
 // We call the template render to display how many users are currently reserved.
-$data = new booked_users($optionid, false, true, true);
+$data = new booked_users($optionid, true, true, true, true, false, true);
 $renderer = $PAGE->get_renderer('mod_booking');
 echo $renderer->render_booked_users($data);
 

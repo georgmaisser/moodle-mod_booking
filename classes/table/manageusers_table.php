@@ -192,6 +192,45 @@ class manageusers_table extends wunderbyte_table {
      * @param string $data
      * @return array
      */
+    public function action_bookuser(int $id, string $data): array {
+
+        $jsonobject = json_decode($data);
+        $optionid = $jsonobject->id;
+
+        $userid = $jsonobject->userid;
+
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+
+        $context = context_module::instance($settings->cmid);
+
+        if (has_capability('mod/booking:bookforothers', $context)) {
+
+            $option = singleton_service::get_instance_of_booking_option($settings->cmid, $optionid);
+
+            $user = singleton_service::get_instance_of_user($userid);
+
+            $option->user_submit_response($user, 0, 0, false, MOD_BOOKING_VERIFIED);
+
+            cache_helper::purge_by_event('setbackbookedusertable');
+
+            return [
+                'success' => 1,
+                'message' => get_string('successfullybooked', 'mod_booking'),
+            ];
+        } else {
+            return [
+                'success' => 0,
+                'message' => get_string('norighttobook', 'mod_booking'),
+            ];
+        }
+    }
+
+    /**
+     * Change number of rows. Uses the transmitaction pattern (actionbutton).
+     * @param int $id
+     * @param string $data
+     * @return array
+     */
     public function action_deletebooking(int $id, string $data): array {
 
         $jsonobject = json_decode($data);
@@ -313,6 +352,42 @@ class manageusers_table extends wunderbyte_table {
                 'optionid' => $values->optionid,
                 'userid' => $values->userid,
             ],
+        ];
+
+        // This transforms the array to make it easier to use in mustache template.
+        table::transform_actionbuttons_array($data);
+
+        return $OUTPUT->render_from_template('local_wunderbyte_table/component_actionbutton', ['showactionbuttons' => $data]);
+    }
+
+    /**
+     * This handles the action column with buttons, icons, checkboxes.
+     *
+     * @param stdClass $values
+     * @return void
+     */
+    public function col_action_bookuser($values) {
+
+        global $OUTPUT;
+
+        $data[] = [
+            'label' => '', // Name of your action button.
+            'class' => 'btn btn-nolabel',
+            'href' => '#', // You can either use the link, or JS, or both.
+            'iclass' => 'fa fa-check', // Add an icon before the label.
+            'id' => $values->optionid,
+            'name' => $values->optionid,
+            'methodname' => 'bookuser', // The method needs to be added to your child of wunderbyte_table class.
+            'data' => [ // Will be added eg as data-id = $values->id, so values can be transmitted to the method above.
+                'id' => $values->id,
+                'labelcolumn' => 'username',
+                'titlestring' => 'confirmbooking',
+                'bodystring' => 'confirmbookinglong',
+                'submitbuttonstring' => 'booking:choose',
+                'component' => 'mod_booking',
+                'optionid' => $values->optionid,
+                'userid' => $values->userid,
+            ]
         ];
 
         // This transforms the array to make it easier to use in mustache template.
