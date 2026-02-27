@@ -98,6 +98,13 @@ class booking_answers {
      * @param booking_option_settings|null $bookingoptionsettings
      * @throws dml_exception
      */
+
+    /**
+     * Constructor for the booking answers class.
+     *
+     * @param null $bookingoptionsettings
+     *
+     */
     public function __construct($bookingoptionsettings = null) {
         global $DB, $CFG;
 
@@ -152,51 +159,7 @@ class booking_answers {
                 $answers = [];
             }
 
-            $this->answers = $answers;
-
-            foreach ($answers as $answer) {
-                $answer = customform::append_customform_elements($answer);
-                // A user might have one or more 'deleted' entries, but else, there should be only one.
-                if ($answer->waitinglist != MOD_BOOKING_STATUSPARAM_DELETED) {
-                    $this->users[$answer->userid] = $answer;
-                }
-
-                switch ($answer->waitinglist) {
-                    case MOD_BOOKING_STATUSPARAM_BOOKED:
-                        $this->usersonlist[$answer->userid] = $answer;
-                        break;
-                    case MOD_BOOKING_STATUSPARAM_WAITINGLIST:
-                        $this->usersonwaitinglist[$answer->userid] = $answer;
-                        break;
-                    case MOD_BOOKING_STATUSPARAM_RESERVED:
-                        $this->usersonlist[$answer->userid] = $answer;
-                        $this->usersreserved[$answer->userid] = $answer;
-                        break;
-                    case MOD_BOOKING_STATUSPARAM_DELETED:
-                        $this->usersdeleted[$answer->userid] = $answer;
-                        break;
-                    case MOD_BOOKING_STATUSPARAM_NOTIFYMELIST:
-                        $this->userstonotify[$answer->userid] = $answer;
-                        break;
-                    case MOD_BOOKING_STATUSPARAM_PREVIOUSLYBOOKED:
-                        $this->userspreviouslybooked[$answer->userid] = $answer;
-                        break;
-                }
-            }
-
-            $data = (object)[
-                'answers' => $this->answers,
-                'users' => $this->users,
-                'usersonlist' => $this->usersonlist,
-                'usersonwaitinglist' => $this->usersonwaitinglist,
-                'usersreserved' => $this->get_usersreserved(),
-                'usersdeleted' => $this->usersdeleted,
-                'userstonotify' => $this->userstonotify,
-                'userspreviouslybooked' => $this->userspreviouslybooked,
-            ];
-            if (!get_config('booking', 'cacheturnoffforbookinganswers')) {
-                $cache->set($optionid, $data);
-            }
+            $this->apply_answers($answers);
         } else {
             $this->answers = $data->answers;
             $this->users = $data->users;
@@ -207,6 +170,150 @@ class booking_answers {
             $this->userstonotify = $data->userstonotify;
             $this->userspreviouslybooked = $data->userspreviouslybooked;
         }
+    }
+
+    /**
+     * Update (or add) a single answer record in the cached object.
+     * If the cache cannot be locked or is missing, returns false so that
+     * callers may fall back to a full purge.
+     *
+     * @param \stdClass $answer booking_answers record
+     * @return bool true if cache was patched, false if caller should purge
+     */
+    public function add_or_update_answer_to_cache(\stdClass $answer): bool {
+        $optionid = $answer->optionid;
+        if (!$lock = self::acquire_lock($optionid)) {
+            return false;
+        }
+
+        try {
+            $this->add_or_replace_answer($answer);
+            return true;
+        } finally {
+            self::release_lock($optionid);
+        }
+    }
+
+    /**
+     * This function applies the answers array to the booking options.
+     *
+     * @param array $answers
+     *
+     * @return void
+     *
+     */
+    public function apply_answers(array $answers) {
+        $this->answers = $answers;
+
+        foreach ($answers as $answer) {
+            $answer = customform::append_customform_elements($answer);
+            // A user might have one or more 'deleted' entries, but else, there should be only one.
+            if ($answer->waitinglist != MOD_BOOKING_STATUSPARAM_DELETED) {
+                $this->users[$answer->userid] = $answer;
+            }
+
+            switch ($answer->waitinglist) {
+                case MOD_BOOKING_STATUSPARAM_BOOKED:
+                    $this->usersonlist[$answer->userid] = $answer;
+                    break;
+                case MOD_BOOKING_STATUSPARAM_WAITINGLIST:
+                    $this->usersonwaitinglist[$answer->userid] = $answer;
+                    break;
+                case MOD_BOOKING_STATUSPARAM_RESERVED:
+                    $this->usersonlist[$answer->userid] = $answer;
+                    $this->usersreserved[$answer->userid] = $answer;
+                    break;
+                case MOD_BOOKING_STATUSPARAM_DELETED:
+                    $this->usersdeleted[$answer->userid] = $answer;
+                    break;
+                case MOD_BOOKING_STATUSPARAM_NOTIFYMELIST:
+                    $this->userstonotify[$answer->userid] = $answer;
+                    break;
+                case MOD_BOOKING_STATUSPARAM_PREVIOUSLYBOOKED:
+                    $this->userspreviouslybooked[$answer->userid] = $answer;
+                    break;
+            }
+        }
+
+        if (!get_config('booking', 'cacheturnoffforbookinganswers')) {
+            $cache = \cache::make('mod_booking', 'bookingoptionsanswers');
+            $data = (object)[
+                'answers' => $this->answers,
+                'users' => $this->users,
+                'usersonlist' => $this->usersonlist,
+                'usersonwaitinglist' => $this->usersonwaitinglist,
+                'usersreserved' => $this->get_usersreserved(),
+                'usersdeleted' => $this->usersdeleted,
+                'userstonotify' => $this->userstonotify,
+                'userspreviouslybooked' => $this->userspreviouslybooked,
+            ];
+            $cache->set($this->optionid, $data);
+        }
+    }
+
+    /**
+     * This function first makes sure we have a baid on the answers object.
+     * Then we remove all the entries from the different lists.
+     * Finally we add the answer and sort it again into the right lists.
+     *
+     * @param \stdClass $answer
+     *
+     * @return void
+     *
+     */
+    public function add_or_replace_answer(\stdClass $answer) {
+
+        if (!isset($answer->baid)) {
+            throw new moodle_exception('missingbaid', 'mod_booking');
+        }
+
+        // First, remove an answer from all lists, then add it again with the new status.
+        $this->remove_answer_from_all_lists($answer);
+
+        $this->answers[$answer->baid] = $answer;
+
+        $this->apply_answers($this->answers);
+    }
+
+    /**
+     * This does not mean delete answer. It is rather just a preparation for updating an answer.
+     *
+     * @param \stdClass $answer
+     *
+     * @return void
+     *
+     */
+    private function remove_answer_from_all_lists(\stdClass $answer) {
+        unset(
+            $this->usersonlist[$answer->userid],
+            $this->usersonwaitinglist[$answer->userid],
+            $this->usersreserved[$answer->userid],
+            $this->usersdeleted[$answer->userid],
+            $this->userstonotify[$answer->userid],
+            $this->userspreviouslybooked[$answer->userid]
+        );
+    }
+
+    /**
+     * Acquire a cache lock for the given option. Returns lock object or false.
+     *
+     * @param int $optionid
+     * @return bool|mixed
+     */
+    public static function acquire_lock(int $optionid) {
+        $cache = \cache::make('mod_booking', 'bookingoptionsanswers');
+        return $cache->acquire_lock("lock_{$optionid}");
+    }
+
+    /**
+     * Release a previously acquired cache lock.
+     *
+     * @param int $optionid
+     * @param mixed $lock
+     */
+    public static function release_lock(int $optionid) {
+        $cache = \cache::make('mod_booking', 'bookingoptionsanswers');
+        $cache->release_lock("lock_{$optionid}");
     }
 
     /**

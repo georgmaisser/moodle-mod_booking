@@ -198,6 +198,40 @@ final class booking_answers_test extends advanced_testcase {
         $this->assertCount(6, $bookinganswers1->get_users());
         $this->assertCount(3, $bookinganswers1->get_usersonlist());
         $this->assertCount(3, $bookinganswers1->get_usersonwaitinglist());
+
+        // --------------------------------------------------------------------
+        // additional assertions exercise the new cache helper methods.
+        // --------------------------------------------------------------------
+        $this->assertTrue(class_exists('\mod_booking\booking_answers\booking_answers'));
+
+        // create a fresh answer in the database for student7 but do not purge cache.
+        $newanswer = new stdClass();
+        $newanswer->bookingid = $bookingmodule->id;
+        $newanswer->frombookingid = 0;
+        $newanswer->userid = $student7->id;
+        $newanswer->optionid = $option1->id;
+        $newanswer->timemodified = time();
+        $newanswer->timecreated = time();
+        $newanswer->waitinglist = MOD_BOOKING_STATUSPARAM_BOOKED;
+        $newanswer->pricecategory = '';
+        $newanswer->id = $DB->insert_record('booking_answers', $newanswer);
+
+        // patch cache using helper; singleton should also update.
+        $patched = \mod_booking\booking_answers\booking_answers::add_or_update_answer($newanswer);
+        $this->assertTrue($patched);
+
+        // fetch singleton and verify counts incremented.
+        $bookinganswers1 = singleton_service::get_instance_of_booking_answers($settings1);
+        $this->assertCount(7, $bookinganswers1->get_users());
+        $this->assertCount(4, $bookinganswers1->get_usersonlist());
+
+        // now delete the user from cache without touching DB and confirm.
+        $deleted = \mod_booking\booking_answers\booking_answers::delete_user($option1->id, $student7->id);
+        $this->assertTrue($deleted);
+        $bookinganswers1 = singleton_service::get_instance_of_booking_answers($settings1);
+        $this->assertCount(6, $bookinganswers1->get_users());
+        $this->assertCount(3, $bookinganswers1->get_usersonlist());
+
         $this->assertCount(0, $bookinganswers1->get_usersdeleted());
         $this->setUser($student7);
         // More students sould see fully booked as no more free palces is available.
