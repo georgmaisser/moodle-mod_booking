@@ -38,7 +38,7 @@ use mod_booking\event\bookinganswer_presencechanged;
 use mod_booking\event\bookinganswer_notesedited;
 use mod_booking\local\calendar\calendar_helper;
 use mod_booking\local\certificateclass;
-use mod_booking\certificate_conditions\certificate_conditions;
+use mod_booking\local\certificate_conditions\certificate_conditions;
 use mod_booking\local\checkanswers\checkanswers;
 use mod_booking\local\mobile\customformstore;
 use mod_booking\option\fields\certificate;
@@ -775,7 +775,7 @@ class mod_booking_observer {
         $eventcontext->optionid = $optionid;
         // Check each condition if it applies.
         foreach ($conditions as $condition) {
-            \mod_booking\certificate_conditions\certificate_conditions::evaluate_and_execute_condition(
+            \mod_booking\local\certificate_conditions\certificate_conditions::evaluate_and_execute_condition(
                 $condition,
                 $eventcontext,
                 $userid,

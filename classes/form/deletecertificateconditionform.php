@@ -29,7 +29,7 @@ defined('MOODLE_INTERNAL') || die();
 use core_form\dynamic_form;
 use context;
 use context_system;
-use mod_booking\certificate_conditions\certificate_conditions;
+use mod_booking\local\certificate_conditions\certificate_conditions;
 use moodle_url;
 
 /**

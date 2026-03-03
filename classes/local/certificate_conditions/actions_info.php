@@ -1,9 +1,16 @@
 <?php
-namespace mod_booking\certificate_conditions;
+namespace mod_booking\local\certificate_conditions;
 
 use MoodleQuickForm;
 
 class actions_info {
+    /**
+     * Add action selector and selected action fields to the dynamic form.
+     *
+     * @param MoodleQuickForm $mform
+     * @param array|null $ajaxformdata
+     * @return void
+     */
     public static function add_actions_to_mform(MoodleQuickForm &$mform, ?array &$ajaxformdata = null) {
         $actions = self::get_actions();
         $actionsforselect = ['0' => get_string('choose...', 'mod_booking')];
@@ -31,14 +38,19 @@ class actions_info {
         }
     }
 
+    /**
+     * Return instances of all available action handlers.
+     *
+     * @return array
+     */
     public static function get_actions() {
         global $CFG;
-        $path = $CFG->dirroot . '/mod/booking/classes/certificate_conditions/actions/*.php';
+        $path = $CFG->dirroot . '/mod/booking/classes/local/certificate_conditions/actions/*.php';
         $files = glob($path);
         $actions = [];
         foreach ($files as $filepath) {
             $pathinfo = pathinfo($filepath);
-            $classname = 'mod_booking\\certificate_conditions\\actions\\' . $pathinfo['filename'];
+            $classname = 'mod_booking\\local\\certificate_conditions\\actions\\' . $pathinfo['filename'];
             if (class_exists($classname)) {
                 $actions[] = new $classname();
             }
@@ -46,8 +58,14 @@ class actions_info {
         return $actions;
     }
 
+    /**
+     * Return one action handler instance by short name.
+     *
+     * @param string $name
+     * @return mixed|null
+     */
     public static function get_action(string $name) {
-        $classname = 'mod_booking\\certificate_conditions\\actions\\' . $name;
+        $classname = 'mod_booking\\local\\certificate_conditions\\actions\\' . $name;
         if (class_exists($classname)) {
             return new $classname();
         }

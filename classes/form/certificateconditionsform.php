@@ -17,13 +17,12 @@
 namespace mod_booking\form;
 
 use context;
-use context_module;
 use context_system;
 use core_form\dynamic_form;
-use mod_booking\certificate_conditions\certificate_conditions;
-use mod_booking\certificate_conditions\filters_info;
-use mod_booking\certificate_conditions\logics_info;
-use mod_booking\certificate_conditions\actions_info;
+use mod_booking\local\certificate_conditions\certificate_conditions;
+use mod_booking\local\certificate_conditions\filters_info;
+use mod_booking\local\certificate_conditions\logics_info;
+use mod_booking\local\certificate_conditions\actions_info;
 use moodle_url;
 
 defined('MOODLE_INTERNAL') || die();
@@ -44,11 +43,9 @@ class certificateconditionsform extends dynamic_form {
         $mform = $this->_form;
         $ajaxformdata = $this->_ajaxformdata;
 
-        // If we open an existing condition, we need to save the id right away.
+        // If we open an existing condition, load persisted selector defaults first.
         if (!empty($ajaxformdata['id'])) {
             $mform->addElement('hidden', 'id', $ajaxformdata['id']);
-            $this->prepare_ajaxformdata($ajaxformdata);
-        } else if (!empty($ajaxformdata['btn_certificatetemplates'])) {
             $this->prepare_ajaxformdata($ajaxformdata);
         }
 
@@ -58,29 +55,20 @@ class certificateconditionsform extends dynamic_form {
         $mform->addElement('text', 'name', get_string('certificateconditionname', 'mod_booking'), ['size' => '50']);
         $mform->setType('name', PARAM_TEXT);
 
-        $templates = [];
-        $buttonargs = ['class' => 'd-none'];
-        // we might add templates feature later
-
-        if (has_capability('mod/booking:manageoptiontemplates', context_system::instance())) {
-            $mform->addElement('advcheckbox', 'useastemplate', get_string('bookinguseastemplate', 'mod_booking'));
-        }
-        $mform->addElement('advcheckbox', 'isactive', get_string('bookingruleapply', 'mod_booking')); // reuse existing string
+        $mform->addElement('advcheckbox', 'isactive', get_string('certificateconditionisactive', 'mod_booking'));
         $active = (isset($ajaxformdata['isactive']) && empty($ajaxformdata['isactive'])) ? 0 : 1;
         $mform->setDefault('isactive', $active);
 
-        // filters
+        // Filter block.
         filters_info::add_filters_to_mform($mform, $ajaxformdata);
         $mform->addElement('html', '<hr>');
 
-        // logics
+        // Logic block.
         logics_info::add_logics_to_mform($mform, $ajaxformdata);
         $mform->addElement('html', '<hr>');
 
-        // actions
+        // Action block.
         actions_info::add_actions_to_mform($mform, $ajaxformdata);
-
-        // as this is shown in a modal, no need for standard action buttons
     }
 
     /**
@@ -119,7 +107,19 @@ class certificateconditionsform extends dynamic_form {
         if (empty($data['name'])) {
             $errors['name'] = get_string('error:entervalue', 'mod_booking');
         }
-        // additional validation could be delegated to filter/logic/action
+
+        if (empty($data['certificatefiltertype']) || $data['certificatefiltertype'] === '0') {
+            $errors['certificatefiltertype'] = get_string('error:entervalue', 'mod_booking');
+        }
+
+        if (empty($data['certificatelogictype']) || $data['certificatelogictype'] === '0') {
+            $errors['certificatelogictype'] = get_string('error:entervalue', 'mod_booking');
+        }
+
+        if (empty($data['certificateactiontype']) || $data['certificateactiontype'] === '0') {
+            $errors['certificateactiontype'] = get_string('error:entervalue', 'mod_booking');
+        }
+
         return $errors;
     }
 
@@ -172,22 +172,30 @@ class certificateconditionsform extends dynamic_form {
             return;
         }
 
-        $jsonobject = json_decode($record->filterjson);
-        if (empty($ajaxformdata['filtername'])) {
-            $ajaxformdata['filtername'] = $jsonobject->filtername ?? '';
+        $jsonobject = json_decode((string)$record->filterjson);
+        if (empty($ajaxformdata['certificatefiltertype'])) {
+            $ajaxformdata['certificatefiltertype'] = $jsonobject->filtername ?? '0';
         }
 
-        $jsonobject = json_decode($record->logicjson);
-        if (empty($ajaxformdata['logicname'])) {
-            $ajaxformdata['logicname'] = $jsonobject->logicname ?? '';
+        $jsonobject = json_decode((string)$record->logicjson);
+        if (empty($ajaxformdata['certificatelogictype'])) {
+            $ajaxformdata['certificatelogictype'] = $jsonobject->logicname ?? '0';
         }
 
-        $jsonobject = json_decode($record->actionjson);
-        if (empty($ajaxformdata['actionname'])) {
-            $ajaxformdata['actionname'] = $jsonobject->actionname ?? '';
+        $jsonobject = json_decode((string)$record->actionjson);
+        if (empty($ajaxformdata['certificateactiontype'])) {
+            $ajaxformdata['certificateactiontype'] = $jsonobject->actionname ?? '0';
         }
 
-        if (empty($ajaxformdata['isactive'])) {
+        if (!isset($ajaxformdata['name'])) {
+            $ajaxformdata['name'] = $record->name;
+        }
+
+        if (!isset($ajaxformdata['contextid'])) {
+            $ajaxformdata['contextid'] = (int)$record->contextid;
+        }
+
+        if (!isset($ajaxformdata['isactive'])) {
             $ajaxformdata['isactive'] = $record->isactive;
         }
     }
@@ -197,7 +205,7 @@ class certificateconditionsform extends dynamic_form {
      * @return void
      */
     public function definition_after_data() {
-        // Can be used to dynamically update form after data is set.
+        // Reserved for dynamic follow-up updates after set_data().
     }
 
 }

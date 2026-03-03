@@ -1,23 +1,42 @@
 <?php
-namespace mod_booking\certificate_conditions\logics;
+namespace mod_booking\local\certificate_conditions\logics;
 
-use mod_booking\certificate_conditions\logic_interface;
+use mod_booking\local\certificate_conditions\logic_interface;
 use MoodleQuickForm;
 use stdClass;
 
 class bookingoption implements logic_interface {
     public $optionid = 0;
 
+    /**
+     * Add logic fields to the dynamic form.
+     *
+     * @param MoodleQuickForm $mform
+     * @param array|null $ajaxformdata
+     * @return void
+     */
     public function add_logic_to_mform(MoodleQuickForm &$mform, ?array &$ajaxformdata = null) {
         $mform->addElement('text', 'logic_bookingoption_optionid',
             get_string('logic_bookingoption_optionid', 'mod_booking'));
         $mform->setType('logic_bookingoption_optionid', PARAM_INT);
     }
 
+    /**
+     * Return logic label.
+     *
+     * @param bool $localized
+     * @return string
+     */
     public function get_name_of_logic(bool $localized = true): string {
         return $localized ? get_string('logic_bookingoption', 'mod_booking') : 'logic_bookingoption';
     }
 
+    /**
+     * Persist logic configuration into JSON payload.
+     *
+     * @param stdClass $data
+     * @return void
+     */
     public function save_logic(stdClass &$data): void {
         $obj = new stdClass();
         $obj->logicname = 'bookingoption';
@@ -25,6 +44,13 @@ class bookingoption implements logic_interface {
         $data->logicjson = json_encode($obj);
     }
 
+    /**
+     * Set default form values from existing record.
+     *
+     * @param stdClass $data
+     * @param stdClass $record
+     * @return void
+     */
     public function set_defaults(stdClass &$data, stdClass $record) {
         if (!empty($record->logicjson)) {
             $obj = json_decode($record->logicjson);
@@ -32,9 +58,21 @@ class bookingoption implements logic_interface {
         }
     }
 
+    /**
+     * Set internal logic data from condition record.
+     *
+     * @param stdClass $record
+     * @return void
+     */
     public function set_logicdata(stdClass $record): void {
     }
 
+    /**
+     * Set internal logic data from JSON payload.
+     *
+     * @param string $json
+     * @return void
+     */
     public function set_logicdata_from_json(string $json): void {
         $obj = json_decode($json);
         if ($obj) {
@@ -42,6 +80,13 @@ class bookingoption implements logic_interface {
         }
     }
 
+    /**
+     * Apply logic constraints to SQL builder context.
+     *
+     * @param stdClass $sql
+     * @param array $params
+     * @return void
+     */
     public function execute(stdClass &$sql, array &$params): void {
     }
 

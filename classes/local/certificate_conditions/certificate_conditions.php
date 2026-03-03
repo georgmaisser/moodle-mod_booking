@@ -22,13 +22,14 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace mod_booking\certificate_conditions;
+namespace mod_booking\local\certificate_conditions;
 
 use mod_booking\output\certificateconditionslist;
 use context;
 use context_system;
 use context_module;
 use dml_exception;
+use stdClass;
 
 class certificate_conditions {
     /** @var array $conditions cached records */

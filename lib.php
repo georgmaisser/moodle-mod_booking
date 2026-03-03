@@ -2468,7 +2468,7 @@ function booking_delete_instance($id) {
     // Delete rules of this instance.
     booking_rules::delete_rules_by_context($context->id);
     // Delete certificate conditions of this instance.
-    \mod_booking\certificate_conditions\certificate_conditions::delete_conditions_by_context($context->id);
+    \mod_booking\local\certificate_conditions\certificate_conditions::delete_conditions_by_context($context->id);
 
     return true;
 }

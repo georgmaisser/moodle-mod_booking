@@ -90,7 +90,7 @@ echo html_writer::div(get_string('certificateconditionsettingsdesc', 'mod_bookin
 
 // Check if PRO version is active.
 if (wb_payment::pro_version_is_activated()) {
-    $rendered = \mod_booking\certificate_conditions\certificate_conditions::
+    $rendered = \mod_booking\local\certificate_conditions\certificate_conditions::
         get_rendered_list_of_saved_conditions($contextid);
     echo $rendered;
 } else {

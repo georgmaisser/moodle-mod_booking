@@ -1,9 +1,16 @@
 <?php
-namespace mod_booking\certificate_conditions;
+namespace mod_booking\local\certificate_conditions;
 
 use MoodleQuickForm;
 
 class logics_info {
+    /**
+     * Add logic selector and selected logic fields to the dynamic form.
+     *
+     * @param MoodleQuickForm $mform
+     * @param array|null $ajaxformdata
+     * @return void
+     */
     public static function add_logics_to_mform(MoodleQuickForm &$mform, ?array &$ajaxformdata = null) {
         $logics = self::get_logics();
         $logicsforselect = ['0' => get_string('choose...', 'mod_booking')];
@@ -31,14 +38,19 @@ class logics_info {
         }
     }
 
+    /**
+     * Return instances of all available logic handlers.
+     *
+     * @return array
+     */
     public static function get_logics() {
         global $CFG;
-        $path = $CFG->dirroot . '/mod/booking/classes/certificate_conditions/logics/*.php';
+        $path = $CFG->dirroot . '/mod/booking/classes/local/certificate_conditions/logics/*.php';
         $files = glob($path);
         $logics = [];
         foreach ($files as $filepath) {
             $pathinfo = pathinfo($filepath);
-            $classname = 'mod_booking\\certificate_conditions\\logics\\' . $pathinfo['filename'];
+            $classname = 'mod_booking\\local\\certificate_conditions\\logics\\' . $pathinfo['filename'];
             if (class_exists($classname)) {
                 $logics[] = new $classname();
             }
@@ -46,8 +58,14 @@ class logics_info {
         return $logics;
     }
 
+    /**
+     * Return one logic handler instance by short name.
+     *
+     * @param string $name
+     * @return mixed|null
+     */
     public static function get_logic(string $name) {
-        $classname = 'mod_booking\\certificate_conditions\\logics\\' . $name;
+        $classname = 'mod_booking\\local\\certificate_conditions\\logics\\' . $name;
         if (class_exists($classname)) {
             return new $classname();
         }

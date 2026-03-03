@@ -1,5 +1,5 @@
 <?php
-namespace mod_booking\certificate_conditions;
+namespace mod_booking\local\certificate_conditions;
 
 use MoodleQuickForm;
 
@@ -48,12 +48,12 @@ class filters_info {
      */
     public static function get_filters() {
         global $CFG;
-        $path = $CFG->dirroot . '/mod/booking/classes/certificate_conditions/filters/*.php';
+        $path = $CFG->dirroot . '/mod/booking/classes/local/certificate_conditions/filters/*.php';
         $files = glob($path);
         $filters = [];
         foreach ($files as $filepath) {
             $pathinfo = pathinfo($filepath);
-            $classname = 'mod_booking\\certificate_conditions\\filters\\' . $pathinfo['filename'];
+            $classname = 'mod_booking\\local\\certificate_conditions\\filters\\' . $pathinfo['filename'];
             if (class_exists($classname)) {
                 $filters[] = new $classname();
             }
@@ -67,7 +67,7 @@ class filters_info {
      * @return mixed|null
      */
     public static function get_filter(string $name) {
-        $classname = 'mod_booking\\certificate_conditions\\filters\\' . $name;
+        $classname = 'mod_booking\\local\\certificate_conditions\\filters\\' . $name;
         if (class_exists($classname)) {
             return new $classname();
         }
