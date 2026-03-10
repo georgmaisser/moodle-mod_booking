@@ -22,13 +22,163 @@
 import Ajax from 'core/ajax';
 import Templates from 'core/templates';
 import Notification from 'core/notification';
-import {reloadAllTables} from 'local_wunderbyte_table/reload';
+import { reloadAllTables } from 'local_wunderbyte_table/reload';
 
-import {closeModal, closeInline} from 'mod_booking/bookingpage/prepageFooter';
+import { closeModal, closeInline } from 'mod_booking/bookingpage/prepageFooter';
 
 var currentbookitpage = {};
 var totalbookitpages = {};
 var inlineprepageconfig = {};
+
+/**
+ * Registers one delegated listener for bootstrap modal show events.
+ */
+const registerPrepageModalDelegatedListener = () => {
+    const container = document.querySelector('body');
+    if (!container || container.dataset.prepageModalDelegated) {
+        return;
+    }
+
+    container.dataset.prepageModalDelegated = 'true';
+
+    container.addEventListener('shown.bs.modal', event => {
+
+        // eslint-disable-next-line no-console
+        console.log('modal shown', event);
+
+        const modal = event.target.closest('[id^="' + SELECTORS.MODALID + '"]');
+        if (!modal) {
+            return;
+        }
+
+        // eslint-disable-next-line no-console
+        console.log('modal shown', modal);
+
+
+        if (modal.querySelector('[data-action="bookondetail"]')) {
+            return;
+        }
+
+        // eslint-disable-next-line no-console
+        console.log('modal bookondetail', event);
+
+
+        const optionid = modal.dataset.optionid;
+        const userid = modal.dataset.userid;
+        const uniquid = modal.dataset.uniquid;
+        const totalnumberofpages = modal.dataset.pages;
+
+        // eslint-disable-next-line no-console
+        console.log(optionid, userid, uniquid, totalnumberofpages);
+
+        if (!optionid || !uniquid || !totalnumberofpages) {
+            return;
+        }
+
+        currentbookitpage[optionid] = 0;
+        totalbookitpages[optionid] = totalnumberofpages;
+
+        loadPreBookingPage(optionid, userid, uniquid);
+    });
+};
+
+/**
+ * Gets inline prepage config for an option from memory or DOM.
+ * @param {integer} optionid
+ * @param {integer} userid
+ * @returns {object|null}
+ */
+const getInlinePrepageConfig = (optionid, userid = 0) => {
+    if (inlineprepageconfig[optionid]) {
+        return inlineprepageconfig[optionid];
+    }
+
+    const inlinecontainer = document.querySelector('[id^="' + SELECTORS.INLINEID + optionid + '_"]');
+    if (!inlinecontainer) {
+        return null;
+    }
+
+    const uniquid = inlinecontainer.dataset.uniquid;
+    const pages = inlinecontainer.dataset.pages;
+    const inlineuserid = inlinecontainer.dataset.userid || userid;
+
+    if (!uniquid) {
+        return null;
+    }
+
+    currentbookitpage[optionid] = 0;
+    if (pages) {
+        totalbookitpages[optionid] = pages;
+    }
+
+    inlineprepageconfig[optionid] = {
+        userid: inlineuserid,
+        uniquid,
+    };
+
+    return inlineprepageconfig[optionid];
+};
+
+/**
+ * Function to check visibility of element.
+ * @param {*} el
+ * @returns {boolean}
+ */
+function isHidden(el) {
+    var style = window.getComputedStyle(el);
+    return ((style.display === 'none') || (style.visibility === 'hidden'));
+}
+
+/**
+ * React on visibility change. Bootstrap 4 compatibility.
+ * @param {integer} optionid
+ * @param {integer} userid
+ * @param {string} uniquid
+ * @param {integer} totalnumberofpages
+ * @param {function} callback
+ */
+function respondToVisibility(optionid, userid, uniquid, totalnumberofpages, callback) {
+
+    let elements = document.querySelectorAll("[id^=" + SELECTORS.MODALID + optionid + "_" + uniquid + "]");
+
+    elements.forEach(element => {
+
+        if (!element || element.dataset.initialized == 'true') {
+            return;
+        }
+
+        element.dataset.initialized = true;
+
+        var observer = new MutationObserver(function () {
+
+            if (!isHidden(element)) {
+
+                // Because of the modal animation, "isHIdden" is also true on hiding modal.
+                if (element.classList.contains('show')) {
+
+                    // Todo: Make sure it's not triggered on close.
+                    callback(optionid, userid, uniquid, totalnumberofpages);
+                }
+            }
+        });
+
+        // We look if we find a hidden parent. If not, we load right away.
+        while (element !== null) {
+            if (!isHidden(element)) {
+                element = element.parentElement;
+            } else {
+                if (element.dataset.observed) {
+                    return;
+                }
+
+                observer.observe(element, { attributes: true });
+                element.dataset.observed = true;
+                return;
+            }
+        }
+        callback(optionid, userid, uniquid, totalnumberofpages);
+    });
+}
 
 export var SELECTORS = {
     MODALID: 'sbPrePageModal_',
@@ -54,11 +204,56 @@ export const initbookitbutton = () => {
         return;
     }
 
+    const bootstrapVersion = detectBootstrapVersion();
+
+    // Intercept cancel clicks before bootstrap's document modal handlers fire.
+    if (!container.dataset.bookitCancelCaptureDelegated) {
+        container.dataset.bookitCancelCaptureDelegated = 'true';
+
+        window.addEventListener('click', (e) => {
+
+            const cancelTarget = e.target.closest('.shopping-cart-cancel-button');
+            if (cancelTarget) {
+                // We leaave work to the shopping cart implementation.
+                return;
+            }
+
+            const cancelButton = e.target.closest('.bo-cancel-button');
+            if (!cancelButton) {
+                return;
+            }
+            const button = cancelButton.closest(SELECTORS.BOOKITBUTTON + '[data-itemid][data-area]');
+            if (!button || button.classList.contains('disabled')) {
+                return;
+            }
+
+            const { itemid, area, userid } = button.dataset;
+
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            e.stopPropagation();
+
+            // Cancel actions must never carry overrideids — strip them from the payload.
+            const cancelData = { ...button.dataset };
+            delete cancelData.overrideids;
+            // Mark if this was clicked from inside a modal
+            const inModal = !!button.closest('[id^="' + SELECTORS.MODALID + '"], [id^="' + SELECTORS.INLINEID + '"]');
+            bookit(itemid, area, userid, cancelData, inModal);
+        }, true);
+    }
+
     // Add one event listener only once
     if (!container.dataset.bookitDelegated) {
         container.dataset.bookitDelegated = 'true';
 
+        // Bootstrap 5: use bubble phase (false) to respect stopImmediatePropagation from capture phase
+        // Bootstrap 4: use capture phase (true) for proper event handling
+        const useCapture = bootstrapVersion === 5 ? false : true;
+
         container.addEventListener('click', (e) => {
+
+            const cancelButton = e.target.closest('.bo-cancel-button');
+
             const button = e.target.closest(SELECTORS.BOOKITBUTTON + '[data-itemid][data-area]');
             if (!button) {
                 return;
@@ -67,17 +262,22 @@ export const initbookitbutton = () => {
             const cancelTarget = e.target.closest('.shopping-cart-cancel-button');
             const bookTarget = e.target.closest('.btn');
 
+            const iscancel = !!(cancelButton || cancelTarget);
+
             // Ignore disabled buttons
             if (button.classList.contains('disabled')) {
                 return;
             }
 
             // Ignore disabled buttons
-            if (button.dataset.nojs == 1) {
+            if (
+                button.dataset.nojs == 1
+                && !iscancel
+            ) {
                 return;
             }
 
-            const {itemid, area, userid} = button.dataset;
+            const { itemid, area, userid } = button.dataset;
 
             if (cancelTarget) {
                 import('local_shopping_cart/shistory')
@@ -90,11 +290,19 @@ export const initbookitbutton = () => {
                         console.error(err);
                     });
             } else if (bookTarget) {
+
+                if (iscancel) {
+                    // Handled in capture phase to beat bootstrap's modal data-api listeners.
+                    return;
+                }
+
                 if (!bookTarget.href || bookTarget.href.length < 2) {
-                    bookit(itemid, area, userid, button.dataset);
+                    const inModal = !!button.closest('[id^="' + SELECTORS.MODALID + '"], [id^="' + SELECTORS.INLINEID + '"]');
+                    const buttonData = { ...button.dataset };
+                    bookit(itemid, area, userid, buttonData, inModal);
                 }
             }
-        });
+        }, useCapture);
     }
 };
 
@@ -104,11 +312,37 @@ export const initbookitbutton = () => {
  * @param {string} area
  * @param {int} userid
  * @param {object} data
+ * @param {?boolean} clickedFromModal
  */
-export function bookit(itemid, area, userid, data) {
+export function bookit(itemid, area, userid, data, clickedFromModal = null) {
 
     // eslint-disable-next-line no-console
     console.log('run bookit');
+
+    const modalSelector = '[id^="' + SELECTORS.MODALID + '"], [id^="' + SELECTORS.INLINEID + '"]';
+    let resolvedClickedFromModal = clickedFromModal;
+
+    if (typeof resolvedClickedFromModal !== 'boolean') {
+        const activeElement = document.activeElement;
+        const activeButton = activeElement?.closest(
+            SELECTORS.BOOKITBUTTON +
+            '[data-itemid=\'' + itemid + '\']' +
+            '[data-area=\'' + area + '\']'
+        );
+
+        if (activeButton) {
+            resolvedClickedFromModal = !!activeButton.closest(modalSelector);
+        } else {
+            const visibleModalButton = document.querySelector(
+                '[id^="' + SELECTORS.MODALID + '"]' +
+                '.show ' +
+                SELECTORS.BOOKITBUTTON +
+                '[data-itemid=\'' + itemid + '\']' +
+                '[data-area=\'' + area + '\']'
+            );
+            resolvedClickedFromModal = !!visibleModalButton;
+        }
+    }
 
     Ajax.call([{
         methodname: "mod_booking_bookit",
@@ -118,7 +352,7 @@ export function bookit(itemid, area, userid, data) {
             'userid': userid,
             'data': JSON.stringify(data),
         },
-        done: function(res) {
+        done: function (res) {
 
             var skipreload = false;
 
@@ -140,12 +374,23 @@ export function bookit(itemid, area, userid, data) {
 
             // We run through every button. and render the data.
             buttons.forEach(button => {
+                // Filter buttons based on whether they're in a modal context
+                const buttonInModal = !!button.closest('[id^="' + SELECTORS.MODALID + '"], [id^="' + SELECTORS.INLINEID + '"]');
+                if (resolvedClickedFromModal && !buttonInModal) {
+                    // Skip buttons outside modal when click came from modal
+                    return;
+                }
+                if (!resolvedClickedFromModal && buttonInModal) {
+                    // Skip buttons inside modal when click came from outside
+                    return;
+                }
 
                 // eslint-disable-next-line no-console
                 console.log('bookit values', button.dataset.nojs, res.status);
                 skipreload = true;
                 if (button.dataset.nojs == 1
-                    && res.status == 0) {
+                    && res.status == 0
+                    && 1 == 2) {
                     // eslint-disable-next-line no-console
                     console.log('bookit skip', button.dataset.nojs, res.status);
                 } else {
@@ -154,31 +399,96 @@ export function bookit(itemid, area, userid, data) {
                     if (res.status == 1) {
                         skipreload = false;
                     }
+
+                    const originalbutton = button;
+
+                    const replaceButtonNode = (targetbutton, html, js = '') => {
+                        if (!targetbutton) {
+                            return;
+                        }
+                        Templates.replaceNode(targetbutton, html, js);
+                        return;
+                    };
+
                     templates.forEach(template => {
 
                         const data = arraytoreduce.shift();
-
+                        const shortHash = Math.random().toString(36).slice(2, 7);
                         const datatorender = data.data ?? data;
 
-                        const promise = Templates.renderForPromise(template, datatorender).then(({html, js}) => {
+                        if (
+                            template === "mod_booking/bookingpage/prepagemodal"
+                            || template === "mod_booking/bookingpage/prepageinline"
+                        ) {
+                            if (resolvedClickedFromModal) {
+                                // For clicks inside modal content, update that modal button directly.
+                                button = originalbutton;
+                            } else {
+                                button = button.closest('div[data-bs-toggle="modal"]')
+                                    ?? button.closest('div[data-bs-toggle="collapse"]');
+                            }
+                            datatorender.uniquid = shortHash;
 
-                            Templates.replaceNode(button, html, js);
+                            // eslint-disable-next-line no-console
+                            console.log('button', button);
 
-                            return true;
-                        }).catch(ex => {
-                            Notification.addNotification({
-                                message: 'failed rendering ' + ex,
-                                type: "danger"
+                            if (button && !resolvedClickedFromModal) {
+                                const targetmodalid = button.dataset.bsTarget?.replace('#', '');
+                                if (targetmodalid) {
+                                    const targetmodal = document.getElementById(targetmodalid);
+                                    if (targetmodal) {
+                                        targetmodal.remove();
+                                    }
+                                }
+                            }
+                        } else {
+                            button = originalbutton;
+                        }
+
+                        // For modal clicks, use buttonhtml if available; otherwise use template rendering
+                        if (resolvedClickedFromModal && datatorender.buttonhtml) {
+                            const promise = Promise.resolve().then(() => {
+                                let html = datatorender.buttonhtml;
+                                html = html.replaceAll('nojs="1"', 'nojs="0"');
+                                replaceButtonNode(button, html);
+                                return true;
+                            }).catch(ex => {
+                                Notification.addNotification({
+                                    message: 'failed rendering ' + ex,
+                                    type: "danger"
+                                });
                             });
-                        });
+                            promises.push(promise);
+                        } else {
+                            const promise = Templates.renderForPromise(template, datatorender).then(({ html, js }) => {
 
-                        promises.push(promise);
+                                // Here, we might need to replace the parent node instead of button.
+
+                                replaceButtonNode(button, html, js);
+
+                                return true;
+                            }).catch(ex => {
+                                Notification.addNotification({
+                                    message: 'failed rendering ' + ex,
+                                    type: "danger"
+                                });
+                            });
+
+                            promises.push(promise);
+                        }
                     });
                 }
             });
 
             Promise.all(promises).then(() => {
-
+                if (resolvedClickedFromModal) {
+                    buttons.forEach(button => {
+                        const buttonInModal = !!button.closest(
+                            '[id^="' + SELECTORS.MODALID + '"],[id^="' + SELECTORS.INLINEID + '"]'
+                        );
+                        buttonInModal.dataset.nojs = 0;
+                    });
+                }
                 const backdrop = document.querySelector(SELECTORS.STATICBACKDROP);
 
                 if (area === 'subbooking') {
@@ -192,7 +502,7 @@ export function bookit(itemid, area, userid, data) {
                 // eslint-disable-next-line no-console
                 console.log('skipreload', skipreload, currentbookitpage[itemid], totalbookitpages[itemid]);
 
-                if (!backdrop && !skipreload) {
+                if (!skipreload && (!backdrop || resolvedClickedFromModal)) {
                     reloadAllTables();
                 }
 
@@ -205,6 +515,19 @@ export function bookit(itemid, area, userid, data) {
         }
     }]);
 }
+
+/**
+ * Detects Bootstrap version being used.
+ * @returns {number} 4 for Bootstrap 4, 5 for Bootstrap 5
+ */
+const detectBootstrapVersion = () => {
+    // Bootstrap 5 uses window.bootstrap namespace
+    if (typeof window.bootstrap !== 'undefined' && window.bootstrap.Modal) {
+        return 5;
+    }
+    // Default to Bootstrap 4 if we can't confirm Bootstrap 5
+    return 4;
+};
 
 /**
  * Gets called from mustache template.
@@ -244,8 +567,15 @@ export const initprepagemodal = (optionid, userid, totalnumberofpages, uniquid) 
     currentbookitpage[optionid] = 0;
     totalbookitpages[optionid] = totalnumberofpages;
 
-    // We need to get all prepage modals on this site. Make sure they are initialized.
-    respondToVisibility(optionid, userid, uniquid, totalnumberofpages, loadPreBookingPage);
+    const bootstrapVersion = detectBootstrapVersion();
+
+    // Bootstrap 5: Use event listener approach
+    if (bootstrapVersion === 5) {
+        registerPrepageModalDelegatedListener();
+    } else {
+        // Bootstrap 4: Use MutationObserver approach
+        respondToVisibility(optionid, userid, uniquid, totalnumberofpages, loadPreBookingPage);
+    }
 };
 
 /**
@@ -257,35 +587,25 @@ export const initprepagemodal = (optionid, userid, totalnumberofpages, uniquid) 
  */
 export const initprepageinline = (optionid, userid, totalnumberofpages, uniquid) => {
 
-    // eslint-disable-next-line no-console
-    console.log('initprepageinline', optionid, userid, totalnumberofpages, uniquid);
-
-    if (!optionid || !uniquid || !totalnumberofpages) {
-
-        const elements = document.querySelectorAll("[id^=" + SELECTORS.INLINEID);
-
-        // eslint-disable-next-line no-console
-        console.log(elements);
-
-        elements.forEach(element => {
-            optionid = element.dataset.optionid;
-            uniquid = element.dataset.uniquid;
-            userid = element.dataset.userid;
-            totalnumberofpages = element.dataset.pages;
-            if (optionid && uniquid) {
-                initprepageinline(optionid, userid, totalnumberofpages, uniquid);
-            }
-        });
+    const isinlineprepage = document.querySelector('.inlineprepagearea');
+    if (!isinlineprepage) {
         return;
     }
 
-    currentbookitpage[optionid] = 0;
-    totalbookitpages[optionid] = totalnumberofpages;
+    // eslint-disable-next-line no-console
+    console.log('initprepageinline', optionid, userid, totalnumberofpages, uniquid);
 
-    inlineprepageconfig[optionid] = {
-        userid,
-        uniquid,
-    };
+    if (optionid && totalnumberofpages) {
+        currentbookitpage[optionid] = 0;
+        totalbookitpages[optionid] = totalnumberofpages;
+    }
+
+    if (optionid && uniquid) {
+        inlineprepageconfig[optionid] = {
+            userid,
+            uniquid,
+        };
+    }
 
     const container = document.querySelector('body');
     if (!container) {
@@ -319,7 +639,7 @@ export const initprepageinline = (optionid, userid, totalnumberofpages, uniquid)
             console.log('e.target', e.target);
 
             const optionid = button.dataset.itemid;
-            const config = inlineprepageconfig[optionid];
+            const config = getInlinePrepageConfig(optionid, button.dataset.userid);
 
             if (!config || !config.uniquid) {
                 return;
@@ -350,67 +670,6 @@ export const initprepageinline = (optionid, userid, totalnumberofpages, uniquid)
 };
 
 /**
- * React on visibility change.
- * @param {integer} optionid
- * @param {integer} userid
- * @param {string} uniquid
- * @param {integer} totalnumberofpages
- * @param {function} callback
- */
-function respondToVisibility(optionid, userid, uniquid, totalnumberofpages, callback) {
-
-    let elements = document.querySelectorAll("[id^=" + SELECTORS.MODALID + optionid + "_" + uniquid + "]");
-
-    elements.forEach(element => {
-
-        if (!element || element.dataset.initialized == 'true') {
-            return;
-        }
-
-        element.dataset.initialized = true;
-
-        var observer = new MutationObserver(function() {
-
-            if (!isHidden(element)) {
-
-                // Because of the modal animation, "isHIdden" is also true on hiding modal.
-                if (element.classList.contains('show')) {
-
-                    // Todo: Make sure it's not triggered on close.
-                    callback(optionid, userid, uniquid, totalnumberofpages);
-                }
-            }
-        });
-
-        // We look if we find a hidden parent. If not, we load right away.
-        while (element !== null) {
-            if (!isHidden(element)) {
-                element = element.parentElement;
-            } else {
-                if (element.dataset.observed) {
-                    return;
-                }
-
-                observer.observe(element, {attributes: true});
-                element.dataset.observed = true;
-                return;
-            }
-        }
-        callback(optionid, userid, uniquid, totalnumberofpages);
-    });
-}
-
-/**
- * Function to check visibility of element.
- * @param {*} el
- * @returns {boolean}
- */
-function isHidden(el) {
-    var style = window.getComputedStyle(el);
-    return ((style.display === 'none') || (style.visibility === 'hidden'));
-}
-
-/**
  * Loads the (next) pre booking page.
  * @param {integer} optionid
  * @param {integer} userid
@@ -436,7 +695,7 @@ export const loadPreBookingPage = (
             'itemid': optionid,
             'userid': userid,
         },
-        done: function(response) {
+        done: function (response) {
             // Will always be 1, if shopping cart is not installed!
             if (response.success == 1
                 || response.success == 5 // Already booked, we need this for subbokings.
@@ -449,7 +708,7 @@ export const loadPreBookingPage = (
                         userid,
                         'pagenumber': currentbookitpage[optionid],
                     },
-                    done: function(res) {
+                    done: function (res) {
                         // If we are on the last page, we reset it to 0.
                         if (currentbookitpage[optionid] === totalbookitpages[optionid] - 1) {
                             currentbookitpage[optionid] = 0;
@@ -465,7 +724,7 @@ export const loadPreBookingPage = (
 
                         renderTemplatesOnPage(templates, dataarray, element);
                     },
-                    fail: function(err) {
+                    fail: function (err) {
                         // eslint-disable-next-line no-console
                         console.log(err);
                     }
@@ -491,12 +750,12 @@ export const loadPreBookingPage = (
                         // Handle any errors, including if the module doesn't exist
                         // eslint-disable-next-line no-console
                         console.log(err);
-                });
+                    });
             }
 
             return true;
         },
-        fail: function(err) {
+        fail: function (err) {
             // eslint-disable-next-line no-console
             console.log(err);
         }
@@ -562,7 +821,7 @@ async function renderTemplatesOnPage(templates, dataarray, element) {
         // eslint-disable-next-line no-console
         console.log(data.data);
 
-        await Templates.renderForPromise(template, data.data).then(({html, js}) => {
+        await Templates.renderForPromise(template, data.data).then(({ html, js }) => {
 
             if (counter < 1) {
                 counter++;

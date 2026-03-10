@@ -28,6 +28,7 @@ use context_system;
 use local_shopping_cart\local\entities\cartitem;
 use local_shopping_cart\shopping_cart;
 use mod_booking\bo_availability\bo_info;
+use mod_booking\bo_availability\conditions\bookitbutton;
 use mod_booking\booking;
 use mod_booking\booking_bookit;
 use mod_booking\booking_option;
@@ -61,9 +62,16 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
         if ($area === 'option') {
             // First, we need to check if we have the right to actually load the item.
             $settings = singleton_service::get_instance_of_booking_option_settings($itemid);
+            $ignoredconditionids = self::get_cart_book_intent_ignored_condition_ids($settings, $userid);
 
             $boinfo = new bo_info($settings);
-            [$id, $isavailable, $description] = $boinfo->is_available($itemid, $userid, true);
+            [$id, $isavailable, $description] = $boinfo->is_available(
+                $itemid,
+                $userid,
+                true,
+                false,
+                $ignoredconditionids
+            );
 
             // The blocking ID has to be the price id.
             // If its already in the cart, we can also just proceed.
@@ -448,6 +456,35 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
     }
 
     /**
+     * Return ignored condition ids for cart checks in book-again intent only.
+     *
+     * @param object $settings
+     * @param int $userid
+     * @return int[]
+     */
+    private static function get_cart_book_intent_ignored_condition_ids(object $settings, int $userid): array {
+        global $USER;
+
+        if (empty($settings->jsonobject->multiplebookings)) {
+            return [];
+        }
+
+        $effectiveuserid = empty($userid) ? (int)$USER->id : $userid;
+        if (empty($effectiveuserid)) {
+            return [];
+        }
+
+        $bookinganswer = singleton_service::get_instance_of_booking_answers($settings);
+        $bookinginformation = $bookinganswer->return_all_booking_information($effectiveuserid);
+
+        if (empty($bookinginformation['iambooked'])) {
+            return [];
+        }
+
+        return bookitbutton::get_book_intent_override_condition_ids();
+    }
+
+    /**
      * Callback to check if adding item to cart is allowed.
      *
      * @param string $area
@@ -465,12 +502,19 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
             booking_option::purge_cache_for_answers($itemid);
 
             $settings = singleton_service::get_instance_of_booking_option_settings($itemid);
+            $ignoredconditionids = self::get_cart_book_intent_ignored_condition_ids($settings, $userid);
 
             $boinfo = new bo_info($settings);
             // There are two cases where we can actually book.
             // We call thefunction with hadblock set to true.
             // This means that we only get those blocks that actually should prevent booking.
-            [$id, $isavailable, $description] = $boinfo->is_available($itemid, $userid, true, true);
+            [$id, $isavailable, $description] = $boinfo->is_available(
+                $itemid,
+                $userid,
+                true,
+                true,
+                $ignoredconditionids
+            );
 
             // These conditions are allowed, so we need a check.
             $allowedconditions = [
