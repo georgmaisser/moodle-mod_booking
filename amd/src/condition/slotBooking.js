@@ -133,46 +133,10 @@ const getSelectionInput = (container) => {
         || container.querySelector('select[name="slot_selection[]"]');
 };
 
-const getFormTimeZone = (container) => {
-    if (!container) {
-        return 'UTC';
-    }
-
-    const timezoneInput = container.querySelector('input[name="slot_timezone"]');
-    const timezone = String(timezoneInput?.value || '').trim();
-    if (!timezone || timezone === '99') {
-        return 'UTC';
-    }
-
-    try {
-        Intl.DateTimeFormat(undefined, {timeZone: timezone});
-        return timezone;
-    } catch {
-        return 'UTC';
-    }
-};
-
-const createTimeFormatter = (timezone) => {
-    try {
-        return new Intl.DateTimeFormat([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-            timeZone: timezone || undefined,
-        });
-    } catch {
-        return new Intl.DateTimeFormat([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        });
-    }
-};
-
-const toTimeValue = (timestamp, formatter) => {
-    const parts = formatter.formatToParts(new Date(Number(timestamp) * 1000));
-    const hours = parts.find(part => part.type === 'hour')?.value || '00';
-    const minutes = parts.find(part => part.type === 'minute')?.value || '00';
+const toLocalTimeValue = (timestamp) => {
+    const date = new Date(Number(timestamp) * 1000);
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
     return `${hours}:${minutes}`;
 };
 
@@ -181,22 +145,10 @@ const toTimestampForDay = (dayTimestamp, timeValue) => {
         return 0;
     }
 
+    const day = new Date(Number(dayTimestamp) * 1000);
     const [hours, minutes] = timeValue.split(':').map(Number);
-    return Number(dayTimestamp) + (hours * 3600) + (minutes * 60);
-};
-
-const toDayKey = (timestamp, timezone) => {
-    try {
-        const formatter = new Intl.DateTimeFormat('en-CA', {
-            timeZone: timezone || undefined,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-        });
-        return formatter.format(new Date(Number(timestamp) * 1000));
-    } catch {
-        return '';
-    }
+    day.setHours(hours, minutes, 0, 0);
+    return Math.floor(day.getTime() / 1000);
 };
 
 const snapStartTimestamp = (timestamp, openFrom, openUntil, duration, intervalSeconds) => {
@@ -209,7 +161,7 @@ const snapStartTimestamp = (timestamp, openFrom, openUntil, duration, intervalSe
     return Math.max(minStart, Math.min(snapped, maxStart));
 };
 
-const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSelect, timeFormatter) => {
+const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSelect) => {
     if (!daySlot || !hiddenStartInput || !durationSelect) {
         return;
     }
@@ -230,7 +182,7 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
 
     const info = document.createElement('div');
     info.className = 'small text-muted mb-2';
-    info.textContent = `${daySlot.daylabel}: ${toTimeValue(openFrom, timeFormatter)} - ${toTimeValue(openUntil, timeFormatter)}`;
+    info.textContent = `${daySlot.daylabel}: ${toLocalTimeValue(openFrom)} - ${toLocalTimeValue(openUntil)}`;
     container.appendChild(info);
 
     const controls = document.createElement('div');
@@ -246,9 +198,9 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
     timeInput.className = 'form-control form-control-sm';
     timeInput.style.maxWidth = '10rem';
     timeInput.step = String(startIntervalSeconds);
-    timeInput.min = toTimeValue(openFrom, timeFormatter);
-    timeInput.max = toTimeValue(openUntil, timeFormatter);
-    timeInput.value = toTimeValue(defaultStart, timeFormatter);
+    timeInput.min = toLocalTimeValue(openFrom);
+    timeInput.max = toLocalTimeValue(openUntil);
+    timeInput.value = toLocalTimeValue(defaultStart);
     controls.appendChild(timeInput);
 
     container.appendChild(controls);
@@ -291,7 +243,7 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
             lbl.style.lineHeight = '1';
             lbl.style.textAlign = 'right';
             lbl.style.whiteSpace = 'nowrap';
-            lbl.textContent = toTimeValue(tick, timeFormatter);
+            lbl.textContent = toLocalTimeValue(tick);
             labelsCol.appendChild(lbl);
 
             const tickLine = document.createElement('div');
@@ -358,7 +310,7 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
             startIntervalSeconds
         );
         hiddenStartInput.value = String(clamped);
-        timeInput.value = toTimeValue(clamped, timeFormatter);
+        timeInput.value = toLocalTimeValue(clamped);
 
         const span = openUntil - openFrom;
         const top = span > 0 ? ((clamped - openFrom) / span) * 100 : 0;
@@ -386,7 +338,7 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
 };
 
 
-const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots, timeFormatter) => {
+const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots) => {
     container.innerHTML = '';
     if (!Array.isArray(daySlots) || daySlots.length === 0 || !selectionInput) {
         return;
@@ -472,7 +424,7 @@ const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots, t
         lbl.style.lineHeight = '1';
         lbl.style.textAlign = 'right';
         lbl.style.whiteSpace = 'nowrap';
-        lbl.textContent = toTimeValue(tick, timeFormatter);
+        lbl.textContent = toLocalTimeValue(tick);
         labelsCol.appendChild(lbl);
 
         const tickLine = document.createElement('div');
@@ -530,7 +482,7 @@ const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots, t
         timeText.style.whiteSpace = 'nowrap';
         timeText.style.overflow = 'hidden';
         timeText.style.textOverflow = 'ellipsis';
-        timeText.textContent = `${toTimeValue(slotStart, timeFormatter)} - ${toTimeValue(slotEnd, timeFormatter)}`;
+        timeText.textContent = `${toLocalTimeValue(slotStart)} \u2013 ${toLocalTimeValue(slotEnd)}`;
         headerRow.appendChild(timeText);
 
         if (isBooked) {
@@ -765,12 +717,9 @@ export async function init() {
 
     const optionid = container.dataset.optionid;
     const userid = container.dataset.userid;
-    const formRegion = container.querySelector('[data-region="slotbooking-form"]');
-    if (!formRegion) {
-        return;
-    }
 
-    const dynamicForm = new DynamicForm(formRegion, 'mod_booking\\form\\condition\\slotbooking_form');
+    const dynamicForm = new DynamicForm(container.querySelector('[data-region="slotbooking-form"]'),
+        'mod_booking\\form\\condition\\slotbooking_form');
     let currentLoadArgs = {
         id: optionid,
         userid,
@@ -787,8 +736,6 @@ export async function init() {
         const examinersLabelInput = container.querySelector('input[name="slot_examiners_per_slot_label"]');
         const usePricesInput = container.querySelector('input[name="slot_use_prices"]');
         const teachersRequiredInput = container.querySelector('input[name="slot_teachers_required_count"]');
-        const timezone = getFormTimeZone(container);
-        const timeFormatter = createTimeFormatter(timezone);
         const examinersLabel = (examinersLabelInput?.value || 'Examiners per slot').trim();
         const usePrices = Number(usePricesInput?.value || 0) === 1;
 
@@ -809,7 +756,10 @@ export async function init() {
 
                 if (dayKey) {
                     const fromAllSlots = slots.find(slot => {
-                        return toDayKey(slot.start || 0, timezone) === dayKey;
+                        const d = new Date(Number(slot.start || 0) * 1000);
+                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+                            + `-${String(d.getDate()).padStart(2, '0')}`;
+                        return key === dayKey;
                     });
                     if (fromAllSlots) {
                         return fromAllSlots;
@@ -826,7 +776,7 @@ export async function init() {
                 }
 
                 lastCustomDaySlot = daySlot;
-                renderCustomDayEditor(customEditorRoot, daySlot, customStartInput, customDurationSelect, timeFormatter);
+                renderCustomDayEditor(customEditorRoot, daySlot, customStartInput, customDurationSelect);
                 customEditorRoot.style.display = '';
                 return true;
             };
@@ -846,13 +796,7 @@ export async function init() {
                 }
 
                 if (lastCustomDaySlot) {
-                    renderCustomDayEditor(
-                        customEditorRoot,
-                        lastCustomDaySlot,
-                        customStartInput,
-                        customDurationSelect,
-                        timeFormatter
-                    );
+                    renderCustomDayEditor(customEditorRoot, lastCustomDaySlot, customStartInput, customDurationSelect);
                     customEditorRoot.style.display = '';
                     return true;
                 }
@@ -863,7 +807,6 @@ export async function init() {
             if (!calendarRoot.dataset.slotCalendarInitialized) {
                 customCalendarPicker = initSlotCalendarPicker(calendarRoot, {
                     slots,
-                    timezone,
                     maxSelection: 1,
                     dayCountFormatter: (daySlots) => {
                         const daySlot = Array.isArray(daySlots) ? daySlots[0] : null;
@@ -923,7 +866,6 @@ export async function init() {
 
             const calendarOptions = {
                 slots,
-                timezone,
                 maxSelection: maxSlots,
                 initialSelection: fixedEditorRoot
                     ? []
@@ -954,8 +896,7 @@ export async function init() {
                         fixedEditorRoot,
                         normalizedDaySlots,
                         selectionInput,
-                        maxSlots,
-                        timeFormatter
+                        maxSlots
                     );
 
                     if (!fixedEditorRoot.childElementCount) {
@@ -980,10 +921,6 @@ export async function init() {
     };
 
     const reloadForm = async(reloadArgs = null) => {
-        if (!container.isConnected || !formRegion.isConnected) {
-            return;
-        }
-
         if (reloadArgs) {
             currentLoadArgs = reloadArgs;
         }
@@ -1048,12 +985,7 @@ export async function init() {
     });
 
     if (!container.dataset.slotbookingRefreshBound) {
-        const slotbookingRefreshHandler = async(event) => {
-            if (!container.isConnected || !formRegion.isConnected) {
-                document.removeEventListener(SLOTBOOKING_REFRESH_EVENT, slotbookingRefreshHandler);
-                return;
-            }
-
+        document.addEventListener(SLOTBOOKING_REFRESH_EVENT, async(event) => {
             const detail = event.detail || {};
             const refreshedOptionid = Number(detail.optionid || 0);
             const refreshedUserid = Number(detail.userid || 0);
@@ -1067,9 +999,7 @@ export async function init() {
             }
 
             await reloadForm();
-        };
-
-        document.addEventListener(SLOTBOOKING_REFRESH_EVENT, slotbookingRefreshHandler);
+        });
 
         container.dataset.slotbookingRefreshBound = '1';
     }
@@ -1092,3 +1022,4 @@ function showValidationFeedback(container) {
         });
     }
 }
+

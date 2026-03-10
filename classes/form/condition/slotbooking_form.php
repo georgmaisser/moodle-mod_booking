@@ -256,10 +256,6 @@ class slotbooking_form extends dynamic_form {
         $mform->addElement('hidden', 'slot_use_prices', (string)$showprices);
         $mform->setType('slot_use_prices', PARAM_INT);
 
-        $timezone = \core_date::get_user_timezone($USER);
-        $mform->addElement('hidden', 'slot_timezone', (string)$timezone);
-        $mform->setType('slot_timezone', PARAM_TEXT);
-
         $mform->addElement('hidden', 'slot_validation_error_target', 'slot_selection');
         $mform->setType('slot_validation_error_target', PARAM_ALPHANUMEXT);
 
@@ -355,7 +351,7 @@ class slotbooking_form extends dynamic_form {
 
             foreach ($openslots as $index => $slot) {
                 $fieldname = self::slot_selection_checkbox_name($index);
-                $label = $slot['daylabel'] . ' - ' . $slot['timelabel'];
+                $label = $slot['daylabel'] . ' · ' . $slot['timelabel'];
                 $checkbox = $mform->addElement('advcheckbox', $fieldname, '', $label);
                 $mform->setType($fieldname, PARAM_INT);
                 $checkbox->updateAttributes([
@@ -556,8 +552,6 @@ class slotbooking_form extends dynamic_form {
     /**
      * Return currently open slots with labels and teacher availability.
      *
-     * @param int $optionid
-     * @param int $userid
      * @return array<int, array<string, mixed>>
      */
     private static function get_open_slots(int $optionid, int $userid): array {
@@ -669,11 +663,10 @@ class slotbooking_form extends dynamic_form {
 
     /**
      * Resolve default custom slot duration in seconds.
+     *
      * @param object|null $config
-     * @param array $options
-     *
+     * @param array<int, string> $options
      * @return int
-     *
      */
     private static function get_default_custom_duration(?object $config, array $options): int {
         $configured = max(1, (int)($config->slot_duration_minutes ?? 30)) * MINSECS;
@@ -687,8 +680,6 @@ class slotbooking_form extends dynamic_form {
     /**
      * Build available day entries for user-defined slot selection calendar.
      *
-     * @param int $optionid
-     * @param int $userid
      * @return array<int, array<string, mixed>>
      */
     private static function get_custom_open_days(int $optionid, int $userid): array {
@@ -710,10 +701,10 @@ class slotbooking_form extends dynamic_form {
         }
 
         $rangestart = time();
+        $rangeend = strtotime('+90 days', $rangestart);
         if (!empty($config->valid_from)) {
             $rangestart = max($rangestart, (int)$config->valid_from);
         }
-        $rangeend = strtotime('+90 days', $rangestart);
         if (!empty($config->valid_until)) {
             $rangeend = min($rangeend, (int)$config->valid_until + DAYSECS);
         }

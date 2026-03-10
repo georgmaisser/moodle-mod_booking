@@ -38,7 +38,7 @@ class slot_price {
      * @param int $slotstart slot start timestamp
      * @param int $slotend slot end timestamp
      * @param int $userid user id for price category resolution
-     * @return array
+     * @return array{price:float,currency:string,pricecategoryidentifier:string}
      */
     public static function calculate_slot_price_data(
         int $optionid,
@@ -69,7 +69,7 @@ class slot_price {
      * @param int $optionid booking option id
      * @param int $numslots number of slots
      * @param int $userid user id for price category resolution
-     * @param array $slots selected slots
+     * @param array<int, array{start:int, end:int}> $slots selected slots
      * @return float final total price
      */
     public static function calculate_price(int $optionid, int $numslots, int $userid = 0, array $slots = []): float {
@@ -105,7 +105,7 @@ class slot_price {
      *
      * @param int $optionid booking option id
      * @param int $userid user id for category-specific pricing
-     * @return array
+     * @return array{price:float,currency:string,pricecategoryidentifier:string}
      */
     private static function get_base_slot_price_data(int $optionid, int $userid = 0): array {
         $user = null;
