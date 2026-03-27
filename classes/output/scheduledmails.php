@@ -47,6 +47,9 @@ class scheduledmails implements renderable, templatable {
     /** @var string $renderedtable */
     public string $renderedtable = '';
 
+    /** @var scheduledmails_table $table */
+    public scheduledmails_table $table;
+
     /**
      * Constructor.
      * @param int $contextid
@@ -63,12 +66,14 @@ class scheduledmails implements renderable, templatable {
             'optionid' => get_string('bookingoption', 'mod_booking'),
             'cmid' => get_string('booking', 'mod_booking'),
             'nextruntime' => get_string('nextruntime', 'mod_booking'),
+            'status' => get_string('status', 'mod_booking'),
             'action' => get_string('actions'),
         ];
 
         $table->define_columns(array_keys($columns));
         $table->define_headers(array_values($columns));
-        unset($columns['actions']);
+        unset($columns['status']);
+        unset($columns['action']);
         $table->define_sortablecolumns(array_keys($columns));
         [$fields, $from, $where, $params] = \mod_booking\local\scheduledmails::get_sql();
         $table->set_sql($fields, $from, $where, $params);
@@ -111,6 +116,17 @@ class scheduledmails implements renderable, templatable {
         ];
 
         $this->renderedtable = $table->outhtml(5, true);
+        $this->table = $table;
+    }
+
+    /**
+     * Getter for table (for testing purposes).
+     *
+     * @return scheduledmails_table
+     *
+     */
+    public function return_table() {
+        return $this->table;
     }
 
     /**

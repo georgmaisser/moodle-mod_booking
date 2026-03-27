@@ -73,7 +73,9 @@ class scheduledmails {
                     $messagetext AS message,
                     $optionid AS optionid,
                     $cmid AS cmid,
-                    br.contextid
+                    br.isactive,
+                    br.contextid,
+                    ta.customdata
                  FROM
             {task_adhoc} ta
             JOIN {booking_rules} br

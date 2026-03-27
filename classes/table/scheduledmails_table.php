@@ -29,6 +29,7 @@ use cache_helper;
 use core_text;
 use html_writer;
 use local_wunderbyte_table\output\table;
+use mod_booking\booking_rules\rules_info;
 use mod_booking\singleton_service;
 
 defined('MOODLE_INTERNAL') || die();
@@ -71,6 +72,52 @@ class scheduledmails_table extends wunderbyte_table {
             return '';
         }
         return date('d.m.Y h:s', $values->nextruntime);
+    }
+
+    /**
+     * Return current status if this scheduled mail would still be sent.
+     *
+     * @param stdClass $values
+     * @return string
+     */
+    public function col_status(stdClass $values): string {
+        global $DB;
+
+        if (empty($values->id) || empty($values->ruleid)) {
+            return get_string('no');
+        }
+
+        $taskdata = json_decode($values->customdata);
+        $ruleinstance = (object)[
+            'id' => $values->ruleid,
+            'rulename' => $taskdata->rulename,
+            'isactive' => $values->isactive,
+            'rulejson' => $taskdata->rulejson,
+            'contextid' => $values->contextid,
+        ];
+        if (empty($taskdata) || empty($taskdata->optionid) || empty($taskdata->userid)) {
+            return get_string('no');
+        }
+
+        // Use the rulename from booking_rules table (class name), not from display name.
+        $rule = rules_info::get_rule($ruleinstance->rulename);
+        if (empty($rule)) {
+            return get_string('no');
+        }
+
+        try {
+            $rule->set_ruledata($ruleinstance);
+            $stillapplies = $rule->check_if_rule_still_applies(
+                (int)$taskdata->optionid,
+                (int)$taskdata->userid,
+                (int)$values->nextruntime,
+                (int)($taskdata->optiondateid ?? 0)
+            );
+
+            return $stillapplies ? get_string('yes') : get_string('no');
+        } catch (\Throwable $e) {
+            return get_string('no');
+        }
     }
 
     /**
