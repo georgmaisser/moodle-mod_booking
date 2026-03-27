@@ -29,7 +29,7 @@ use cache_helper;
 use core_text;
 use html_writer;
 use local_wunderbyte_table\output\table;
-use mod_booking\booking_rules\rules_info;
+use mod_booking\local\scheduledmails;
 use mod_booking\singleton_service;
 
 defined('MOODLE_INTERNAL') || die();
@@ -81,43 +81,7 @@ class scheduledmails_table extends wunderbyte_table {
      * @return string
      */
     public function col_status(stdClass $values): string {
-        global $DB;
-
-        if (empty($values->id) || empty($values->ruleid)) {
-            return get_string('no');
-        }
-
-        $taskdata = json_decode($values->customdata);
-        $ruleinstance = (object)[
-            'id' => $values->ruleid,
-            'rulename' => $taskdata->rulename,
-            'isactive' => $values->isactive,
-            'rulejson' => $taskdata->rulejson,
-            'contextid' => $values->contextid,
-        ];
-        if (empty($taskdata) || empty($taskdata->optionid) || empty($taskdata->userid)) {
-            return get_string('no');
-        }
-
-        // Use the rulename from booking_rules table (class name), not from display name.
-        $rule = rules_info::get_rule($ruleinstance->rulename);
-        if (empty($rule)) {
-            return get_string('no');
-        }
-
-        try {
-            $rule->set_ruledata($ruleinstance);
-            $stillapplies = $rule->check_if_rule_still_applies(
-                (int)$taskdata->optionid,
-                (int)$taskdata->userid,
-                (int)$values->nextruntime,
-                (int)($taskdata->optiondateid ?? 0)
-            );
-
-            return $stillapplies ? get_string('yes') : get_string('no');
-        } catch (\Throwable $e) {
-            return get_string('no');
-        }
+        return scheduledmails::is_task_still_valid($values) ? get_string('yes') : get_string('no');
     }
 
     /**
@@ -336,7 +300,7 @@ class scheduledmails_table extends wunderbyte_table {
      * @return array
      *
      */
-    public function action_deleteitem(int $id): array {
+    public function action_deleteitem(int $id, string $data = ''): array {
         global $DB;
 
         $DB->delete_records('task_adhoc', ['id' => $id]);
@@ -346,6 +310,26 @@ class scheduledmails_table extends wunderbyte_table {
         return [
             'success' => 1,
             'message' => get_string('deleted', 'mod_booking'),
+        ];
+    }
+
+    /**
+     * Action to remove all currently invalid scheduled mails based on col_status logic.
+     *
+     * @param int $id
+     * @param string $data
+     * @return array
+     */
+    public function action_cleanupinvalid(int $id, string $data = ''): array {
+        $contextid = $this->context->id;
+        $result = scheduledmails::cleanup_invalid_tasks_in_context($contextid);
+
+        return [
+            'success' => 1,
+            'message' => 'Checked ' . (int)($result['checked'] ?? 0)
+                . ' scheduled mails and deleted '
+                . (int)($result['deleted'] ?? 0)
+                . ' invalid entries.',
         ];
     }
 }

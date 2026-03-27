@@ -27,6 +27,7 @@ namespace mod_booking;
 
 use advanced_testcase;
 use mod_booking\output\scheduledmails;
+use mod_booking\table\scheduledmails_table;
 use tool_mocktesttime\time_mock;
 use context_system;
 
@@ -59,6 +60,42 @@ final class scheduledmails_table_test extends advanced_testcase {
     }
 
     /**
+     * Returns computed status for a specific adhoc task row.
+     *
+     * @param \core\task\adhoc_task $task
+     * @return string
+     */
+    private function get_status_for_task(\core\task\adhoc_task $task): string {
+        global $DB;
+
+        $taskid = method_exists($task, 'get_id') ? (int)$task->get_id() : (int)$task->id;
+        $customdata = $task->get_custom_data();
+        $ruleid = (int)($customdata->ruleid ?? 0);
+
+        $taskrecord = $DB->get_record('task_adhoc', ['id' => $taskid], 'id, customdata', MUST_EXIST);
+        $rulerecord = $DB->get_record('booking_rules', ['id' => $ruleid], 'id, rulename, isactive, rulejson, contextid', MUST_EXIST);
+
+        $taskcustomdata = json_decode((string)$taskrecord->customdata);
+        if (empty($taskcustomdata)) {
+            $taskcustomdata = new \stdClass();
+        }
+        $taskcustomdata->rulename = $rulerecord->rulename;
+        $taskcustomdata->rulejson = $rulerecord->rulejson;
+
+        $table = new scheduledmails_table('scheduledmails_unittest', context_system::instance()->id);
+        $row = (object)[
+            'id' => $taskid,
+            'ruleid' => $ruleid,
+            'nextruntime' => (int)$task->get_next_run_time(),
+            'isactive' => (int)$rulerecord->isactive,
+            'contextid' => (int)$rulerecord->contextid,
+            'customdata' => json_encode($taskcustomdata),
+        ];
+
+        return $table->col_status($row);
+    }
+
+    /**
      * Tests set up.
      */
     public function setUp(): void {
@@ -80,85 +117,156 @@ final class scheduledmails_table_test extends advanced_testcase {
     }
 
     /**
-     * Test that col_status correctly reflects rule applicability.
+     * Sets a deterministic timezone for date calculations in tests.
      *
-     * @covers \mod_booking\table\scheduledmails_table::col_status
+     * @return void
      */
-    public function test_col_status_after_option_update(): void {
-        $this->setAdminUser();
-
-        // Set timezone for consistent calculations.
+    private function setup_test_timezone(): void {
         set_config('timezone', 'Europe/Kyiv');
         set_config('forcetimezone', 'Europe/Kyiv');
         \core_date::set_default_server_timezone();
+    }
 
+    /**
+     * Creates common booking test fixture.
+     *
+     * @return array
+     */
+    private function create_booking_fixture(): array {
         $bdata = self::booking_common_settings_provider();
 
-        // Setup test data.
         $course = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
-        $user1 = $this->getDataGenerator()->create_user();
-        $user2 = $this->getDataGenerator()->create_user();
+        $teacher = $this->getDataGenerator()->create_user();
+        $student = $this->getDataGenerator()->create_user();
 
         $bdata['booking']['course'] = $course->id;
-        $bdata['booking']['bookingmanager'] = $user2->username;
+        $bdata['booking']['bookingmanager'] = $student->username;
 
         $booking = $this->getDataGenerator()->create_module('booking', $bdata['booking']);
 
-        $this->getDataGenerator()->enrol_user($user1->id, $course->id, 'editingteacher');
-        $this->getDataGenerator()->enrol_user($user2->id, $course->id, 'student');
+        $this->getDataGenerator()->enrol_user($teacher->id, $course->id, 'editingteacher');
+        $this->getDataGenerator()->enrol_user($student->id, $course->id, 'student');
 
         /** @var \mod_booking_generator $plugingenerator */
         $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
 
-        // Create booking rule - "2 days before coursestart".
+        return [$bdata, $course, $student, $booking, $plugingenerator];
+    }
+
+    /**
+     * End-to-end assertion helper for one rule/datefield combination.
+     *
+     * @param string $subject
+     * @param string $template
+     * @param string $rulename
+     * @param string $ruledatajson
+     * @param array $initialoverrides
+     * @param array $updateoverrides
+     * @return void
+     */
+    private function assert_rule_variant_sends_only_yes_message(
+        string $subject,
+        string $template,
+        string $rulename,
+        string $ruledatajson,
+        array $initialoverrides,
+        array $updateoverrides
+    ): void {
+        $this->setAdminUser();
+        $this->setup_test_timezone();
+
+        [$bdata, $course, $student, $booking, $plugingenerator] = $this->create_booking_fixture();
+
         $actstr = '{"sendical":0,"sendicalcreateorcancel":"",';
-        $actstr .= '"subject":"2daysbefore","template":"starts in 2 days","templateformat":"1"}';
-        $ruledata = [
-            'name' => '2daysbefore',
+        $actstr .= '"subject":"' . $subject . '","template":"' . $template . '","templateformat":"1"}';
+        $plugingenerator->create_rule([
+            'name' => $subject,
             'conditionname' => 'select_users',
             'contextid' => 1,
-            'conditiondata' => '{"userids":["' . $user2->id . '"]}',
+            'conditiondata' => '{"userids":["' . $student->id . '"]}',
             'actionname' => 'send_mail',
             'actiondata' => $actstr,
-            'rulename' => 'rule_daysbefore',
-            'ruledata' => '{"days":"2","datefield":"coursestarttime","cancelrules":[]}',
-        ];
-        $plugingenerator->create_rule($ruledata);
+            'rulename' => $rulename,
+            'ruledata' => $ruledatajson,
+        ]);
 
-        // Create booking option with start in 5 days (task for 3 days = 2 before).
-        $record = (object)$bdata['options'][0];
-        $record->bookingid = $booking->id;
-        $record->courseid = $course->id;
-        $record->coursestarttime_0 = strtotime('+5 days', time());
-        $record->courseendtime_0 = strtotime('+5 days +1 hour', time());
+        $record = (object)array_merge((array)$bdata['options'][0], [
+            'bookingid' => $booking->id,
+            'courseid' => $course->id,
+        ], $initialoverrides);
         $option = $plugingenerator->create_option($record);
         singleton_service::destroy_booking_option_singleton($option->id);
 
-        // Tasks should be created for 2 days before course start.
         $tasks = \core\task\manager::get_adhoc_tasks('\mod_booking\task\send_mail_by_rule_adhoc');
-
-        // Debug output.
         $this->assertCount(1, $tasks, 'One task should be created');
 
-        // Check status before update - should be "yes" (rule applies).
-        $status1 = $this->get_status_by_subject('2daysbefore');
+        $status1 = $this->get_status_by_subject($subject);
         $this->assertEquals(get_string('yes'), $status1, 'Task should return yes before option update');
 
-        // Update option to start in 15 days (task now obsolete for day 13).
         $record->id = $option->id;
-        $record->coursestarttime_0 = strtotime('+15 days', time());
-        $record->courseendtime_0 = strtotime('+15 days +1 hour', time());
+        foreach ($updateoverrides as $key => $value) {
+            $record->{$key} = $value;
+        }
         $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
         $record->cmid = $settings->cmid;
         booking_option::update($record);
         singleton_service::destroy_booking_option_singleton($option->id);
 
-        // Clear cache.
         \cache_helper::purge_by_definition('mod_booking', 'scheduledmailscache');
 
-        // Check status after update - should be "no" for the original task.
-        $status2 = $this->get_status_by_subject('2daysbefore');
+        $status2 = $this->get_status_by_subject($subject);
         $this->assertEquals(get_string('no'), $status2, 'Task should return no after option update');
+
+        $tasksafterupdate = \core\task\manager::get_adhoc_tasks('\mod_booking\task\send_mail_by_rule_adhoc');
+        $this->assertCount(2, $tasksafterupdate, 'Expected old and new task after option update.');
+
+        $yescount = 0;
+        $nocount = 0;
+        $latestruntime = 0;
+        foreach ($tasksafterupdate as $taskafterupdate) {
+            $status = $this->get_status_for_task($taskafterupdate);
+            if ($status === get_string('yes')) {
+                $yescount++;
+            } else if ($status === get_string('no')) {
+                $nocount++;
+            }
+            $latestruntime = max($latestruntime, (int)$taskafterupdate->get_next_run_time());
+        }
+        $this->assertEquals(1, $yescount, 'Exactly one task should still be valid (yes).');
+        $this->assertEquals(1, $nocount, 'Exactly one task should be obsolete (no).');
+
+        time_mock::set_mock_time($latestruntime + 60);
+        unset_config('noemailever');
+        ob_start();
+        $messagesink = $this->redirectMessages();
+        $this->runAdhocTasks();
+        $sentmessages = $messagesink->get_messages();
+        ob_get_clean();
+        $messagesink->close();
+
+        $this->assertCount(1, $sentmessages, 'Only the yes-status message should be sent.');
+    }
+
+    /**
+     * Test that col_status correctly reflects rule applicability.
+     *
+     * @covers \mod_booking\table\scheduledmails_table::col_status
+     */
+    public function test_col_status_after_option_update(): void {
+        $this->assert_rule_variant_sends_only_yes_message(
+            '2daysbefore',
+            'starts in 2 days',
+            'rule_daysbefore',
+            '{"days":"2","datefield":"coursestarttime","cancelrules":[]}',
+            [
+                'coursestarttime_0' => strtotime('+5 days', time()),
+                'courseendtime_0' => strtotime('+5 days +1 hour', time()),
+            ],
+            [
+                'coursestarttime_0' => strtotime('+15 days', time()),
+                'courseendtime_0' => strtotime('+15 days +1 hour', time()),
+            ]
+        );
     }
 
     /**
@@ -167,68 +275,116 @@ final class scheduledmails_table_test extends advanced_testcase {
      * @covers \mod_booking\table\scheduledmails_table::col_status
      */
     public function test_col_status_after_option_update_specifictime_coursestarttime(): void {
-        $this->setAdminUser();
+        $this->assert_rule_variant_sends_only_yes_message(
+            'specifictime',
+            'specific time mail',
+            'rule_specifictime',
+            '{"seconds":172800,"datefield":"coursestarttime"}',
+            [
+                'coursestarttime_0' => strtotime('+5 days', time()),
+                'courseendtime_0' => strtotime('+5 days +1 hour', time()),
+            ],
+            [
+                'coursestarttime_0' => strtotime('+15 days', time()),
+                'courseendtime_0' => strtotime('+15 days +1 hour', time()),
+            ]
+        );
+    }
 
-        set_config('timezone', 'Europe/Kyiv');
-        set_config('forcetimezone', 'Europe/Kyiv');
-        \core_date::set_default_server_timezone();
+    /**
+     * Test non-event rule type: rule_daysbefore with optiondatestarttime ("date" variant).
+     *
+     * @covers \mod_booking\table\scheduledmails_table::col_status
+     */
+    public function test_col_status_after_option_update_daysbefore_optiondatestarttime(): void {
+        $this->assert_rule_variant_sends_only_yes_message(
+            'daysbeforedate',
+            'date in 2 days',
+            'rule_daysbefore',
+            '{"days":"2","datefield":"optiondatestarttime","cancelrules":[]}',
+            [
+                'coursestarttime_0' => strtotime('+5 days', time()),
+                'courseendtime_0' => strtotime('+5 days +1 hour', time()),
+            ],
+            [
+                'coursestarttime_0' => strtotime('+15 days', time()),
+                'courseendtime_0' => strtotime('+15 days +1 hour', time()),
+            ]
+        );
+    }
 
-        $bdata = self::booking_common_settings_provider();
+    /**
+     * Test non-event rule type: rule_specifictime with optiondatestarttime ("date" variant).
+     *
+     * @covers \mod_booking\table\scheduledmails_table::col_status
+     */
+    public function test_col_status_after_option_update_specifictime_optiondatestarttime(): void {
+        $this->assert_rule_variant_sends_only_yes_message(
+            'specificdate',
+            'date specific time',
+            'rule_specifictime',
+            '{"seconds":172800,"datefield":"optiondatestarttime"}',
+            [
+                'coursestarttime_0' => strtotime('+5 days', time()),
+                'courseendtime_0' => strtotime('+5 days +1 hour', time()),
+            ],
+            [
+                'coursestarttime_0' => strtotime('+15 days', time()),
+                'courseendtime_0' => strtotime('+15 days +1 hour', time()),
+            ]
+        );
+    }
 
-        $course = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
-        $user1 = $this->getDataGenerator()->create_user();
-        $user2 = $this->getDataGenerator()->create_user();
+    /**
+     * Test non-event rule type: rule_daysbefore with bookingclosingtime.
+     *
+     * @covers \mod_booking\table\scheduledmails_table::col_status
+     */
+    public function test_col_status_after_option_update_daysbefore_bookingclosingtime(): void {
+        $this->assert_rule_variant_sends_only_yes_message(
+            'daysbeforeclosing',
+            'closing in 2 days',
+            'rule_daysbefore',
+            '{"days":"2","datefield":"bookingclosingtime","cancelrules":[]}',
+            [
+                'restrictanswerperiodclosing' => 1,
+                'bookingopeningtime' => strtotime('+1 day', time()),
+                'bookingclosingtime' => strtotime('+5 days', time()),
+                'coursestarttime_0' => strtotime('+6 days', time()),
+                'courseendtime_0' => strtotime('+6 days +1 hour', time()),
+            ],
+            [
+                'bookingclosingtime' => strtotime('+15 days', time()),
+                'coursestarttime_0' => strtotime('+16 days', time()),
+                'courseendtime_0' => strtotime('+16 days +1 hour', time()),
+            ]
+        );
+    }
 
-        $bdata['booking']['course'] = $course->id;
-        $bdata['booking']['bookingmanager'] = $user2->username;
-
-        $booking = $this->getDataGenerator()->create_module('booking', $bdata['booking']);
-
-        $this->getDataGenerator()->enrol_user($user1->id, $course->id, 'editingteacher');
-        $this->getDataGenerator()->enrol_user($user2->id, $course->id, 'student');
-
-        /** @var \mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-
-        $actstr = '{"sendical":0,"sendicalcreateorcancel":"",';
-        $actstr .= '"subject":"specifictime","template":"specific time mail","templateformat":"1"}';
-        $plugingenerator->create_rule([
-            'name' => 'specifictime',
-            'conditionname' => 'select_users',
-            'contextid' => 1,
-            'conditiondata' => '{"userids":["' . $user2->id . '"]}',
-            'actionname' => 'send_mail',
-            'actiondata' => $actstr,
-            'rulename' => 'rule_specifictime',
-            'ruledata' => '{"seconds":172800,"datefield":"coursestarttime"}',
-        ]);
-
-        $record = (object)$bdata['options'][0];
-        $record->bookingid = $booking->id;
-        $record->courseid = $course->id;
-        $record->coursestarttime_0 = strtotime('+5 days', time());
-        $record->courseendtime_0 = strtotime('+5 days +1 hour', time());
-        $option = $plugingenerator->create_option($record);
-        singleton_service::destroy_booking_option_singleton($option->id);
-
-        $tasks = \core\task\manager::get_adhoc_tasks('\mod_booking\task\send_mail_by_rule_adhoc');
-        $this->assertCount(1, $tasks, 'One task should be created');
-
-        $status1 = $this->get_status_by_subject('specifictime');
-        $this->assertEquals(get_string('yes'), $status1, 'Task should return yes before option update');
-
-        $record->id = $option->id;
-        $record->coursestarttime_0 = strtotime('+15 days', time());
-        $record->courseendtime_0 = strtotime('+15 days +1 hour', time());
-        $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
-        $record->cmid = $settings->cmid;
-        booking_option::update($record);
-        singleton_service::destroy_booking_option_singleton($option->id);
-
-        \cache_helper::purge_by_definition('mod_booking', 'scheduledmailscache');
-
-        $status2 = $this->get_status_by_subject('specifictime');
-        $this->assertEquals(get_string('no'), $status2, 'Task should return no after option update');
+    /**
+     * Test non-event rule type: rule_specifictime with bookingclosingtime.
+     *
+     * @covers \mod_booking\table\scheduledmails_table::col_status
+     */
+    public function test_col_status_after_option_update_specifictime_bookingclosingtime(): void {
+        $this->assert_rule_variant_sends_only_yes_message(
+            'specificclosing',
+            'specific closing time',
+            'rule_specifictime',
+            '{"seconds":172800,"datefield":"bookingclosingtime"}',
+            [
+                'restrictanswerperiodclosing' => 1,
+                'bookingopeningtime' => strtotime('+1 day', time()),
+                'bookingclosingtime' => strtotime('+5 days', time()),
+                'coursestarttime_0' => strtotime('+6 days', time()),
+                'courseendtime_0' => strtotime('+6 days +1 hour', time()),
+            ],
+            [
+                'bookingclosingtime' => strtotime('+15 days', time()),
+                'coursestarttime_0' => strtotime('+16 days', time()),
+                'courseendtime_0' => strtotime('+16 days +1 hour', time()),
+            ]
+        );
     }
 
     /**

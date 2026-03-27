@@ -115,6 +115,24 @@ class scheduledmails implements renderable, templatable {
             ],
         ];
 
+        $table->actionbuttons[] = [
+            'label' => get_string('delete', 'core') . ' ' . get_string('status', 'mod_booking') . ': ' . get_string('no'),
+            'class' => 'btn btn-warning',
+            'href' => '#',
+            'id' => -1,
+            'methodname' => 'cleanupinvalid',
+            'nomodal' => false,
+            'selectionmandatory' => false,
+            'data' => [
+                'id' => 'id',
+                'titlestring' => 'scheduledmailscleanupinvalidtitle',
+                'bodystring' => 'scheduledmailscleanupinvalidbody',
+                'submitbuttonstring' => 'scheduledmailscleanupinvalidsubmit',
+                'component' => 'mod_booking',
+                'noselectionbodystring' => 'scheduledmailscleanupinvalidbody',
+            ],
+        ];
+
         $this->renderedtable = $table->outhtml(5, true);
         $this->table = $table;
     }
