@@ -27,322 +27,39 @@ namespace mod_booking\form;
 use context;
 use context_module;
 use core_form\dynamic_form;
-use mod_booking\option\dates_handler;
-use mod_booking\semester;
+use html_writer;
+use mod_booking\local\slotbooking\slot_availability;
 use mod_booking\singleton_service;
 use moodle_url;
 use stdClass;
 
 /**
- * Form to add teacher unavailability block.
+ * Form to mark teacher availability/unavailability on existing slots.
  */
 class teacherunavailability_form extends dynamic_form {
-    /**
-     * Get effective semester id from option or booking settings.
-     *
-     * @param int $optionid
-     * @param int $cmid
-     * @return int
-     */
-    private function get_effective_semesterid(int $optionid, int $cmid = 0): int {
-        if ($optionid <= 0) {
-            if ($cmid > 0) {
-                $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($cmid);
-                return (int)($bookingsettings->semesterid ?? 0);
-            }
-            return 0;
-        }
+    /** @var string mark mode: picked slots are unavailable */
+    private const MODE_UNAVAILABILITY = 'unavailability';
 
-        $optionsettings = singleton_service::get_instance_of_booking_option_settings($optionid);
-        $optionsemesterid = (int)($optionsettings->semesterid ?? 0);
-        if ($optionsemesterid > 0) {
-            return $optionsemesterid;
-        }
+    /** @var string mark mode: picked slots are available */
+    private const MODE_AVAILABILITY = 'availability';
 
-        $bookingid = (int)($optionsettings->bookingid ?? 0);
-        if ($bookingid <= 0 && $cmid > 0) {
-            $bookingoption = singleton_service::get_instance_of_booking_option($cmid, $optionid);
-            $bookingid = (int)($bookingoption->bookingid ?? 0);
-        }
-        if ($bookingid <= 0) {
-            if ($cmid > 0) {
-                $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($cmid);
-                return (int)($bookingsettings->semesterid ?? 0);
-            }
-            return 0;
-        }
+    /** @var string scope for system-wide (stored as optionid=0) */
+    private const SCOPE_SYSTEM = 'system';
 
-        $bookingsettings = singleton_service::get_instance_of_booking_settings_by_bookingid($bookingid);
-        return (int)($bookingsettings->semesterid ?? 0);
-    }
+    /** @var string scope for all slot options in this booking instance */
+    private const SCOPE_INSTANCE = 'instance';
 
-    /**
-     * Get all submitted entry indices.
-     *
-     * @param array $submitted
-     * @param int $fallbackcounter
-     * @return array<int>
-     */
-    private function get_submitted_entry_indices(array $submitted, int $fallbackcounter = 0): array {
-        $indices = [];
-        foreach ($submitted as $key => $value) {
-            if (preg_match('/^unavailability_id_(\d+)$/', (string)$key, $matches)) {
-                $indices[] = (int)$matches[1];
-            } else if (
-                preg_match('/^unavailable_from_(\d+)(?:\[|$)/', (string)$key, $matches)
-                || preg_match('/^unavailable_until_(\d+)(?:\[|$)/', (string)$key, $matches)
-            ) {
-                $indices[] = (int)$matches[1];
-            }
-        }
+    /** @var string scope for one slot option only */
+    private const SCOPE_OPTION = 'option';
 
-        $indices = array_values(array_unique($indices));
-        sort($indices);
+    /** @var string view mode calendar */
+    private const VIEW_CALENDAR = 'calendar';
 
-        return $indices;
-    }
+    /** @var string view mode list */
+    private const VIEW_LIST = 'list';
 
-    /**
-     * Add one unavailability entry as collapsible card.
-     * @param \MoodleQuickForm $mform
-     * @param int $index
-     * @param array $entry
-     * @param bool $expanded
-     *
-     * @return void
-     *
-     */
-    private function add_entry_as_collapsible(\MoodleQuickForm $mform, int $index, array $entry, bool $expanded): void {
-        global $OUTPUT;
-
-        $from = (int)$entry['from'];
-        $until = (int)$entry['until'];
-        if ($from <= 0) {
-            $from = time();
-        }
-        if ($until <= $from) {
-            $until = $from + HOURSECS;
-        }
-
-        $headername = dates_handler::prettify_optiondates_start_end($from, $until, current_language());
-        $headerid = 'booking_unavailability_' . $index;
-        $collapseid = 'booking_unavailability_collapse' . $index;
-        $accordionid = 'accordion_optionid_' . $index;
-
-        $headerdata = [
-            'headername' => $headername,
-            'headerid' => $headerid,
-            'collapseid' => $collapseid,
-            'accordionid' => $accordionid,
-            'expanded' => $expanded,
-        ];
-
-        $mform->addElement('html', $OUTPUT->render_from_template('mod_booking/option/option_collapsible_open', $headerdata));
-
-        $mform->addElement('hidden', 'unavailability_id_' . $index, (int)$entry['id']);
-        $mform->setType('unavailability_id_' . $index, PARAM_INT);
-
-        $mform->addElement(
-            'date_time_selector',
-            'unavailable_from_' . $index,
-            get_string('from', 'mod_booking')
-        );
-        $mform->setType('unavailable_from_' . $index, PARAM_INT);
-
-        $mform->addElement(
-            'date_time_selector',
-            'unavailable_until_' . $index,
-            get_string('to', 'mod_booking')
-        );
-        $mform->setType('unavailable_until_' . $index, PARAM_INT);
-
-        $mform->addElement('text', 'reason_' . $index, get_string('reason', 'mod_booking'), ['size' => 40]);
-        $mform->setType('reason_' . $index, PARAM_TEXT);
-
-        $deletebuttonname = 'deleteunavailability_' . $index;
-        $mform->registerNoSubmitButton($deletebuttonname);
-        $mform->addElement('submit', $deletebuttonname, get_string('delete', 'mod_booking'), [
-            'data-action' => $deletebuttonname,
-        ]);
-
-        $mform->addElement('html', $OUTPUT->render_from_template('mod_booking/option/option_collapsible_close', []));
-    }
-
-    /**
-     * Build entries from incoming form state if present, otherwise from DB.
-     *
-     * @return array<int, array{id:int, from:int, until:int, reason:string}>
-     */
-    private function get_entries_for_form(): array {
-        global $DB;
-
-        $date = (int)($this->_ajaxformdata['date'] ?? 0);
-        if ($date <= 0) {
-            $date = time();
-        }
-
-        $weekstart = strtotime('monday this week', $date);
-        if ($weekstart === false) {
-            $weekstart = strtotime('monday this week');
-        }
-        $entries = [];
-        $indices = [];
-        foreach ((array)$this->_ajaxformdata as $key => $value) {
-            if (preg_match('/^unavailability_id_(\d+)$/', (string)$key, $matches)) {
-                $indices[] = (int)$matches[1];
-            }
-        }
-
-        // Unavailability counter is a hidden field rendered by definition() on every
-        // AJAX cycle (including noSubmit delete calls). Its presence means the form has
-        // already been through at least one render and the submitted state is authoritative.
-        // Only fall back to the DB on the very first (initial) page load where this field
-        // is absent. This way deleting the last row and then saving works correctly.
-        $formhasbeenrendered = array_key_exists('unavailability_counter', (array)$this->_ajaxformdata);
-
-        if (!empty($indices)) {
-            sort($indices);
-            foreach ($indices as $index) {
-                $entries[] = [
-                    'id' => (int)($this->_ajaxformdata['unavailability_id_' . $index] ?? 0),
-                    'from' => $this->to_timestamp($this->_ajaxformdata['unavailable_from_' . $index] ?? 0),
-                    'until' => $this->to_timestamp($this->_ajaxformdata['unavailable_until_' . $index] ?? 0),
-                    'reason' => (string)($this->_ajaxformdata['reason_' . $index] ?? ''),
-                ];
-            }
-        } else if (!$formhasbeenrendered) {
-            // Only fall back to DB on the very first load (unavailability_counter not yet present).
-            $optionid = (int)($this->_ajaxformdata['optionid'] ?? 0);
-            $teacherid = (int)($this->_ajaxformdata['teacherid'] ?? 0);
-
-            $records = $DB->get_records(
-                'booking_teacher_unavailability',
-                [
-                    'optionid' => $optionid,
-                    'teacherid' => $teacherid,
-                ],
-                'unavailable_from ASC'
-            );
-            foreach ($records as $record) {
-                $entries[] = [
-                    'id' => (int)$record->id,
-                    'from' => (int)$record->unavailable_from,
-                    'until' => (int)$record->unavailable_until,
-                    'reason' => (string)$record->reason,
-                ];
-            }
-        }
-
-        if (!empty($this->_ajaxformdata['adddatebutton']) || !empty($this->_ajaxformdata['addunavailabilitybutton'])) {
-            $entries[] = [
-                'id' => 0,
-                'from' => (int)$weekstart + (8 * HOURSECS),
-                'until' => (int)$weekstart + (9 * HOURSECS),
-                'reason' => '',
-            ];
-        }
-
-        if (!empty($this->_ajaxformdata['addoptiondateseries'])) {
-            $chooseperiod = (int)($this->_ajaxformdata['chooseperiod'] ?? 0);
-            $seriesstring = trim((string)($this->_ajaxformdata['reoccurringdatestring'] ?? ''));
-
-            if (
-                $chooseperiod > 0
-                && $seriesstring !== ''
-                && dates_handler::reoccurring_datestring_is_correct($seriesstring)
-            ) {
-                $series = dates_handler::get_optiondate_series($chooseperiod, $seriesstring);
-                foreach ((array)($series['dates'] ?? []) as $seriesdate) {
-                    $entries[] = [
-                        'id' => 0,
-                        'from' => (int)($seriesdate->starttimestamp ?? 0),
-                        'until' => (int)($seriesdate->endtimestamp ?? 0),
-                        'reason' => '',
-                    ];
-                }
-            }
-        }
-
-        foreach ((array)$this->_ajaxformdata as $key => $value) {
-            if (preg_match('/^deleteunavailability_(\d+)$/', (string)$key, $matches)) {
-                $index = (int)$matches[1] - 1;
-                if (isset($entries[$index])) {
-                    unset($entries[$index]);
-                }
-            }
-        }
-
-        return array_values($entries);
-    }
-
-    /**
-     * Register clicked no-submit buttons so processing remains valid after dynamic row changes.
-     *
-     * @param \MoodleQuickForm $mform
-     * @return void
-     */
-    private function register_clicked_nosubmit_buttons(\MoodleQuickForm $mform): void {
-        if (!empty($this->_ajaxformdata['adddatebutton']) || !empty($this->_ajaxformdata['addunavailabilitybutton'])) {
-            $mform->registerNoSubmitButton('adddatebutton');
-            $mform->registerNoSubmitButton('addunavailabilitybutton');
-        }
-        if (!empty($this->_ajaxformdata['addoptiondateseries'])) {
-            $mform->registerNoSubmitButton('addoptiondateseries');
-        }
-
-        foreach ((array)$this->_ajaxformdata as $key => $value) {
-            if (preg_match('/^deleteunavailability_\d+$/', (string)$key)) {
-                $mform->registerNoSubmitButton((string)$key);
-            }
-        }
-    }
-
-    /**
-     * Convert date selector value to timestamp.
-     *
-     * @param mixed $value
-     * @return int
-     */
-    private function to_timestamp($value): int {
-        if (is_numeric($value)) {
-            return (int)$value;
-        }
-
-        if (is_array($value)) {
-            $year = $this->extract_int_value($value['year'] ?? 0);
-            $month = $this->extract_int_value($value['month'] ?? 0);
-            $day = $this->extract_int_value($value['day'] ?? 0);
-            $hour = $this->extract_int_value($value['hour'] ?? 0);
-            $minute = $this->extract_int_value($value['minute'] ?? 0);
-            if ($year > 0 && $month > 0 && $day > 0) {
-                return make_timestamp($year, $month, $day, $hour, $minute);
-            }
-        }
-
-        return 0;
-    }
-
-    /**
-     * Extract first integer value from scalar or nested selector arrays.
-     *
-     * @param mixed $value
-     * @return int
-     */
-    private function extract_int_value($value): int {
-        if (is_array($value)) {
-            $first = reset($value);
-            if ($first === false && empty($value)) {
-                return 0;
-            }
-            return $this->extract_int_value($first);
-        }
-
-        if (is_numeric($value)) {
-            return (int)$value;
-        }
-
-        return 0;
-    }
+    /** @var string list checkbox prefix */
+    private const SLOT_CHECKBOX_PREFIX = 'slot_selection_cb_';
 
     /**
      * Dynamic submission context.
@@ -350,7 +67,7 @@ class teacherunavailability_form extends dynamic_form {
      * @return context
      */
     protected function get_context_for_dynamic_submission(): context {
-        $cmid = (int)($this->_ajaxformdata['id'] ?? 0);
+        $cmid = (int)($this->get_formdata()['id'] ?? 0);
         return context_module::instance($cmid);
     }
 
@@ -364,15 +81,16 @@ class teacherunavailability_form extends dynamic_form {
 
         require_once($CFG->dirroot . '/mod/booking/locallib.php');
 
-        $cmid = (int)($this->_ajaxformdata['id'] ?? 0);
-        $optionid = (int)($this->_ajaxformdata['optionid'] ?? 0);
-        $teacherid = (int)($this->_ajaxformdata['teacherid'] ?? 0);
+        $formdata = $this->get_formdata();
+        $cmid = (int)($formdata['id'] ?? 0);
+        $currentoptionid = (int)($formdata['optionid'] ?? 0);
+        $teacherid = (int)($formdata['teacherid'] ?? 0);
         if ($teacherid <= 0) {
             $teacherid = (int)$USER->id;
         }
 
         $context = context_module::instance($cmid);
-        $bookingoption = singleton_service::get_instance_of_booking_option($cmid, $optionid);
+        $bookingoption = singleton_service::get_instance_of_booking_option($cmid, $currentoptionid);
         $isteacherofoption = booking_check_if_teacher($bookingoption->settings);
         $canmanageunavailability = is_siteadmin()
             || has_capability('mod/booking:manageslotunavailability', $context)
@@ -395,40 +113,78 @@ class teacherunavailability_form extends dynamic_form {
     public function set_data_for_dynamic_submission(): void {
         global $USER;
 
-        $cmid = (int)($this->_ajaxformdata['id'] ?? 0);
-        $optionid = (int)($this->_ajaxformdata['optionid'] ?? 0);
-        $teacherid = (int)($this->_ajaxformdata['teacherid'] ?? 0);
-        $date = (int)($this->_ajaxformdata['date'] ?? 0);
-
+        $formdata = $this->get_formdata();
+        $cmid = (int)($formdata['id'] ?? 0);
+        $currentoptionid = (int)($formdata['optionid'] ?? 0);
+        $teacherid = (int)($formdata['teacherid'] ?? 0);
         if ($teacherid <= 0) {
             $teacherid = (int)$USER->id;
         }
+
+        $date = (int)($formdata['date'] ?? 0);
         if ($date <= 0) {
             $date = time();
         }
 
+        $scope = $this->normalize_scope((string)($formdata['scope'] ?? self::SCOPE_SYSTEM));
+        $markmode = $this->normalize_markmode((string)($formdata['markmode'] ?? self::MODE_UNAVAILABILITY));
+        $viewmode = $this->normalize_viewmode((string)($formdata['viewmode'] ?? self::VIEW_CALENDAR));
+
+        $bookingid = $this->get_bookingid_for_option($currentoptionid);
+        $slotoptions = $this->get_slot_option_records($bookingid);
+
+        $scopeoptionid = (int)($formdata['scopeoptionid'] ?? 0);
+        if ($scopeoptionid <= 0 || empty($slotoptions[$scopeoptionid])) {
+            $scopeoptionid = $currentoptionid;
+        }
+
+        $effectivedata = [
+            'id' => $cmid,
+            'optionid' => $currentoptionid,
+            'teacherid' => $teacherid,
+            'date' => $date,
+            'scope' => $scope,
+            'scopeoptionid' => $scopeoptionid,
+            'markmode' => $markmode,
+            'viewmode' => $viewmode,
+        ];
+
+        $entries = $this->get_slot_entries($effectivedata);
+        $selectedkeys = [];
+
+        if ($this->has_submitted_selection($formdata)) {
+            $selectedkeys = $this->extract_selected_slot_keys((array)$formdata, $entries);
+        } else {
+            $unavailablekeyset = $this->get_unavailable_key_set($entries, $teacherid, $scope, $scopeoptionid);
+            if ($markmode === self::MODE_AVAILABILITY) {
+                foreach ($entries as $entry) {
+                    if (empty($unavailablekeyset[$entry['key']])) {
+                        $selectedkeys[] = $entry['key'];
+                    }
+                }
+            } else {
+                $selectedkeys = array_keys($unavailablekeyset);
+            }
+        }
+
+        $selectedset = array_fill_keys($selectedkeys, true);
+
         $data = new stdClass();
         $data->id = $cmid;
-        $data->optionid = $optionid;
+        $data->optionid = $currentoptionid;
         $data->teacherid = $teacherid;
         $data->date = $date;
+        $data->scope = $scope;
+        $data->scopeoptionid = $scopeoptionid;
+        $data->markmode = $markmode;
+        $data->viewmode = $viewmode;
+        $data->slot_calendar_data = json_encode($entries);
+        $data->slot_selection = implode(',', array_keys($selectedset));
 
-        $effectivesemesterid = $this->get_effective_semesterid($optionid, $cmid);
-        if ($effectivesemesterid > 0) {
-            $data->chooseperiod = (int)($this->_ajaxformdata['chooseperiod'] ?? $effectivesemesterid);
-            $data->reoccurringdatestring = (string)($this->_ajaxformdata['reoccurringdatestring'] ?? '');
+        foreach ($entries as $index => $entry) {
+            $fieldname = self::SLOT_CHECKBOX_PREFIX . $index;
+            $data->{$fieldname} = !empty($selectedset[$entry['key']]) ? 1 : 0;
         }
-
-        $entries = $this->get_entries_for_form();
-        $counter = 0;
-        foreach ($entries as $entry) {
-            $counter++;
-            $data->{'unavailability_id_' . $counter} = (int)$entry['id'];
-            $data->{'unavailable_from_' . $counter} = (int)$entry['from'];
-            $data->{'unavailable_until_' . $counter} = (int)$entry['until'];
-            $data->{'reason_' . $counter} = (string)$entry['reason'];
-        }
-        $data->unavailability_counter = $counter;
 
         $this->set_data($data);
     }
@@ -443,64 +199,133 @@ class teacherunavailability_form extends dynamic_form {
 
         $data = $this->get_data();
         if (empty($data)) {
-            $response = new stdClass();
-            $response->saved = false;
-            return $response;
+            return (object)[
+                'saved' => false,
+            ];
         }
 
         $submitted = (array)$data;
 
         $cmid = (int)($submitted['id'] ?? 0);
-        $optionid = (int)($submitted['optionid'] ?? 0);
+        $currentoptionid = (int)($submitted['optionid'] ?? 0);
         $teacherid = (int)($submitted['teacherid'] ?? 0);
         $date = (int)($submitted['date'] ?? 0);
 
-        $entries = [];
-        $indices = $this->get_submitted_entry_indices($submitted, (int)($submitted['unavailability_counter'] ?? 0));
+        $scope = $this->normalize_scope((string)($submitted['scope'] ?? self::SCOPE_SYSTEM));
+        $markmode = $this->normalize_markmode((string)($submitted['markmode'] ?? self::MODE_UNAVAILABILITY));
+        $viewmode = $this->normalize_viewmode((string)($submitted['viewmode'] ?? self::VIEW_CALENDAR));
 
-        foreach ($indices as $index) {
-            $entries[] = [
-                'id' => (int)($submitted['unavailability_id_' . $index] ?? 0),
-                'from' => $this->to_timestamp($submitted['unavailable_from_' . $index] ?? 0),
-                'until' => $this->to_timestamp($submitted['unavailable_until_' . $index] ?? 0),
-                'reason' => (string)($submitted['reason_' . $index] ?? ''),
-            ];
+        $bookingid = $this->get_bookingid_for_option($currentoptionid);
+        $slotoptions = $this->get_slot_option_records($bookingid);
+
+        $scopeoptionid = (int)($submitted['scopeoptionid'] ?? 0);
+        if ($scopeoptionid <= 0 || empty($slotoptions[$scopeoptionid])) {
+            $scopeoptionid = $currentoptionid;
         }
+
+        $effectivedata = [
+            'id' => $cmid,
+            'optionid' => $currentoptionid,
+            'teacherid' => $teacherid,
+            'date' => $date,
+            'scope' => $scope,
+            'scopeoptionid' => $scopeoptionid,
+            'markmode' => $markmode,
+            'viewmode' => $viewmode,
+        ];
+
+        $entries = $this->get_slot_entries($effectivedata);
+        $allkeyset = [];
+        foreach ($entries as $entry) {
+            $allkeyset[$entry['key']] = true;
+        }
+
+        $selectedkeys = $this->extract_selected_slot_keys($submitted, $entries);
+        $selectedset = array_fill_keys($selectedkeys, true);
+
+        $unavailablekeys = [];
+        if ($markmode === self::MODE_AVAILABILITY) {
+            foreach (array_keys($allkeyset) as $key) {
+                if (empty($selectedset[$key])) {
+                    $unavailablekeys[] = $key;
+                }
+            }
+        } else {
+            foreach (array_keys($selectedset) as $key) {
+                if (!empty($allkeyset[$key])) {
+                    $unavailablekeys[] = $key;
+                }
+            }
+        }
+
+        $targetoptionids = $this->get_scope_target_optionids($scope, $currentoptionid, $scopeoptionid);
 
         $transaction = $DB->start_delegated_transaction();
 
-        $DB->delete_records('booking_teacher_unavailability', [
-            'optionid' => $optionid,
-            'teacherid' => $teacherid,
-        ]);
+        if ($scope === self::SCOPE_SYSTEM) {
+            $DB->delete_records('booking_teacher_unavailability', [
+                'teacherid' => $teacherid,
+                'optionid' => 0,
+            ]);
+        } else if (count($targetoptionids) === 1) {
+            $DB->delete_records('booking_teacher_unavailability', [
+                'teacherid' => $teacherid,
+                'optionid' => reset($targetoptionids),
+            ]);
+        } else if (!empty($targetoptionids)) {
+            [$insql, $params] = $DB->get_in_or_equal($targetoptionids, SQL_PARAMS_NAMED, 'opt');
+            $params['teacherid'] = $teacherid;
+            $DB->delete_records_select('booking_teacher_unavailability', 'teacherid = :teacherid AND optionid ' . $insql, $params);
+        }
 
         $now = time();
-        foreach ($entries as $entry) {
-            $from = (int)$entry['from'];
-            $until = (int)$entry['until'];
+        $insertedkeys = [];
+        foreach (array_values(array_unique($unavailablekeys)) as $key) {
+            if (empty($allkeyset[$key])) {
+                continue;
+            }
 
-            $record = (object)[
-                'optionid' => $optionid,
+            $parts = explode(':', (string)$key);
+            if (count($parts) !== 3) {
+                continue;
+            }
+
+            $storedoptionid = $scope === self::SCOPE_SYSTEM ? 0 : (int)$parts[0];
+            $from = (int)$parts[1];
+            $until = (int)$parts[2];
+            if ($from <= 0 || $until <= $from) {
+                continue;
+            }
+
+            $insertkey = $storedoptionid . ':' . $from . ':' . $until;
+            if (!empty($insertedkeys[$insertkey])) {
+                continue;
+            }
+            $insertedkeys[$insertkey] = true;
+
+            $DB->insert_record('booking_teacher_unavailability', (object)[
+                'optionid' => $storedoptionid,
                 'teacherid' => $teacherid,
                 'unavailable_from' => $from,
                 'unavailable_until' => $until,
-                'reason' => (string)$entry['reason'],
+                'reason' => '',
                 'timecreated' => $now,
-            ];
-
-            $DB->insert_record('booking_teacher_unavailability', $record);
+            ]);
         }
 
         $transaction->allow_commit();
 
-        $response = new stdClass();
-        $response->id = $cmid;
-        $response->optionid = $optionid;
-        $response->teacherid = $teacherid;
-        $response->date = $date;
-        $response->saved = true;
-
-        return $response;
+        return (object)[
+            'id' => $cmid,
+            'optionid' => $currentoptionid,
+            'scopeoptionid' => $scopeoptionid,
+            'teacherid' => $teacherid,
+            'date' => $date,
+            'scope' => $scope,
+            'markmode' => $markmode,
+            'viewmode' => $viewmode,
+            'saved' => true,
+        ];
     }
 
     /**
@@ -521,77 +346,131 @@ class teacherunavailability_form extends dynamic_form {
         global $USER;
 
         $mform = $this->_form;
-        $formdata = $this->_ajaxformdata;
+        $formdata = $this->get_formdata();
 
-        $mform->addElement('hidden', 'id', (int)($formdata['id'] ?? 0));
-        $mform->setType('id', PARAM_INT);
-
-        $mform->addElement('hidden', 'optionid', (int)($formdata['optionid'] ?? 0));
-        $mform->setType('optionid', PARAM_INT);
-
+        $cmid = (int)($formdata['id'] ?? 0);
+        $currentoptionid = (int)($formdata['optionid'] ?? 0);
         $teacherid = (int)($formdata['teacherid'] ?? 0);
         if ($teacherid <= 0) {
             $teacherid = (int)$USER->id;
         }
+
+        $date = (int)($formdata['date'] ?? 0);
+        if ($date <= 0) {
+            $date = time();
+        }
+
+        $scope = $this->normalize_scope((string)($formdata['scope'] ?? self::SCOPE_SYSTEM));
+        $markmode = $this->normalize_markmode((string)($formdata['markmode'] ?? self::MODE_UNAVAILABILITY));
+        $viewmode = $this->normalize_viewmode((string)($formdata['viewmode'] ?? self::VIEW_CALENDAR));
+
+        $bookingid = $this->get_bookingid_for_option($currentoptionid);
+        $slotoptions = $this->get_slot_option_records($bookingid);
+
+        $scopeoptionid = (int)($formdata['scopeoptionid'] ?? 0);
+        if ($scopeoptionid <= 0 || empty($slotoptions[$scopeoptionid])) {
+            $scopeoptionid = $currentoptionid;
+        }
+
+        $mform->addElement('hidden', 'id', $cmid);
+        $mform->setType('id', PARAM_INT);
+
+        $mform->addElement('hidden', 'optionid', $currentoptionid);
+        $mform->setType('optionid', PARAM_INT);
+
         $mform->addElement('hidden', 'teacherid', $teacherid);
         $mform->setType('teacherid', PARAM_INT);
 
-        $mform->addElement('hidden', 'date', (int)($formdata['date'] ?? 0));
+        $mform->addElement('hidden', 'date', $date);
         $mform->setType('date', PARAM_INT);
 
-        $this->register_clicked_nosubmit_buttons($mform);
+        $scopeoptions = [
+            self::SCOPE_SYSTEM => get_string('slot_unavailability_scope_system', 'mod_booking'),
+            self::SCOPE_INSTANCE => get_string('slot_unavailability_scope_instance', 'mod_booking'),
+            self::SCOPE_OPTION => get_string('slot_unavailability_scope_option', 'mod_booking'),
+        ];
+        $mform->addElement('select', 'scope', get_string('slot_unavailability_scope', 'mod_booking'), $scopeoptions);
+        $mform->setType('scope', PARAM_ALPHAEXT);
+        $mform->setDefault('scope', $scope);
 
-        $cmid = (int)($formdata['id'] ?? 0);
-        $optionid = (int)($formdata['optionid'] ?? 0);
-        $effectivesemesterid = $this->get_effective_semesterid($optionid, $cmid);
-        if ($effectivesemesterid > 0) {
-            $semestersarray = semester::get_semesters_id_name_array();
-            $mform->addElement(
-                'autocomplete',
-                'chooseperiod',
-                get_string('chooseperiod', 'mod_booking'),
-                $semestersarray,
-                ['tags' => false, 'multiple' => false]
-            );
-            $mform->setType('chooseperiod', PARAM_INT);
-            $mform->setDefault('chooseperiod', $effectivesemesterid);
-            $mform->addHelpButton('chooseperiod', 'chooseperiod', 'mod_booking');
-
-            $mform->addElement(
-                'text',
-                'reoccurringdatestring',
-                get_string('reoccurringdatestring', 'mod_booking'),
-                ['onkeypress' => 'return event.keyCode != 13;']
-            );
-            $mform->setType('reoccurringdatestring', PARAM_TEXT);
-            $mform->addHelpButton('reoccurringdatestring', 'reoccurringdatestring', 'mod_booking');
-
-            $mform->registerNoSubmitButton('addoptiondateseries');
-            $mform->addElement('submit', 'addoptiondateseries', get_string('addoptiondateseries', 'mod_booking'), [
-                'data-action' => 'addoptiondateseries',
-            ]);
+        $scopeoptionlabels = [];
+        foreach ($slotoptions as $optionid => $option) {
+            $scopeoptionlabels[$optionid] = $option['name'];
         }
 
-        $entries = $this->get_entries_for_form();
-        $counter = 0;
+        if (empty($scopeoptionlabels)) {
+            $scopeoptionlabels[$currentoptionid] = get_string('slot_unavailability_scope_currentfallback', 'mod_booking');
+        }
+
+        $mform->addElement(
+            'autocomplete',
+            'scopeoptionid',
+            get_string('slot_unavailability_scope_targetoption', 'mod_booking'),
+            $scopeoptionlabels,
+            ['tags' => false, 'multiple' => false]
+        );
+        $mform->setType('scopeoptionid', PARAM_INT);
+        $mform->setDefault('scopeoptionid', $scopeoptionid);
+
+        $modemenu = [
+            self::MODE_UNAVAILABILITY => get_string('slot_unavailability_mode_unavailability', 'mod_booking'),
+            self::MODE_AVAILABILITY => get_string('slot_unavailability_mode_availability', 'mod_booking'),
+        ];
+        $mform->addElement('select', 'markmode', get_string('slot_unavailability_mode', 'mod_booking'), $modemenu);
+        $mform->setType('markmode', PARAM_ALPHAEXT);
+        $mform->setDefault('markmode', $markmode);
+
+        $viewmenu = [
+            self::VIEW_CALENDAR => get_string('slot_booking_view_calendar', 'mod_booking'),
+            self::VIEW_LIST => get_string('slot_booking_view_list', 'mod_booking'),
+        ];
+        $mform->addElement('select', 'viewmode', get_string('slot_unavailability_viewmode', 'mod_booking'), $viewmenu);
+        $mform->setType('viewmode', PARAM_ALPHAEXT);
+        $mform->setDefault('viewmode', $viewmode);
+
+        $mform->addElement(
+            'static',
+            'slot_unavailability_helptext',
+            '',
+            get_string('slot_unavailability_helptext', 'mod_booking')
+        );
+
+        $effectivedata = [
+            'id' => $cmid,
+            'optionid' => $currentoptionid,
+            'teacherid' => $teacherid,
+            'date' => $date,
+            'scope' => $scope,
+            'scopeoptionid' => $scopeoptionid,
+            'markmode' => $markmode,
+            'viewmode' => $viewmode,
+        ];
+
+        $entries = $this->get_slot_entries($effectivedata);
+
+        $mform->addElement('hidden', 'slot_calendar_data', json_encode($entries));
+        $mform->setType('slot_calendar_data', PARAM_RAW_TRIMMED);
+
+        $mform->addElement('hidden', 'slot_selection', '');
+        $mform->setType('slot_selection', PARAM_RAW_TRIMMED);
+
         if (empty($entries)) {
-            $mform->addElement('static', 'nodatesmessage', '', get_string('datenotset', 'mod_booking'));
+            $mform->addElement('static', 'slot_selection_info', '', get_string('slot_unavailability_no_slots', 'mod_booking'));
+        } else if ($viewmode === self::VIEW_CALENDAR) {
+            $calendarcontainer = html_writer::div('', 'booking-slot-calendar-picker', [
+                'data-region' => 'slot-calendar-picker',
+            ]);
+            $mform->addElement('static', 'slot_calendar_ui', get_string('slot_selection', 'mod_booking'), $calendarcontainer);
         } else {
-            $openaddedentry = !empty($formdata['adddatebutton']) || !empty($formdata['addunavailabilitybutton']);
-            foreach ($entries as $entry) {
-                $counter++;
-                $expanded = $openaddedentry && ($counter === count($entries));
-                $this->add_entry_as_collapsible($mform, $counter, $entry, $expanded);
+            foreach ($entries as $index => $entry) {
+                $fieldname = self::SLOT_CHECKBOX_PREFIX . $index;
+                $label = $entry['daylabel'] . ' · ' . $entry['timelabel'];
+                $mform->addElement('advcheckbox', $fieldname, '', $label, [
+                    'data-slot-selection-checkbox' => '1',
+                ]);
+                $mform->setType($fieldname, PARAM_INT);
             }
         }
-
-        $mform->addElement('hidden', 'unavailability_counter', $counter);
-        $mform->setType('unavailability_counter', PARAM_INT);
-
-        $mform->registerNoSubmitButton('adddatebutton');
-        $mform->addElement('submit', 'adddatebutton', get_string('adddatebutton', 'mod_booking'), [
-            'data-action' => 'adddatebutton',
-        ]);
 
         $this->add_action_buttons(true, get_string('savechanges'));
     }
@@ -606,38 +485,400 @@ class teacherunavailability_form extends dynamic_form {
     public function validation($data, $files): array {
         $errors = [];
 
-        if (!empty($data['adddatebutton']) || !empty($data['addunavailabilitybutton'])) {
-            return $errors;
-        }
-        if (!empty($data['addoptiondateseries'])) {
-            if (empty($data['chooseperiod'])) {
-                $errors['chooseperiod'] = get_string('required');
-            }
-
-            $seriesstring = trim((string)($data['reoccurringdatestring'] ?? ''));
-            if ($seriesstring === '') {
-                $errors['reoccurringdatestring'] = get_string('required');
-            } else if (!dates_handler::reoccurring_datestring_is_correct($seriesstring)) {
-                $errors['reoccurringdatestring'] = get_string('reoccurringdatestringerror', 'mod_booking');
-            }
-
-            return $errors;
-        }
-        foreach ((array)$data as $key => $value) {
-            if (preg_match('/^deleteunavailability_\d+$/', (string)$key)) {
-                return $errors;
-            }
-        }
-
-        $indices = $this->get_submitted_entry_indices((array)$data, (int)($data['unavailability_counter'] ?? 0));
-        foreach ($indices as $index) {
-            $from = $this->to_timestamp($data['unavailable_from_' . $index] ?? 0);
-            $until = $this->to_timestamp($data['unavailable_until_' . $index] ?? 0);
-            if ($until <= $from) {
-                $errors['unavailable_until_' . $index] = get_string('slot_error_validrange', 'mod_booking');
-            }
+        $scope = $this->normalize_scope((string)($data['scope'] ?? self::SCOPE_SYSTEM));
+        if ($scope === self::SCOPE_OPTION && empty($data['scopeoptionid'])) {
+            $errors['scopeoptionid'] = get_string('required');
         }
 
         return $errors;
+    }
+
+    /**
+     * Returns form data for ajax and direct-render usage.
+     *
+     * @return array
+     */
+    private function get_formdata(): array {
+        if (!empty($this->_ajaxformdata)) {
+            return (array)$this->_ajaxformdata;
+        }
+
+        if (!empty($this->_customdata)) {
+            return (array)$this->_customdata;
+        }
+
+        return [];
+    }
+
+    /**
+     * Normalize scope value.
+     *
+     * @param string $scope
+     * @return string
+     */
+    private function normalize_scope(string $scope): string {
+        if (in_array($scope, [self::SCOPE_SYSTEM, self::SCOPE_INSTANCE, self::SCOPE_OPTION], true)) {
+            return $scope;
+        }
+
+        return self::SCOPE_SYSTEM;
+    }
+
+    /**
+     * Normalize mark mode value.
+     *
+     * @param string $markmode
+     * @return string
+     */
+    private function normalize_markmode(string $markmode): string {
+        if (in_array($markmode, [self::MODE_UNAVAILABILITY, self::MODE_AVAILABILITY], true)) {
+            return $markmode;
+        }
+
+        return self::MODE_UNAVAILABILITY;
+    }
+
+    /**
+     * Normalize view mode value.
+     *
+     * @param string $viewmode
+     * @return string
+     */
+    private function normalize_viewmode(string $viewmode): string {
+        if (in_array($viewmode, [self::VIEW_CALENDAR, self::VIEW_LIST], true)) {
+            return $viewmode;
+        }
+
+        return self::VIEW_CALENDAR;
+    }
+
+    /**
+     * Resolve booking id for option.
+     *
+     * @param int $optionid
+     * @return int
+     */
+    private function get_bookingid_for_option(int $optionid): int {
+        if ($optionid <= 0) {
+            return 0;
+        }
+
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+        return (int)($settings->bookingid ?? 0);
+    }
+
+    /**
+     * Returns slot-enabled options of a booking instance.
+     *
+     * @param int $bookingid
+     * @return array<int, array{id:int,name:string}>
+     */
+    private function get_slot_option_records(int $bookingid): array {
+        global $DB;
+
+        if ($bookingid <= 0) {
+            return [];
+        }
+
+        $records = $DB->get_records('booking_options', ['bookingid' => $bookingid], 'text ASC', 'id, text, type');
+        if (empty($records)) {
+            return [];
+        }
+
+        $options = [];
+        foreach ($records as $record) {
+            $type = (int)($record->type ?? MOD_BOOKING_OPTIONTYPE_DEFAULT);
+            if ($type !== MOD_BOOKING_OPTIONTYPE_SLOTBOOKING) {
+                continue;
+            }
+
+            $options[(int)$record->id] = [
+                'id' => (int)$record->id,
+                'name' => format_string((string)($record->text ?? '')),
+            ];
+        }
+
+        return $options;
+    }
+
+    /**
+     * Resolve option ids affected by selected scope.
+     *
+     * @param string $scope
+     * @param int $currentoptionid
+     * @param int $scopeoptionid
+     * @return int[]
+     */
+    private function get_scope_target_optionids(string $scope, int $currentoptionid, int $scopeoptionid): array {
+        if ($scope === self::SCOPE_SYSTEM) {
+            return array_values(array_map('intval', array_keys($this->get_all_slot_option_records())));
+        }
+
+        if ($scope === self::SCOPE_OPTION) {
+            $target = $scopeoptionid > 0 ? $scopeoptionid : $currentoptionid;
+            return $target > 0 ? [$target] : [];
+        }
+
+        $bookingid = $this->get_bookingid_for_option($currentoptionid);
+        $slotoptions = $this->get_slot_option_records($bookingid);
+        if (empty($slotoptions)) {
+            return $currentoptionid > 0 ? [$currentoptionid] : [];
+        }
+
+        return array_values(array_map('intval', array_keys($slotoptions)));
+    }
+
+    /**
+     * Returns all slot-enabled options in the system.
+     *
+     * @return array<int, array{id:int,name:string}>
+     */
+    private function get_all_slot_option_records(): array {
+        global $DB;
+
+        $records = $DB->get_records('booking_options', ['type' => MOD_BOOKING_OPTIONTYPE_SLOTBOOKING], 'text ASC', 'id, text');
+        if (empty($records)) {
+            return [];
+        }
+
+        $options = [];
+        foreach ($records as $record) {
+            $options[(int)$record->id] = [
+                'id' => (int)$record->id,
+                'name' => format_string((string)($record->text ?? '')),
+            ];
+        }
+
+        return $options;
+    }
+
+    /**
+     * Build slot entries for selected scope and date range.
+     *
+     * @param array $formdata
+     * @return array<int, array>
+     */
+    private function get_slot_entries(array $formdata): array {
+        $currentoptionid = (int)($formdata['optionid'] ?? 0);
+        $scope = $this->normalize_scope((string)($formdata['scope'] ?? self::SCOPE_SYSTEM));
+        $scopeoptionid = (int)($formdata['scopeoptionid'] ?? 0);
+
+        $targetoptionids = $this->get_scope_target_optionids($scope, $currentoptionid, $scopeoptionid);
+        if (empty($targetoptionids)) {
+            return [];
+        }
+
+        $date = (int)($formdata['date'] ?? 0);
+        if ($date <= 0) {
+            $date = time();
+        }
+
+        $viewstart = strtotime('monday this week', $date);
+        if ($viewstart === false) {
+            $viewstart = strtotime('monday this week');
+        }
+        $rangefrom = strtotime('-6 weeks', (int)$viewstart);
+        $rangeuntil = strtotime('+18 weeks', (int)$viewstart);
+
+        $bookingid = $this->get_bookingid_for_option($currentoptionid);
+        $slotoptions = $scope === self::SCOPE_SYSTEM
+            ? $this->get_all_slot_option_records()
+            : $this->get_slot_option_records($bookingid);
+        $showoptionname = count($targetoptionids) > 1;
+
+        $entries = [];
+        foreach ($targetoptionids as $targetoptionid) {
+            $targetoptionid = (int)$targetoptionid;
+            if ($targetoptionid <= 0) {
+                continue;
+            }
+
+            $slots = slot_availability::get_slots_with_status_for_range($targetoptionid, $rangefrom, $rangeuntil);
+            foreach ($slots as $slot) {
+                $start = (int)($slot['start'] ?? 0);
+                $end = (int)($slot['end'] ?? 0);
+                if ($start <= 0 || $end <= $start) {
+                    continue;
+                }
+
+                $timelabel = userdate($start, get_string('strftimetime', 'langconfig'))
+                    . ' - '
+                    . userdate($end, get_string('strftimetime', 'langconfig'));
+                if ($showoptionname && !empty($slotoptions[$targetoptionid]['name'])) {
+                    $timelabel .= ' - ' . $slotoptions[$targetoptionid]['name'];
+                }
+
+                $entries[] = [
+                    'key' => $targetoptionid . ':' . $start . ':' . $end,
+                    'optionid' => $targetoptionid,
+                    'start' => $start,
+                    'end' => $end,
+                    'daylabel' => userdate($start, get_string('strftimedaydate', 'langconfig')),
+                    'timelabel' => $timelabel,
+                    'bookings' => (int)($slot['bookings'] ?? 0),
+                    'capacity' => (int)($slot['capacity'] ?? 1),
+                ];
+            }
+        }
+
+        usort($entries, static function (array $a, array $b): int {
+            if ($a['start'] !== $b['start']) {
+                return $a['start'] <=> $b['start'];
+            }
+            if ($a['end'] !== $b['end']) {
+                return $a['end'] <=> $b['end'];
+            }
+            return $a['optionid'] <=> $b['optionid'];
+        });
+
+        return $entries;
+    }
+
+    /**
+     * Check if selection was submitted already.
+     *
+     * @param array $submitted
+     * @return bool
+     */
+    private function has_submitted_selection(array $submitted): bool {
+        if (array_key_exists('slot_selection', $submitted)) {
+            return true;
+        }
+
+        foreach (array_keys($submitted) as $key) {
+            if (strpos((string)$key, self::SLOT_CHECKBOX_PREFIX) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Extract selected slot keys from hidden value and list checkboxes.
+     *
+     * @param array $submitted
+     * @param array $entries
+     * @return string[]
+     */
+    private function extract_selected_slot_keys(array $submitted, array $entries): array {
+        $validkeys = [];
+        foreach ($entries as $entry) {
+            $validkeys[(string)$entry['key']] = true;
+        }
+
+        $selected = [];
+        $hascheckboxes = false;
+        foreach ($entries as $index => $entry) {
+            $fieldname = self::SLOT_CHECKBOX_PREFIX . $index;
+            if (!array_key_exists($fieldname, $submitted)) {
+                continue;
+            }
+            $hascheckboxes = true;
+            if (!empty($submitted[$fieldname])) {
+                $selected[] = (string)$entry['key'];
+            }
+        }
+
+        if (!$hascheckboxes) {
+            $selectionraw = (string)($submitted['slot_selection'] ?? '');
+            if ($selectionraw !== '') {
+                $selected = array_filter(array_map('trim', explode(',', $selectionraw)), static function (string $key): bool {
+                    return $key !== '';
+                });
+            }
+        }
+
+        $normalized = [];
+        foreach ($selected as $key) {
+            $key = (string)$key;
+            if (!empty($validkeys[$key])) {
+                $normalized[$key] = true;
+            }
+        }
+
+        return array_keys($normalized);
+    }
+
+    /**
+     * Resolve unavailable key set from DB for current scope.
+     *
+     * @param array $entries
+     * @param int $teacherid
+     * @param string $scope
+     * @param int $scopeoptionid
+     * @return array<string,bool>
+     */
+    private function get_unavailable_key_set(array $entries, int $teacherid, string $scope, int $scopeoptionid): array {
+        global $DB;
+
+        if ($teacherid <= 0 || empty($entries)) {
+            return [];
+        }
+
+        $records = [];
+        if ($scope === self::SCOPE_SYSTEM) {
+            $records = $DB->get_records('booking_teacher_unavailability', [
+                'teacherid' => $teacherid,
+                'optionid' => 0,
+            ]);
+        } else if ($scope === self::SCOPE_OPTION) {
+            $target = $scopeoptionid > 0 ? $scopeoptionid : (int)($entries[0]['optionid'] ?? 0);
+            if ($target > 0) {
+                $records = $DB->get_records('booking_teacher_unavailability', [
+                    'teacherid' => $teacherid,
+                    'optionid' => $target,
+                ]);
+            }
+        } else {
+            $optionids = array_values(array_unique(array_map(static function (array $entry): int {
+                return (int)($entry['optionid'] ?? 0);
+            }, $entries)));
+            if (!empty($optionids)) {
+                [$insql, $params] = $DB->get_in_or_equal($optionids, SQL_PARAMS_NAMED, 'opt');
+                $params['teacherid'] = $teacherid;
+                $records = $DB->get_records_select(
+                    'booking_teacher_unavailability',
+                    'teacherid = :teacherid AND optionid ' . $insql,
+                    $params
+                );
+            }
+        }
+
+        if (empty($records)) {
+            return [];
+        }
+
+        $recordsbyoption = [];
+        foreach ($records as $record) {
+            $optionid = (int)$record->optionid;
+            if (empty($recordsbyoption[$optionid])) {
+                $recordsbyoption[$optionid] = [];
+            }
+            $recordsbyoption[$optionid][] = [
+                'from' => (int)$record->unavailable_from,
+                'until' => (int)$record->unavailable_until,
+            ];
+        }
+
+        $keyset = [];
+        foreach ($entries as $entry) {
+            $entryoptionid = (int)$entry['optionid'];
+            $entryfrom = (int)$entry['start'];
+            $entryuntil = (int)$entry['end'];
+
+            $candidates = $scope === self::SCOPE_SYSTEM
+                ? ($recordsbyoption[0] ?? [])
+                : ($recordsbyoption[$entryoptionid] ?? []);
+
+            foreach ($candidates as $candidate) {
+                if ($candidate['from'] < $entryuntil && $candidate['until'] > $entryfrom) {
+                    $keyset[(string)$entry['key']] = true;
+                    break;
+                }
+            }
+        }
+
+        return $keyset;
     }
 }

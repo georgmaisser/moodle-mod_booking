@@ -34,6 +34,9 @@ $optionid = required_param('optionid', PARAM_INT);
 $scopeoptionid = optional_param('scopeoptionid', 0, PARAM_INT);
 $teacherid = optional_param('teacherid', 0, PARAM_INT);
 $date = optional_param('date', 0, PARAM_INT);
+$scope = optional_param('scope', 'system', PARAM_ALPHAEXT);
+$markmode = optional_param('markmode', 'unavailability', PARAM_ALPHAEXT);
+$viewmode = optional_param('viewmode', 'calendar', PARAM_ALPHAEXT);
 
 [$course, $cm] = get_course_and_cm_from_cmid($id, 'booking');
 require_course_login($course, false, $cm);
@@ -68,6 +71,9 @@ $baseurl = new moodle_url('/mod/booking/teacherunavailability.php', [
     'optionid' => $optionid,
     'scopeoptionid' => $scopeoptionid,
     'teacherid' => $teacherid,
+    'scope' => $scope,
+    'markmode' => $markmode,
+    'viewmode' => $viewmode,
 ]);
 $reporturl = new moodle_url('/mod/booking/report.php', ['id' => $id, 'optionid' => $optionid]);
 
@@ -88,9 +94,13 @@ echo html_writer::tag('h4', get_string('slot_unavailability_blocks', 'mod_bookin
 
 $formparams = [
     'id' => $id,
-    'optionid' => $scopeoptionid,
+    'optionid' => $optionid,
+    'scopeoptionid' => $scopeoptionid,
     'teacherid' => $teacherid,
     'date' => $date,
+    'scope' => $scope,
+    'markmode' => $markmode,
+    'viewmode' => $viewmode,
 ];
 $form = new teacherunavailability_form(null, null, 'post', '', [], true, $formparams);
 $form->set_data_for_dynamic_submission();
@@ -99,9 +109,13 @@ $formcontainerid = 'teacher-unavailability-dynamic-form';
 echo html_writer::div($form->render(), '', [
     'id' => $formcontainerid,
     'data-id' => $id,
-    'data-optionid' => $scopeoptionid,
+    'data-optionid' => $optionid,
+    'data-scopeoptionid' => $scopeoptionid,
     'data-teacherid' => $teacherid,
     'data-date' => $date,
+    'data-scope' => $scope,
+    'data-markmode' => $markmode,
+    'data-viewmode' => $viewmode,
     'data-reporturl' => $reporturl->out(false),
 ]);
 
