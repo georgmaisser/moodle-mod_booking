@@ -197,24 +197,24 @@ class slotbooking extends field_base {
         $mform->setType('slot_booking_view_mode', PARAM_ALPHA);
         $mform->hideIf('slot_booking_view_mode', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
 
-        $teacheroptions = [];
+        // Examiner Pool: Autocomplete für beliebige Nutzer (wie bei Lehrerauswahl in anderen booking-Formularen).
+        $useroptions = [];
         if (!empty($formdata['cmid'])) {
             [$course] = get_course_and_cm_from_cmid((int)$formdata['cmid']);
             $coursecontext = context_course::instance($course->id);
-            $teachers = get_enrolled_users($coursecontext, 'mod/booking:addinstance');
-            foreach ($teachers as $teacher) {
-                $teacheroptions[$teacher->id] = fullname($teacher);
+            // Alle Nutzer mit Namen und E-Mail (ggf. einschränken, z.B. auf course users oder site users, je nach Policy).
+            $users = get_enrolled_users($coursecontext, '', 0, 'u.id, u.firstname, u.lastname, u.email');
+            foreach ($users as $user) {
+                $useroptions[$user->id] = fullname($user) . ' (' . $user->email . ')';
             }
         }
-
-        $mform->addElement('static', 'slot_teacher_pool_label', get_string('slot_teacher_pool', 'mod_booking'), '');
-        $mform->hideIf('slot_teacher_pool_label', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
-        foreach ($teacheroptions as $teacherid => $teachername) {
-            $fieldname = 'slot_teacher_pool_' . (int)$teacherid;
-            $mform->addElement('advcheckbox', $fieldname, '', $teachername);
-            $mform->setType($fieldname, PARAM_INT);
-            $mform->hideIf($fieldname, 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
-        }
+        $mform->addElement('autocomplete', 'slot_teacher_pool', get_string('slot_teacher_pool', 'mod_booking'), $useroptions, [
+            'multiple' => true,
+            'tags' => false,
+            'placeholder' => get_string('chooseusers', 'mod_booking'),
+        ]);
+        $mform->setType('slot_teacher_pool', PARAM_INT);
+        $mform->hideIf('slot_teacher_pool', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
 
         $mform->addElement('text', 'slot_teachers_required', get_string('slot_teachers_required', 'mod_booking'));
         $mform->setType('slot_teachers_required', PARAM_INT);

@@ -98,11 +98,22 @@ class slotteacherassignments_form extends dynamic_form {
         [$teacheroptions, $studentids] = $this->get_teacher_and_student_ids();
         $assigned = $this->get_assigned_by_student(array_keys($teacheroptions));
 
-        foreach ($studentids as $studentid) {
-            foreach (array_keys($teacheroptions) as $teacherid) {
-                $field = self::field_name($studentid, (int)$teacherid);
-                $data->{$field} = !empty($assigned[$studentid][(int)$teacherid]) ? 1 : 0;
+        $option = $this->get_option_settings();
+        $defaultteacherids = [];
+        if (!empty($option) && !empty($option->teachers)) {
+            foreach ($option->teachers as $teacher) {
+                $defaultteacherids[] = (int)$teacher->userid;
             }
+        }
+        foreach ($studentids as $studentid) {
+            $fieldname = 'examiner_autocomplete_' . $studentid;
+            $preselect = [];
+            if (!empty($assigned[$studentid])) {
+                $preselect = array_keys($assigned[$studentid]);
+            } else {
+                $preselect = $defaultteacherids;
+            }
+            $data->{$fieldname} = $preselect;
         }
 
         $this->set_data($data);
@@ -131,29 +142,25 @@ class slotteacherassignments_form extends dynamic_form {
 
         $DB->delete_records('booking_slot_student_teacher', ['optionid' => $optionid]);
 
-        foreach ((array)$data as $key => $value) {
-            if (strpos((string)$key, 'teacher_') !== 0 || empty($value)) {
-                continue;
+        foreach ($studentids as $studentid) {
+            $fieldname = 'examiner_autocomplete_' . $studentid;
+            $selected = $data->{$fieldname} ?? [];
+            if (!is_array($selected)) {
+                $selected = [$selected];
             }
-
-            if (!preg_match('/^teacher_(\d+)_(\d+)$/', (string)$key, $matches)) {
-                continue;
+            foreach ($selected as $teacherid) {
+                $teacherid = (int)$teacherid;
+                if (empty($studentset[$studentid]) || empty($teacherset[$teacherid])) {
+                    continue;
+                }
+                $DB->insert_record('booking_slot_student_teacher', (object)[
+                    'optionid' => $optionid,
+                    'userid' => $studentid,
+                    'teacherid' => $teacherid,
+                    'timecreated' => $now,
+                    'timemodified' => $now,
+                ]);
             }
-
-            $studentid = (int)$matches[1];
-            $teacherid = (int)$matches[2];
-
-            if (empty($studentset[$studentid]) || empty($teacherset[$teacherid])) {
-                continue;
-            }
-
-            $DB->insert_record('booking_slot_student_teacher', (object)[
-                'optionid' => $optionid,
-                'userid' => $studentid,
-                'teacherid' => $teacherid,
-                'timecreated' => $now,
-                'timemodified' => $now,
-            ]);
         }
 
         $transaction->allow_commit();
@@ -221,14 +228,32 @@ class slotteacherassignments_form extends dynamic_form {
                 $studentlabel .= html_writer::span(s($student->email), 'text-muted small');
             }
 
-            $teachergroup = [];
-            foreach ($teacheroptions as $teacherid => $teachername) {
-                $field = self::field_name($studentid, (int)$teacherid);
-                $teachergroup[] = $mform->createElement('advcheckbox', $field, '', $teachername);
-                $mform->setType($field, PARAM_INT);
-            }
-
-            $mform->addGroup($teachergroup, 'teachersgroup_' . $studentid, $studentlabel, '', false);
+            $fieldname = 'examiner_autocomplete_' . $studentid;
+            $options = [
+                'tags' => false,
+                'multiple' => true,
+                'noselectionstring' => '',
+                'ajax' => 'mod_booking/form_teachers_selector',
+                'valuehtmlcallback' => function ($value) {
+                    global $OUTPUT;
+                    if (empty($value)) {
+                        return get_string('choose...', 'mod_booking');
+                    }
+                    $user = \mod_booking\singleton_service::get_instance_of_user((int)$value);
+                    $details = [
+                        'id' => $user->id ?? 0,
+                        'email' => $user->email ?? '',
+                        'firstname' => $user->firstname ?? '',
+                        'lastname' => $user->lastname ?? '',
+                    ];
+                    return $OUTPUT->render_from_template(
+                        'mod_booking/form-user-selector-suggestion',
+                        $details
+                    );
+                },
+            ];
+            $mform->addElement('autocomplete', $fieldname, get_string('slot_teacher_pool', 'mod_booking'), [], $options);
+            $mform->setType($fieldname, PARAM_INT);
         }
 
         $this->add_action_buttons(false, get_string('savechanges'));

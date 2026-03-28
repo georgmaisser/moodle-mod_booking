@@ -930,6 +930,8 @@ $string['choosesemester_help'] = "Choose the semester for which the holiday(s) s
 $string['choosesession'] = 'Choose date (session)...';
 $string['choosetags'] = 'Choose tags';
 $string['choosetags_desc'] = 'Courses marked with these tags can be used as templates. If a booking option is linked to such a template, a copy of the template course will be automatically created upon first saving.';
+$string['chooseusers'] = 'Choose users';
+// ...existing code...
 $string['circumventavailabilityconditions'] = 'Circumvent availabilty restrictions';
 $string['circumventavailabilityconditions_desc'] = 'If this setting is enabled, restrictions of booking options that depend on user profile fields can be bypassed.
 When users visit the "optionview.php" page once with the correct parameters, the booking option can become bookable for them despite these restrictions.
