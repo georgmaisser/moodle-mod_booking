@@ -253,6 +253,153 @@ final class scheduledmails_table_test extends advanced_testcase {
     }
 
     /**
+     * End-to-end assertion helper for rule updates (without changing booking option values).
+     *
+     * @param string $subject
+     * @param string $template
+     * @param string $rulename
+     * @param string $initialruledatajson
+     * @param string $updatedruledatajson
+     * @param array $optionoverrides
+     * @param string|null $updatedsubject
+     *
+     * @return void
+     *
+     */
+    private function assert_rule_variant_turns_no_after_rule_update(
+        string $subject,
+        string $template,
+        string $rulename,
+        string $initialruledatajson,
+        string $updatedruledatajson,
+        array $optionoverrides,
+        ?string $updatedsubject = null
+    ): void {
+        $this->setAdminUser();
+        $this->setup_test_timezone();
+
+        [$bdata, $course, $student, $booking, $plugingenerator] = $this->create_booking_fixture();
+
+        $actstr = '{"sendical":0,"sendicalcreateorcancel":"",';
+        $actstr .= '"subject":"' . $subject . '","template":"' . $template . '","templateformat":"1"}';
+
+        $rule = $plugingenerator->create_rule([
+            'name' => $subject,
+            'conditionname' => 'select_users',
+            'contextid' => 1,
+            'conditiondata' => '{"userids":["' . $student->id . '"]}',
+            'actionname' => 'send_mail',
+            'actiondata' => $actstr,
+            'rulename' => $rulename,
+            'ruledata' => $initialruledatajson,
+        ]);
+
+        $record = (object)array_merge((array)$bdata['options'][0], [
+            'bookingid' => $booking->id,
+            'courseid' => $course->id,
+        ], $optionoverrides);
+        $option = $plugingenerator->create_option($record);
+        singleton_service::destroy_booking_option_singleton($option->id);
+
+        $tasks = \core\task\manager::get_adhoc_tasks('\\mod_booking\\task\\send_mail_by_rule_adhoc');
+        $this->assertCount(1, $tasks, 'One task should be created before rule update.');
+        $originaltaskids = array_map(static function ($task): int {
+            return (int)(method_exists($task, 'get_id') ? $task->get_id() : $task->id);
+        }, $tasks);
+
+        $statusbefore = $this->get_status_by_subject($subject);
+        $this->assertEquals(get_string('yes'), $statusbefore, 'Task should return yes before rule update.');
+
+        $updatedruledata = json_decode($updatedruledatajson);
+        $this->assertNotEmpty($updatedruledata, 'Updated ruledata JSON should be valid.');
+        $this->update_rule_via_dynamic_form((int)$rule->id, $rulename, $updatedruledata, $updatedsubject);
+
+        \cache_helper::purge_by_definition('mod_booking', 'scheduledmailscache');
+
+        $taskafterupdate = array_values(
+            \core\task\manager::get_adhoc_tasks('\\mod_booking\\task\\send_mail_by_rule_adhoc')
+        );
+        $this->assertCount(2, $taskafterupdate, 'Expected old and new task after rule update.');
+
+        $yescount = 0;
+        $nocount = 0;
+        $latestruntime = 0;
+        foreach ($taskafterupdate as $task) {
+            $taskid = (int)(method_exists($task, 'get_id') ? $task->get_id() : $task->id);
+            $status = $this->get_status_for_task($task);
+            if (in_array($taskid, $originaltaskids, true)) {
+                $this->assertEquals(get_string('no'), $status, 'Original task should be obsolete after rule update.');
+            }
+            if ($status === get_string('yes')) {
+                $yescount++;
+            } else if ($status === get_string('no')) {
+                $nocount++;
+            }
+            $latestruntime = max($latestruntime, (int)$task->get_next_run_time());
+        }
+
+        $this->assertEquals(1, $yescount, 'Exactly one task should still be valid (yes).');
+        $this->assertEquals(1, $nocount, 'Exactly one task should be obsolete (no).');
+
+        time_mock::set_mock_time($latestruntime + 60);
+        unset_config('noemailever');
+        ob_start();
+        $messagesink = $this->redirectMessages();
+        $this->runAdhocTasks();
+        $sentmessages = $messagesink->get_messages();
+        ob_get_clean();
+        $messagesink->close();
+
+        $this->assertCount(1, $sentmessages, 'Only the newly valid task should be sent after rule update.');
+    }
+
+    /**
+     * Updates a booking rule through the dynamic form flow used by UI.
+     *
+     * @param int $ruleid
+     * @param string $rulename
+     * @param \stdClass $updatedruledata
+     * @param ?string $updatedsubject
+     * @return void
+     */
+    private function update_rule_via_dynamic_form(
+        int $ruleid,
+        string $rulename,
+        \stdClass $updatedruledata,
+        ?string $updatedsubject = null
+    ): void {
+        $formrequest = (object)['id' => $ruleid];
+        $dataforform = rules_info::set_data_for_form($formrequest);
+
+        $ajaxargs = (array)$dataforform;
+        $ajaxargs['id'] = $ruleid;
+        $ajaxargs['contextid'] = (int)($dataforform->contextid ?? 1);
+
+        if ($rulename === 'rule_daysbefore') {
+            $ajaxargs['rule_daysbefore_days'] = (string)($updatedruledata->days ?? '0');
+            $ajaxargs['rule_daysbefore_datefield'] = (string)($updatedruledata->datefield ?? '');
+        } else if ($rulename === 'rule_specifictime') {
+            $seconds = (int)($updatedruledata->seconds ?? 0);
+            $ajaxargs['rulespecifictimebeforeafter'] = $seconds < 0 ? -1 : 1;
+            $ajaxargs['rulespecifictimeduration'] = [
+                'number' => abs($seconds),
+                'timeunit' => 1,
+            ];
+            $ajaxargs['rulespecifictimedatefield'] = (string)($updatedruledata->datefield ?? '');
+        }
+
+        if ($updatedsubject !== null) {
+            $ajaxargs['action_send_mail_subject'] = $updatedsubject;
+        }
+
+        $submitdata = rulesform::mock_ajax_submit($ajaxargs);
+        $mform = new rulesform(null, null, 'post', '', [], true, $submitdata, true);
+        $mform->set_data_for_dynamic_submission();
+        $this->assertTrue($mform->is_validated(), 'Dynamic rule form should validate in test update flow.');
+        $mform->process_dynamic_submission();
+    }
+
+    /**
      * Test that col_status correctly reflects rule applicability.
      *
      * @covers \mod_booking\table\scheduledmails_table::col_status
