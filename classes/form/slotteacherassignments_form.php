@@ -252,7 +252,7 @@ class slotteacherassignments_form extends dynamic_form {
                     );
                 },
             ];
-            $mform->addElement('autocomplete', $fieldname, get_string('slot_teacher_pool', 'mod_booking'), [], $options);
+            $mform->addElement('autocomplete', $fieldname, $studentlabel, [], $options);
             $mform->setType($fieldname, PARAM_INT);
         }
 
