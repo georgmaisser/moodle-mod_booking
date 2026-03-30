@@ -528,7 +528,28 @@ export class SlotCalendarPicker {
             }
 
             const selected = this.selected.has(slot.key);
-            btn.classList.add(selected ? 'btn-success' : 'btn-outline-secondary');
+            // Farbwahl je nach Modus: Unavailability = rot, Availability = grün.
+            let markmode = 'unavailability';
+            if (typeof this.root.closest === 'function') {
+                const form = this.root.closest('form');
+                if (form) {
+                    const markmodeInput = form.querySelector('[name="markmode"]');
+                    if (markmodeInput) {
+                        markmode = markmodeInput.value;
+                    }
+                }
+            }
+            // Vorher alle btn-* Farbklassen entfernen, damit keine doppelt bleiben.
+            btn.classList.remove('btn-success', 'btn-danger', 'btn-outline-secondary');
+            if (selected) {
+                if (markmode === 'unavailability') {
+                    btn.classList.add('btn-danger');
+                } else {
+                    btn.classList.add('btn-success');
+                }
+            } else {
+                btn.classList.add('btn-outline-secondary');
+            }
 
             btn.addEventListener('click', () => {
                 if (this.selected.has(slot.key)) {
