@@ -127,6 +127,19 @@ class scheduledmails {
             return false;
         }
 
+        // Vergleiche Rule-JSON immer als Objekt, um DB-Unterschiede zu vermeiden.
+        if (!empty($taskdata->rulejson)) {
+            $taskrulejson = json_decode((string)$taskdata->rulejson);
+            $currentrulejson = json_decode((string)$ruleinstance->rulejson);
+            if (empty($taskrulejson) || empty($currentrulejson)) {
+                return false;
+            }
+            // Wenn die Rule unterschiedlich ist, ist der Task ungültig.
+            if ($taskrulejson != $currentrulejson) {
+                return false;
+            }
+        }
+
         $rule = rules_info::get_rule($ruleinstance->rulename);
         if (empty($rule)) {
             return false;
