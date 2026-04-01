@@ -25,6 +25,7 @@
 namespace mod_booking;
 
 use coding_exception;
+use mod_booking\bo_availability\conditions\customform;
 use mod_booking\local\slotbooking\slot_answer;
 use mod_booking\bo_availability\conditions\customform;
 use mod_booking\output\report_edit_bookingnotes;
