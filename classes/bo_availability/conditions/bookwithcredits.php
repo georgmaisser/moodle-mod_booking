@@ -118,6 +118,12 @@ class bookwithcredits implements bo_condition {
 
         $isavailable = true;
 
+        // If a specific payment method was selected on the pre-page, bypass this condition unless credits are selected.
+        $selectedpayment = paymentchoices::get_active_payment_choice($userid, $settings->id);
+        if (!empty($selectedpayment) && $selectedpayment !== paymentchoices::METHOD_CREDITS) {
+            return $not ? false : true;
+        }
+
         $isactive = get_config('booking', 'bookwithcreditsactive');
 
         if (!empty($isactive)) {

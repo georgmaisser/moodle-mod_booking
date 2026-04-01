@@ -30,6 +30,7 @@ use context_module;
 use context_system;
 use mod_booking\bo_availability\bo_info;
 use mod_booking\bo_availability\conditions\cancelmyself;
+use mod_booking\bo_availability\conditions\paymentchoices;
 use mod_booking\local\modechecker;
 use mod_booking\output\bookingoption_description;
 use mod_booking\output\bookit_button;
@@ -602,6 +603,8 @@ class booking_bookit {
                 }
                 break;
         }
+
+        paymentchoices::clear_active_payment_choice($userid, $itemid);
 
         // We need to register this action as a booking answer, where we only reserve, not actually book.
 

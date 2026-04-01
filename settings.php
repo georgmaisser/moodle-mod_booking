@@ -1685,6 +1685,53 @@ if ($ADMIN->fulltree) {
             $userprofilefieldsarray
         )
     );
+
+    $settings->add(
+        new admin_setting_heading(
+            'bookingpaymentchoices_heading',
+            get_string('paymentchoicessettings', 'mod_booking'),
+            get_string('paymentchoicessettings_desc', 'mod_booking')
+        )
+    );
+
+    $settings->add(
+        new admin_setting_configcheckbox(
+            'booking/paymentchoiceenabled',
+            get_string('paymentchoiceenabled', 'mod_booking'),
+            get_string('paymentchoiceenabled_desc', 'mod_booking'),
+            0
+        )
+    );
+
+    $settings->add(
+        new admin_setting_configcheckbox(
+            'booking/paymentchoicecredits',
+            get_string('paymentchoicecredits', 'mod_booking'),
+            get_string('paymentchoicecredits_desc', 'mod_booking'),
+            1
+        )
+    );
+
+    $settings->add(
+        new admin_setting_configcheckbox(
+            'booking/paymentchoicesubscription',
+            get_string('paymentchoicesubscription', 'mod_booking'),
+            get_string('paymentchoicesubscription_desc', 'mod_booking'),
+            1
+        )
+    );
+
+    if (class_exists('local_shopping_cart\shopping_cart')) {
+        $settings->add(
+            new admin_setting_configcheckbox(
+                'booking/paymentchoiceshoppingcart',
+                get_string('paymentchoiceshoppingcart', 'mod_booking'),
+                get_string('paymentchoiceshoppingcart_desc', 'mod_booking'),
+                1
+            )
+        );
+    }
+
     $settings->add(
         new admin_setting_configselect(
             'booking/cfcostcenter',

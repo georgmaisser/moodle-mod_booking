@@ -115,6 +115,12 @@ class priceisset implements bo_condition {
 
         global $DB;
 
+        // If a specific payment method was selected on the pre-page, bypass this condition unless shopping cart is selected.
+        $selectedpayment = paymentchoices::get_active_payment_choice($userid, $settings->id);
+        if (!empty($selectedpayment) && $selectedpayment !== paymentchoices::METHOD_SHOPPINGCART) {
+            return $not ? false : true;
+        }
+
         // This is the return value. Not available to begin with.
         $isavailable = false;
 

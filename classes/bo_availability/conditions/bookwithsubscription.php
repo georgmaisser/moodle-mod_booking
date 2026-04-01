@@ -118,7 +118,11 @@ class bookwithsubscription implements bo_condition {
 
         $isavailable = true;
 
-        return true;
+        // If a specific payment method was selected on the pre-page, bypass this condition unless subscription is selected.
+        $selectedpayment = paymentchoices::get_active_payment_choice($userid, $settings->id);
+        if (!empty($selectedpayment) && $selectedpayment !== paymentchoices::METHOD_SUBSCRIPTION) {
+            return $not ? false : true;
+        }
 
         $isactive = get_config('booking', 'bookwithcreditsactive');
 
