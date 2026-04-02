@@ -303,6 +303,11 @@ class paymentchoices implements bo_condition {
             return;
         }
 
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+        if (!self::is_method_applicable($method, $settings, $userid)) {
+            return;
+        }
+
         $cache = cache::make('mod_booking', 'conditionforms');
         $cache->set(self::get_cache_key($userid, $optionid), (object)[
             'id' => $optionid,
@@ -403,33 +408,11 @@ class paymentchoices implements bo_condition {
      * @return bool
      */
     private static function is_subscription_applicable(booking_option_settings $settings, int $userid): bool {
-        global $USER;
-
-        $isactive = get_config('booking', 'bookwithcreditsactive');
-        if (empty($isactive)) {
-            return false;
-        }
-
-        $profilefield = get_config('booking', 'bookwithcreditsprofilefield');
-        if (empty($profilefield) || empty($settings->credits)) {
-            return false;
-        }
-
         if (empty($settings->jsonobject->useprice)) {
-            return true;
+            return false;
         }
 
-        if (!empty($userid) && $userid !== $USER->id) {
-            $user = singleton_service::get_instance_of_user($userid);
-            profile_load_custom_fields($user);
-        } else {
-            $user = $USER;
-        }
-
-        $key = 'profile_field_' . $profilefield;
-        $usercredit = $user->{$key} ?? $user->profile[$profilefield] ?? 0;
-
-        return $settings->credits <= $usercredit;
+        return self::has_active_subscription($userid);
     }
 
     /**
@@ -444,5 +427,52 @@ class paymentchoices implements bo_condition {
         }
 
         return !empty($settings->jsonobject->useprice);
+    }
+
+    /**
+     * Returns whether the user currently has an active subscription.
+     *
+     * @param int $userid
+     * @return bool
+     */
+    public static function has_active_subscription(int $userid): bool {
+        return self::get_subscription_end_timestamp($userid) > time();
+    }
+
+    /**
+     * Returns the configured subscription end timestamp for the user.
+     *
+     * @param int $userid
+     * @return int
+     */
+    public static function get_subscription_end_timestamp(int $userid): int {
+        global $USER;
+
+        $profilefield = get_config('booking', 'bookwithsubscriptionprofilefield');
+        if (empty($profilefield) || empty($userid)) {
+            return 0;
+        }
+
+        if (!empty($userid) && $userid !== $USER->id) {
+            $user = singleton_service::get_instance_of_user($userid);
+            profile_load_custom_fields($user);
+        } else {
+            $user = $USER;
+            profile_load_custom_fields($user);
+        }
+
+        $key = 'profile_field_' . $profilefield;
+        $rawvalue = $user->{$key} ?? $user->profile[$profilefield] ?? 0;
+
+        if (empty($rawvalue)) {
+            return 0;
+        }
+
+        if (is_numeric($rawvalue)) {
+            return (int)$rawvalue;
+        }
+
+        $timestamp = strtotime((string)$rawvalue);
+        return $timestamp === false ? 0 : $timestamp;
     }
 }

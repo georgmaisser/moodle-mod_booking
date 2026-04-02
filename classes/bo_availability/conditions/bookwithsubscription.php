@@ -113,9 +113,6 @@ class bookwithsubscription implements bo_condition {
      * @return bool True if available
      */
     public function is_available(booking_option_settings $settings, int $userid, bool $not = false): bool {
-
-        global $USER;
-
         $isavailable = true;
 
         // If a specific payment method was selected on the pre-page, bypass this condition unless subscription is selected.
@@ -124,30 +121,8 @@ class bookwithsubscription implements bo_condition {
             return $not ? false : true;
         }
 
-        $isactive = get_config('booking', 'bookwithcreditsactive');
-
-        if (!empty($isactive)) {
-            $profilefield = get_config('booking', 'bookwithcreditsprofilefield');
-
-            if (!empty($profilefield) && $settings->credits > 0) {
-                // If the user is not yet booked we return true.
-                if (empty($settings->jsonobject->useprice)) {
-                    // When we use credits, we can't book without.
-                    $isavailable = false;
-                } else {
-                    if (!empty($userid) && $USER->id != $userid) {
-                        $user = singleton_service::get_instance_of_user($userid);
-                        profile_load_custom_fields($user);
-                    } else {
-                        $user = $USER;
-                    }
-
-                    $key = "profile_field_" . $profilefield;
-                    if ($settings->credits < $user->{$key}) {
-                        $isavailable = false;
-                    }
-                }
-            }
+        if (!empty($settings->jsonobject->useprice) && paymentchoices::has_active_subscription($userid)) {
+            $isavailable = false;
         }
 
         return $isavailable;
@@ -300,28 +275,11 @@ class bookwithsubscription implements bo_condition {
         bool $fullwidth = true
     ): array {
 
-        global $USER;
-
         if ($userid === null) {
-            $userid = $USER->id;
+            $userid = 0;
         }
 
-        if (empty($userid) || $userid != $USER->id) {
-            $user = singleton_service::get_instance_of_user($userid);
-        } else {
-            $user = $USER;
-        }
-
-        $profilefield = get_config('booking', 'bookwithcreditsprofilefield');
-        $credits = $user->profile[$profilefield] ?? 0;
-
-        if ($credits < $settings->credits) {
-            $label = get_string('notenoughcreditstobook', 'mod_booking');
-        } else if ($settings->credits > 1 || empty($settings->credits)) {
-            $label = get_string('bookwithcredits', 'mod_booking', $settings->credits);
-        } else {
-            $label = get_string('bookwithcredit', 'mod_booking', $settings->credits);
-        }
+        $label = get_string('bookwithsubscription', 'mod_booking');
 
         return bo_info::render_button(
             $settings,

@@ -27,6 +27,7 @@ namespace mod_booking;
 
 use advanced_testcase;
 use mod_booking\bo_availability\conditions\bookwithcredits;
+use mod_booking\bo_availability\conditions\bookwithsubscription;
 use mod_booking\bo_availability\conditions\paymentchoices;
 use mod_booking\bo_availability\conditions\priceisset;
 use mod_booking_generator;
@@ -201,5 +202,92 @@ final class condition_paymentchoices_test extends advanced_testcase {
         booking_bookit::answer_booking_option('option', $settings->id, MOD_BOOKING_STATUSPARAM_NOTIFYMELIST, $student->id);
 
         $this->assertNull(paymentchoices::get_active_payment_choice($student->id, $settings->id));
+    }
+
+    /**
+     * Test that subscription payment is only available with a future end date.
+     *
+     * @covers \mod_booking\bo_availability\conditions\paymentchoices::has_active_subscription
+     * @covers \mod_booking\bo_availability\conditions\paymentchoices::get_subscription_end_timestamp
+     * @covers \mod_booking\bo_availability\conditions\bookwithsubscription::is_available
+     * @return void
+     */
+    public function test_subscription_requires_future_enddate(): void {
+        global $PAGE;
+
+        set_config('paymentchoiceenabled', 1, 'booking');
+        set_config('paymentchoicecredits', 0, 'booking');
+        set_config('paymentchoicesubscription', 1, 'booking');
+        set_config('paymentchoiceshoppingcart', 0, 'booking');
+
+        $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'datetime',
+            'shortname' => 'subscriptionend',
+            'name' => 'Subscription end',
+        ]);
+        set_config('bookwithsubscriptionprofilefield', 'subscriptionend', 'booking');
+
+        $course = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
+        $studentwithsubscription = $this->getDataGenerator()->create_user([
+            'profile_field_subscriptionend' => strtotime('+2 days'),
+        ]);
+        $studentwithoutexistingsubscription = $this->getDataGenerator()->create_user([
+            'profile_field_subscriptionend' => strtotime('-2 days'),
+        ]);
+
+        $bdata = [
+            'name' => 'Booking subscription test',
+            'eventtype' => 'Test event',
+            'enablecompletion' => 1,
+            'course' => $course->id,
+        ];
+
+        $booking = $this->getDataGenerator()->create_module('booking', $bdata);
+        $this->getDataGenerator()->enrol_user($studentwithsubscription->id, $course->id, 'student');
+        $this->getDataGenerator()->enrol_user($studentwithoutexistingsubscription->id, $course->id, 'student');
+        $this->setAdminUser();
+
+        /** @var mod_booking_generator $plugingenerator */
+        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
+
+        [$courseforpage, $cm] = get_course_and_cm_from_cmid($booking->cmid);
+        $PAGE->set_cm($cm, $courseforpage);
+        $PAGE->set_context(\context_module::instance($booking->cmid));
+
+        $record = (object)[
+            'bookingid' => $booking->id,
+            'text' => 'Option with subscription payment',
+            'description' => 'Option with subscription payment description',
+            'courseid' => $course->id,
+            'maxanswers' => 10,
+            'useprice' => 1,
+            'credits' => 50,
+        ];
+        $option = $plugingenerator->create_option($record);
+        $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
+
+        $methodswithsubscription = paymentchoices::get_applicable_methods($settings, $studentwithsubscription->id);
+        $this->assertArrayHasKey(paymentchoices::METHOD_SUBSCRIPTION, $methodswithsubscription);
+        $this->assertTrue(paymentchoices::has_active_subscription($studentwithsubscription->id));
+
+        $methodswithoutexistingsubscription = paymentchoices::get_applicable_methods(
+            $settings,
+            $studentwithoutexistingsubscription->id
+        );
+        $this->assertArrayNotHasKey(paymentchoices::METHOD_SUBSCRIPTION, $methodswithoutexistingsubscription);
+        $this->assertFalse(paymentchoices::has_active_subscription($studentwithoutexistingsubscription->id));
+
+        $subscriptioncondition = new bookwithsubscription();
+        $this->assertFalse($subscriptioncondition->is_available($settings, $studentwithsubscription->id));
+        $this->assertTrue($subscriptioncondition->is_available($settings, $studentwithoutexistingsubscription->id));
+
+        paymentchoices::set_active_payment_choice(
+            $studentwithoutexistingsubscription->id,
+            $settings->id,
+            paymentchoices::METHOD_SUBSCRIPTION
+        );
+        $this->assertNull(
+            paymentchoices::get_active_payment_choice($studentwithoutexistingsubscription->id, $settings->id)
+        );
     }
 }

@@ -191,6 +191,17 @@ if ($ADMIN->fulltree) {
             $userprofilefieldsarray[$userprofilefield->shortname] = "$userprofilefield->name ($userprofilefield->shortname)";
         }
     }
+    $userprofiledatefieldsarray[0] = get_string('choose...', 'mod_booking');
+    if (!empty($userprofilefields)) {
+        foreach ($userprofilefields as $userprofilefield) {
+            if (!in_array($userprofilefield->datatype, ['date', 'datetime'], true)) {
+                continue;
+            }
+
+            $userprofiledatefieldsarray[$userprofilefield->shortname] =
+                "$userprofilefield->name ($userprofilefield->shortname)";
+        }
+    }
     // This will be used multiple times.
     $records = booking_handler::get_customfields();
     $customfieldsarray["-1"] = get_string('choose...', 'mod_booking');
@@ -1683,6 +1694,15 @@ if ($ADMIN->fulltree) {
             get_string('bookwithcreditsprofilefield_desc', 'mod_booking'),
             0,
             $userprofilefieldsarray
+        )
+    );
+    $settings->add(
+        new admin_setting_configselect(
+            'booking/bookwithsubscriptionprofilefield',
+            get_string('bookwithsubscriptionprofilefield', 'mod_booking'),
+            get_string('bookwithsubscriptionprofilefield_desc', 'mod_booking'),
+            0,
+            $userprofiledatefieldsarray
         )
     );
 

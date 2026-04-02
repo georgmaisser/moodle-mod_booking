@@ -713,6 +713,10 @@ $string['bookwithcreditsprofilefield'] = "User profile field for credits";
 $string['bookwithcreditsprofilefield_desc'] = "To use this functionality, please define a user profile field where credits are stored.
 <span class='text-danger'><b>Be careful:</b> You should create this field in a way that your users can't set a credit themselves.</span>";
 $string['bookwithcreditsprofilefieldoff'] = 'Do not show';
+$string['bookwithsubscription'] = 'Book with subscription';
+$string['bookwithsubscriptionprofilefield'] = 'User profile field for subscription end date';
+$string['bookwithsubscriptionprofilefield_desc'] = "Select the custom user profile field of type date/datetime that stores the subscription end date.
+Subscription is only available while this date is in the future.";
 $string['choosepaymentmethod'] = 'Choose payment method';
 $string['paymentchoiceenabled'] = 'Enable payment method choice';
 $string['paymentchoiceenabled_desc'] = 'If enabled, users can choose between offered payment methods before booking.';

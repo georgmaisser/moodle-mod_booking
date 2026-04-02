@@ -692,6 +692,10 @@ $string['bookwithcreditsprofilefield'] = "Benutzerdefiniertes Profilfeld für Gu
 $string['bookwithcreditsprofilefield_desc'] = "Um die Funktion nutzen zu können, muss es ein Profilfeld geben, in dem die Credits der Nutzer:innen hiinterlegt werden können.
 <span class='text-danger'><b>Achtung:</b> Dieses Feld sollte von den Nutzer:innen nicht bearbeitet werden können.</span>";
 $string['bookwithcreditsprofilefieldoff'] = 'Nicht anzeigen';
+$string['bookwithsubscription'] = 'Mit Abonnement buchen';
+$string['bookwithsubscriptionprofilefield'] = 'Benutzerdefiniertes Profilfeld für Abo-Enddatum';
+$string['bookwithsubscriptionprofilefield_desc'] = "Wähle das benutzerdefinierte Profilfeld vom Typ Datum/Datum-Uhrzeit aus, in dem das Enddatum des Abonnements gespeichert ist.
+Abonnement ist nur verfügbar, solange dieses Datum in der Zukunft liegt.";
 $string['choosepaymentmethod'] = 'Zahlungsmethode auswählen';
 $string['paymentchoiceenabled'] = 'Auswahl der Zahlungsmethode aktivieren';
 $string['paymentchoiceenabled_desc'] = 'Wenn aktiv, können Nutzer:innen vor der Buchung zwischen angebotenen Zahlungsmethoden wählen.';
