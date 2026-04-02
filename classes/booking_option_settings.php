@@ -300,6 +300,9 @@ class booking_option_settings {
     /** @var int $useprice flag that indicates if we use price or not */
     public $useprice = 0;
 
+    /** @var int $bookwithsubscription flag that indicates if subscription booking is enabled */
+    public $bookwithsubscription = 0;
+
     /** @var int $selflearningcourse flag marks courses with duration but no optiondates */
     public $selflearningcourse = 0;
 
@@ -1207,6 +1210,9 @@ class booking_option_settings {
         // We might need to only now read the json object, but we want to do it only once.
         if (empty($dbrecord->jsonobject)) {
             $this->jsonobject = json_decode($dbrecord->json);
+            if (empty($this->jsonobject)) {
+                $this->jsonobject = new stdClass();
+            }
             $dbrecord->jsonobject = $this->jsonobject;
 
             // We only pass on the object, because the after booking action is not performance critical.
@@ -1232,6 +1238,12 @@ class booking_option_settings {
                 $dbrecord->useprice = $this->useprice;
             }
 
+            if (isset($this->jsonobject->bookwithsubscription)) {
+                $this->bookwithsubscription = (int)$this->jsonobject->bookwithsubscription;
+                $this->jsonobject->bookwithsubscription = $this->bookwithsubscription;
+                $dbrecord->bookwithsubscription = $this->bookwithsubscription;
+            }
+
             if (!empty($this->jsonobject->waitforconfirmation)) {
                 $this->waitforconfirmation = (int)$this->jsonobject->waitforconfirmation;
                 $this->jsonobject->waitforconfirmation = $this->waitforconfirmation;
@@ -1247,6 +1259,7 @@ class booking_option_settings {
             $this->boactions = $dbrecord->boactions ?? null;
             $this->canceluntil = $dbrecord->canceluntil ?? 0;
             $this->useprice = $dbrecord->useprice ?? null;
+            $this->bookwithsubscription = $dbrecord->bookwithsubscription ?? 0;
             $this->waitforconfirmation = $dbrecord->waitforconfirmation ?? 0;
             $this->confirmationonnotification = $dbrecord->confirmationonnotification ?? 0;
             $this->jsonobject = $dbrecord->jsonobject ?? null;

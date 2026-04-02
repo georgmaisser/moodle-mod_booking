@@ -30,6 +30,7 @@ use mod_booking\bo_availability\conditions\bookwithcredits;
 use mod_booking\bo_availability\conditions\bookwithsubscription;
 use mod_booking\bo_availability\conditions\paymentchoices;
 use mod_booking\bo_availability\conditions\priceisset;
+use mod_booking\option\fields\bookwithsubscription as bookwithsubscription_field;
 use mod_booking_generator;
 use stdClass;
 
@@ -262,13 +263,28 @@ final class condition_paymentchoices_test extends advanced_testcase {
             'maxanswers' => 10,
             'useprice' => 1,
             'credits' => 50,
+            'bookwithsubscription' => 1,
         ];
         $option = $plugingenerator->create_option($record);
         $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
 
+        $disabledoption = $plugingenerator->create_option((object)[
+            'bookingid' => $booking->id,
+            'text' => 'Option without subscription payment',
+            'description' => 'Option without subscription payment description',
+            'courseid' => $course->id,
+            'maxanswers' => 10,
+            'useprice' => 1,
+            'credits' => 50,
+        ]);
+        $disabledsettings = singleton_service::get_instance_of_booking_option_settings($disabledoption->id);
+
         $methodswithsubscription = paymentchoices::get_applicable_methods($settings, $studentwithsubscription->id);
         $this->assertArrayHasKey(paymentchoices::METHOD_SUBSCRIPTION, $methodswithsubscription);
         $this->assertTrue(paymentchoices::has_active_subscription($studentwithsubscription->id));
+
+        $methodswithoutoptionflag = paymentchoices::get_applicable_methods($disabledsettings, $studentwithsubscription->id);
+        $this->assertArrayNotHasKey(paymentchoices::METHOD_SUBSCRIPTION, $methodswithoutoptionflag);
 
         $methodswithoutexistingsubscription = paymentchoices::get_applicable_methods(
             $settings,
@@ -279,6 +295,7 @@ final class condition_paymentchoices_test extends advanced_testcase {
 
         $subscriptioncondition = new bookwithsubscription();
         $this->assertFalse($subscriptioncondition->is_available($settings, $studentwithsubscription->id));
+        $this->assertTrue($subscriptioncondition->is_available($disabledsettings, $studentwithsubscription->id));
         $this->assertTrue($subscriptioncondition->is_available($settings, $studentwithoutexistingsubscription->id));
 
         paymentchoices::set_active_payment_choice(
@@ -289,5 +306,45 @@ final class condition_paymentchoices_test extends advanced_testcase {
         $this->assertNull(
             paymentchoices::get_active_payment_choice($studentwithoutexistingsubscription->id, $settings->id)
         );
+    }
+
+    /**
+     * Test that new option forms inherit the booking-instance default for subscription activation.
+     *
+     * @covers \mod_booking\option\fields\bookwithsubscription::set_data
+     * @return void
+     */
+    public function test_new_option_uses_booking_instance_subscription_default(): void {
+        $course = $this->getDataGenerator()->create_course();
+
+        $bdata = (object)[
+            'name' => 'Booking subscription default test',
+            'eventtype' => 'Test event',
+            'json' => '{}',
+            'course' => $course->id,
+        ];
+        booking::add_data_to_json($bdata, 'bookwithsubscriptiondefault', 1);
+
+        $booking = $this->getDataGenerator()->create_module('booking', (array)$bdata);
+
+        /** @var mod_booking_generator $plugingenerator */
+        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
+        $option = $plugingenerator->create_option((object)[
+            'bookingid' => $booking->id,
+            'text' => 'Existing option',
+            'description' => 'Existing option description',
+            'courseid' => $course->id,
+            'maxanswers' => 10,
+        ]);
+        $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
+
+        $formdata = (object)[
+            'id' => 0,
+            'cmid' => $booking->cmid,
+        ];
+
+        bookwithsubscription_field::set_data($formdata, $settings);
+
+        $this->assertSame(1, $formdata->bookwithsubscription);
     }
 }

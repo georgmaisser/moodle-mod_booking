@@ -121,7 +121,11 @@ class bookwithsubscription implements bo_condition {
             return $not ? false : true;
         }
 
-        if (!empty($settings->jsonobject->useprice) && paymentchoices::has_active_subscription($userid)) {
+        if (
+            !empty($settings->jsonobject->useprice)
+            && paymentchoices::is_subscription_enabled_for_option($settings)
+            && paymentchoices::has_active_subscription($userid)
+        ) {
             $isavailable = false;
         }
 

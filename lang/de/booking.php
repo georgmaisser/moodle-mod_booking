@@ -693,6 +693,8 @@ $string['bookwithcreditsprofilefield_desc'] = "Um die Funktion nutzen zu können
 <span class='text-danger'><b>Achtung:</b> Dieses Feld sollte von den Nutzer:innen nicht bearbeitet werden können.</span>";
 $string['bookwithcreditsprofilefieldoff'] = 'Nicht anzeigen';
 $string['bookwithsubscription'] = 'Mit Abonnement buchen';
+$string['bookwithsubscriptiondefault'] = 'Abonnement für neue Buchungsoptionen standardmäßig aktivieren';
+$string['bookwithsubscriptionoption'] = 'Buchen mit Abonnement aktivieren';
 $string['bookwithsubscriptionprofilefield'] = 'Benutzerdefiniertes Profilfeld für Abo-Enddatum';
 $string['bookwithsubscriptionprofilefield_desc'] = "Wähle das benutzerdefinierte Profilfeld vom Typ Datum/Datum-Uhrzeit aus, in dem das Enddatum des Abonnements gespeichert ist.
 Abonnement ist nur verfügbar, solange dieses Datum in der Zukunft liegt.";

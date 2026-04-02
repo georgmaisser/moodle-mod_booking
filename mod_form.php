@@ -1105,6 +1105,17 @@ class mod_booking_mod_form extends moodleform_mod {
         $mform->setType('disablebooking', PARAM_INT);
         $mform->setDefault('disablebooking', (int) booking::get_value_of_json_by_key((int) $bookingid, "disablebooking"));
 
+        $mform->addElement(
+            'advcheckbox',
+            'bookwithsubscriptiondefault',
+            get_string('bookwithsubscriptiondefault', 'mod_booking')
+        );
+        $mform->setType('bookwithsubscriptiondefault', PARAM_INT);
+        $mform->setDefault(
+            'bookwithsubscriptiondefault',
+            (int) booking::get_value_of_json_by_key((int) $bookingid, 'bookwithsubscriptiondefault')
+        );
+
         // Define maximum of options to be booked from a certain category, defined by tag.
         $enabled = get_config('booking', 'maxoptionsfromcategory') == 1;
         $field = get_config('booking', 'maxoptionsfromcategoryfield');

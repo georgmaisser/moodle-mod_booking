@@ -412,6 +412,10 @@ class paymentchoices implements bo_condition {
             return false;
         }
 
+        if (!self::is_subscription_enabled_for_option($settings)) {
+            return false;
+        }
+
         return self::has_active_subscription($userid);
     }
 
@@ -437,6 +441,20 @@ class paymentchoices implements bo_condition {
      */
     public static function has_active_subscription(int $userid): bool {
         return self::get_subscription_end_timestamp($userid) > time();
+    }
+
+    /**
+     * Returns whether subscription booking is enabled for this option.
+     *
+     * @param booking_option_settings $settings
+     * @return bool
+     */
+    public static function is_subscription_enabled_for_option(booking_option_settings $settings): bool {
+        if (!empty($settings->bookwithsubscription)) {
+            return true;
+        }
+
+        return !empty($settings->jsonobject) && !empty($settings->jsonobject->bookwithsubscription);
     }
 
     /**

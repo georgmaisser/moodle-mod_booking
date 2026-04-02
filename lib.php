@@ -277,6 +277,7 @@ define('MOD_BOOKING_OPTION_FIELD_PRICEFORMULAADD', 280);
 define('MOD_BOOKING_OPTION_FIELD_PRICEFORMULAMULTIPLY', 290);
 define('MOD_BOOKING_OPTION_FIELD_PRICEFORMULAOFF', 300);
 define('MOD_BOOKING_OPTION_FIELD_CREDITS', 310);
+define('MOD_BOOKING_OPTION_FIELD_BOOKWITHSUBSCRIPTION', 315);
 define('MOD_BOOKING_OPTION_FIELD_ELECTIVE', 320);
 // 321-329 is reserved for booking extensions!
 // 321 - MOD_BOOKING_OPTION_FIELD_EVASYSTESTFIELD.
@@ -812,6 +813,9 @@ function booking_add_instance($booking) {
         // This will store the correct JSON to $optionvalues->json.
         booking::add_data_to_json($booking, "disablebooking", $booking->disablebooking);
     }
+    if (isset($booking->bookwithsubscriptiondefault)) {
+        booking::add_data_to_json($booking, 'bookwithsubscriptiondefault', (int)$booking->bookwithsubscriptiondefault);
+    }
     if (isset($booking->overwriteblockingwarnings)) {
         // This will store the correct JSON to $optionvalues->json.
         booking::add_data_to_json($booking, "overwriteblockingwarnings", $booking->overwriteblockingwarnings);
@@ -1130,6 +1134,11 @@ function booking_update_instance($booking) {
         booking::remove_key_from_json($booking, "disablebooking");
     } else {
         booking::add_data_to_json($booking, "disablebooking", 1);
+    }
+    if (empty($booking->bookwithsubscriptiondefault)) {
+        booking::remove_key_from_json($booking, 'bookwithsubscriptiondefault');
+    } else {
+        booking::add_data_to_json($booking, 'bookwithsubscriptiondefault', 1);
     }
     if (empty($booking->overwriteblockingwarnings)) {
         // This will store the correct JSON to $optionvalues->json.
