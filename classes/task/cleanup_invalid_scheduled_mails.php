@@ -26,8 +26,6 @@ namespace mod_booking\task;
 
 use mod_booking\local\scheduledmails;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Class to handle scheduled task that cleans up invalid scheduled mails.
  *

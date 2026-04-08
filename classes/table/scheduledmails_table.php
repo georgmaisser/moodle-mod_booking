@@ -294,8 +294,8 @@ class scheduledmails_table extends wunderbyte_table {
 
     /**
      * Action to delete a scheduled mail.
-     *
      * @param int $id
+     * @param string $data
      *
      * @return array
      *

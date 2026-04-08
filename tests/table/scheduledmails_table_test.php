@@ -73,7 +73,12 @@ final class scheduledmails_table_test extends advanced_testcase {
         $ruleid = (int)($customdata->ruleid ?? 0);
 
         $taskrecord = $DB->get_record('task_adhoc', ['id' => $taskid], 'id, customdata', MUST_EXIST);
-        $rulerecord = $DB->get_record('booking_rules', ['id' => $ruleid], 'id, rulename, isactive, rulejson, contextid', MUST_EXIST);
+        $rulerecord = $DB->get_record(
+            'booking_rules',
+            ['id' => $ruleid],
+            'id, rulename, isactive, rulejson, contextid',
+            MUST_EXIST
+        );
 
         $taskcustomdata = json_decode((string)$taskrecord->customdata);
         if (empty($taskcustomdata)) {
