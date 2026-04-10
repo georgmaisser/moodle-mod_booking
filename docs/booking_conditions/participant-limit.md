@@ -41,4 +41,4 @@ A training course has room for 20 participants and a waiting list of 5 places. S
 ## Related Settings
 
 - The booking instance-level setting for **availability info texts** (admin settings) controls how the available/waiting list place counts are displayed to users.
-- The booking instance can be configured to automatically enrol users in a connected Moodle course once their booking is confirmed (see the [course field](../booking_conditions/participant-limit.md) in the option form).
+- The booking instance can be configured to automatically enrol users in a connected Moodle course once their booking is confirmed. This is done by selecting a course in the **Choose a course** field of the booking option edit form.
