@@ -91,6 +91,7 @@ class scheduledmails {
                ON u.id = $userid
             WHERE ta.customdata LIKE '{%'      -- ensure JSON-like
                   AND ta.customdata LIKE '%\"ruleid\"%'   -- ensure ruleid exists
+                  ORDER BY ta.id ASC
                ) as s1
         ";
 
