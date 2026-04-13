@@ -5249,7 +5249,7 @@ function xmldb_booking_upgrade($oldversion) {
         }
 
         upgrade_mod_savepoint(true, 2026032700, 'booking');
-	}
+    }
 
     if ($oldversion < 2026032800) {
         $table = new xmldb_table('booking_slot_config');
@@ -5378,6 +5378,66 @@ function xmldb_booking_upgrade($oldversion) {
         }
 
         upgrade_mod_savepoint(true, 2026040800, 'booking');
+    }
+
+    if ($oldversion < 2026041005) {
+        // Define table booking_slot_rule to be created.
+        $table = new xmldb_table('booking_slot_rule');
+
+        // Adding fields to table booking_slot_rule.
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('optionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('ruletype', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'closed');
+        $table->add_field('priority', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '100');
+        $table->add_field('activefrom', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('activeuntil', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('weekdays', XMLDB_TYPE_CHAR, '20', null, null, null, null);
+        $table->add_field('timerangestart', XMLDB_TYPE_CHAR, '5', null, null, null, null);
+        $table->add_field('timerangeend', XMLDB_TYPE_CHAR, '5', null, null, null, null);
+        $table->add_field('valueint', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('payloadjson', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        // Adding keys to table booking_slot_rule.
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+        // Adding indexes to table booking_slot_rule.
+        $table->add_index('optionid-priority', XMLDB_INDEX_NOTUNIQUE, ['optionid', 'priority']);
+        $table->add_index('optionid-active', XMLDB_INDEX_NOTUNIQUE, ['optionid', 'activefrom', 'activeuntil']);
+        $table->add_index('optionid-ruletype', XMLDB_INDEX_NOTUNIQUE, ['optionid', 'ruletype']);
+
+        // Conditionally launch create table for booking_slot_rule.
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Define table booking_slot_rule_price to be created.
+        $table = new xmldb_table('booking_slot_rule_price');
+
+        // Adding fields to table booking_slot_rule_price.
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('ruleid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('pricecategoryidentifier', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, 'default');
+        $table->add_field('mode', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'absolute');
+        $table->add_field('value', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('currency', XMLDB_TYPE_CHAR, '10', null, null, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        // Adding keys to table booking_slot_rule_price.
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+        // Adding indexes to table booking_slot_rule_price.
+        $table->add_index('ruleid', XMLDB_INDEX_NOTUNIQUE, ['ruleid']);
+        $table->add_index('category', XMLDB_INDEX_NOTUNIQUE, ['pricecategoryidentifier']);
+        $table->add_index('ruleid-category', XMLDB_INDEX_NOTUNIQUE, ['ruleid', 'pricecategoryidentifier']);
+
+        // Conditionally launch create table for booking_slot_rule_price.
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_mod_savepoint(true, 2026041005, 'booking');
     }
 
     return true;

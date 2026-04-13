@@ -283,6 +283,50 @@
         <INDEX NAME="optionid-userid-teacherid" UNIQUE="true" FIELDS="optionid, userid, teacherid"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="booking_slot_rule" COMMENT="Rule-based slot overrides and filters per booking option">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="optionid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="ruletype" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="closed" SEQUENCE="false"/>
+        <FIELD NAME="priority" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="100" SEQUENCE="false"/>
+        <FIELD NAME="activefrom" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="activeuntil" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="weekdays" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="timerangestart" TYPE="char" LENGTH="5" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="timerangeend" TYPE="char" LENGTH="5" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="valueint" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="payloadjson" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="optionid-priority" UNIQUE="false" FIELDS="optionid, priority"/>
+        <INDEX NAME="optionid-active" UNIQUE="false" FIELDS="optionid, activefrom, activeuntil"/>
+        <INDEX NAME="optionid-ruletype" UNIQUE="false" FIELDS="optionid, ruletype"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="booking_slot_rule_price" COMMENT="Per-category price modifiers for slot rules">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="ruleid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="pricecategoryidentifier" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="default" SEQUENCE="false"/>
+        <FIELD NAME="mode" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="absolute" SEQUENCE="false"/>
+        <FIELD NAME="value" TYPE="number" LENGTH="10, 2" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="currency" TYPE="char" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="ruleid" UNIQUE="false" FIELDS="ruleid"/>
+        <INDEX NAME="category" UNIQUE="false" FIELDS="pricecategoryidentifier"/>
+        <INDEX NAME="ruleid-category" UNIQUE="false" FIELDS="ruleid, pricecategoryidentifier"/>
+      </INDEXES>
+    </TABLE>
     <TABLE NAME="booking_category" COMMENT="Categories">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
