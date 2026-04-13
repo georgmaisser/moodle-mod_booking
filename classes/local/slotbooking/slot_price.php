@@ -25,6 +25,7 @@
 namespace mod_booking\local\slotbooking;
 
 use mod_booking\price as mod_booking_price;
+use mod_booking\singleton_service;
 
 /**
  * Helper class for slot booking price calculations.
@@ -35,37 +36,87 @@ class slot_price {
      *
      * @param int $optionid booking option id
      * @param int $numslots number of slots
+     * @param int $userid user id for price category resolution
+     * @param array<int, array{start:int, end:int}> $slots selected slots
      * @return float final total price
      */
-    public static function calculate_price(int $optionid, int $numslots): float {
+    public static function calculate_price(int $optionid, int $numslots, int $userid = 0, array $slots = []): float {
         if ($numslots <= 0) {
             return 0.0;
         }
 
-        $basepriceperslot = self::get_base_slot_price_per_slot($optionid);
-        return round($basepriceperslot * $numslots, 2);
+        $basedata = self::get_base_slot_price_data($optionid, $userid);
+        $basepriceperslot = $basedata['price'];
+        $pricecategoryidentifier = $basedata['pricecategoryidentifier'];
+
+        if (empty($slots)) {
+            return round($basepriceperslot * $numslots, 2);
+        }
+
+        $total = 0.0;
+        foreach ($slots as $slot) {
+            $slotstart = (int)($slot['start'] ?? 0);
+            $slotend = (int)($slot['end'] ?? 0);
+            if ($slotstart <= 0 || $slotend <= $slotstart) {
+                continue;
+            }
+
+            $slotprice = slot_rules::apply_price_rules_to_slot_price(
+                $optionid,
+                $slotstart,
+                $slotend,
+                $basepriceperslot,
+                $pricecategoryidentifier
+            );
+            $total += $slotprice;
+        }
+
+        return round($total, 2);
     }
 
     /**
      * Get base price per slot from standard option prices.
      *
      * @param int $optionid booking option id
-     * @return float
+     * @param int $userid user id for category-specific pricing
+     * @return array{price:float, pricecategoryidentifier:string}
      */
-    private static function get_base_slot_price_per_slot(int $optionid): float {
+    private static function get_base_slot_price_data(int $optionid, int $userid = 0): array {
+        $user = null;
+        if ($userid > 0) {
+            $user = singleton_service::get_instance_of_user($userid);
+        }
+
+        $resolvedprice = mod_booking_price::get_price('option', $optionid, $user);
+        if (isset($resolvedprice['price']) && $resolvedprice['price'] !== '') {
+            return [
+                'price' => (float)$resolvedprice['price'],
+                'pricecategoryidentifier' => (string)($resolvedprice['pricecategoryidentifier'] ?? 'default'),
+            ];
+        }
+
         $records = mod_booking_price::get_prices_from_cache_or_db('option', $optionid);
         if (empty($records)) {
-            return 0.0;
+            return [
+                'price' => 0.0,
+                'pricecategoryidentifier' => 'default',
+            ];
         }
 
         foreach ($records as $record) {
             $identifiers = array_map('trim', explode(',', (string)$record->pricecategoryidentifier));
             if (in_array('default', $identifiers, true)) {
-                return (float)$record->price;
+                return [
+                    'price' => (float)$record->price,
+                    'pricecategoryidentifier' => (string)$record->pricecategoryidentifier,
+                ];
             }
         }
 
         $first = reset($records);
-        return (float)($first->price ?? 0);
+        return [
+            'price' => (float)($first->price ?? 0),
+            'pricecategoryidentifier' => (string)($first->pricecategoryidentifier ?? 'default'),
+        ];
     }
 }

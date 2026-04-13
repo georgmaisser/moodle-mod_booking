@@ -447,7 +447,8 @@ class slot_availability {
         }
 
         if ((string)($config->slot_type ?? 'fixed') === 'session') {
-            return self::get_session_slots_for_range($optionid, $rangestart, $rangeend);
+            $slots = self::get_session_slots_for_range($optionid, $rangestart, $rangeend);
+            return slot_rules::apply_to_slots($optionid, $slots);
         }
 
         $duration = (int)$config->slot_duration_minutes * MINSECS;
@@ -497,7 +498,7 @@ class slot_availability {
             $daycursor += DAYSECS;
         }
 
-        return $slots;
+        return slot_rules::apply_to_slots($optionid, $slots);
     }
 
     /**

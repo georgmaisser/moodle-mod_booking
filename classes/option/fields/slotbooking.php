@@ -29,7 +29,9 @@ use mod_booking\booking_option;
 use mod_booking\booking_option_settings;
 use mod_booking\option\field_base;
 use mod_booking\option\type_resolver;
+use html_writer;
 use MoodleQuickForm;
+use moodle_url;
 use stdClass;
 
 /**
@@ -204,8 +206,18 @@ class slotbooking extends field_base {
             $coursecontext = context_course::instance($course->id);
             // Alle Nutzer mit Namen und E-Mail (ggf. einschränken, z.B. auf course users oder site users, je nach Policy).
             $users = get_enrolled_users($coursecontext, '', 0, 'u.id, u.firstname, u.lastname, u.email');
-            foreach ($users as $user) {
-                $useroptions[$user->id] = fullname($user) . ' (' . $user->email . ')';
+            $userids = array_map(static function ($user): int {
+                return (int)$user->id;
+            }, $users);
+            $loadedusers = !empty($userids) ? \user_get_users_by_id($userids) : [];
+
+            foreach ($userids as $userid) {
+                if (empty($loadedusers[$userid])) {
+                    continue;
+                }
+                $loadeduser = $loadedusers[$userid];
+                $email = (string)($loadeduser->email ?? '');
+                $useroptions[$userid] = fullname($loadeduser) . ' (' . $email . ')';
             }
         }
         $mform->addElement('autocomplete', 'slot_teacher_pool', get_string('slot_teacher_pool', 'mod_booking'), $useroptions, [
@@ -219,6 +231,32 @@ class slotbooking extends field_base {
         $mform->addElement('text', 'slot_teachers_required', get_string('slot_teachers_required', 'mod_booking'));
         $mform->setType('slot_teachers_required', PARAM_INT);
         $mform->hideIf('slot_teachers_required', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+
+        $currentoptionid = (int)($formdata['optionid'] ?? $formdata['id'] ?? 0);
+        $cmid = (int)($formdata['cmid'] ?? 0);
+
+        if ($cmid > 0 && $currentoptionid > 0) {
+            $ruleeditorurl = new moodle_url('/mod/booking/slotrules.php', [
+                'id' => $cmid,
+                'optionid' => $currentoptionid,
+            ]);
+            $ruleeditorlink = html_writer::link($ruleeditorurl, get_string('slot_rule_editor_open', 'mod_booking'));
+            $mform->addElement(
+                'static',
+                'slot_rule_editor_link',
+                get_string('slot_rule_editor_label', 'mod_booking'),
+                $ruleeditorlink
+            );
+            $mform->hideIf('slot_rule_editor_link', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        } else {
+            $mform->addElement(
+                'static',
+                'slot_rule_editor_info',
+                get_string('slot_rule_editor_label', 'mod_booking'),
+                get_string('slot_rule_editor_savefirst', 'mod_booking')
+            );
+            $mform->hideIf('slot_rule_editor_info', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        }
     }
 
     /**

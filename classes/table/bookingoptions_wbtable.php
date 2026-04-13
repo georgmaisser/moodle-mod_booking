@@ -1325,7 +1325,11 @@ class bookingoptions_wbtable extends wunderbyte_table {
                     ) . '</div>';
             }
 
-            if (has_capability('mod/booking:bookallstudents', $context)) {
+            $bookallstudentscapability = 'mod/booking:bookallstudents';
+            if (
+                get_capability_info($bookallstudentscapability, false) &&
+                has_capability($bookallstudentscapability, $context)
+            ) {
                 $bookallstudentsurl = new moodle_url(
                     '/mod/booking/bulk_book_handler.php',
                     [

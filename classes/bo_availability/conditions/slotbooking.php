@@ -354,7 +354,7 @@ class slotbooking implements bo_condition {
         $slotdata = [
             'slots' => $slots,
             'num_slots' => count($slots),
-            'price' => slot_price::calculate_price($optionid, count($slots)),
+            'price' => slot_price::calculate_price($optionid, count($slots), (int)$userid, $slots),
             'teachers_per_slot' => $teachersperslot,
             'teachers' => array_values(array_unique($allteacherids)),
         ];
