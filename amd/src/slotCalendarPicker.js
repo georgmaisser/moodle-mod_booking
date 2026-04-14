@@ -72,7 +72,10 @@ export class SlotCalendarPicker {
         this.onDayChange = typeof options.onDayChange === 'function' ? options.onDayChange : noop;
         this.dayCountFormatter = typeof options.dayCountFormatter === 'function' ? options.dayCountFormatter : null;
         this.slotFilter = typeof options.slotFilter === 'function' ? options.slotFilter : null;
-        this.emptySlotListText = String(options.emptySlotListText || 'No open slots on this day.');
+        this.emptySlotListText = options.emptySlotListText === undefined
+            ? 'No open slots on this day.'
+            : String(options.emptySlotListText);
+        this.showSlotList = options.showSlotList !== false;
         this.dayStateResolver = typeof options.dayStateResolver === 'function' ? options.dayStateResolver : null;
         this.resetSelectionOnDayChange = Boolean(options.resetSelectionOnDayChange);
 
@@ -91,6 +94,11 @@ export class SlotCalendarPicker {
         this.render();
         this.emitChange();
 
+        if (this.activeDay) {
+            const activeDaySlots = this.slotsByDay.get(this.activeDay) || [];
+            this.onDayChange(this.activeDay, activeDaySlots);
+        }
+
         this.handleResize = () => {
             this.applyResponsiveStyles();
         };
@@ -102,6 +110,7 @@ export class SlotCalendarPicker {
             const key = slot.key || `${slot.start}:${slot.end}`;
             const dayKey = toDateKey(Number(slot.start));
             const entry = {
+                ...slot,
                 key,
                 start: Number(slot.start),
                 end: Number(slot.end),
@@ -114,6 +123,10 @@ export class SlotCalendarPicker {
                 price: Number(slot.price || 0),
                 currency: String(slot.currency || ''),
                 priceformatted: String(slot.priceformatted || '').trim(),
+                openfrom: Number(slot.openfrom || 0),
+                openuntil: Number(slot.openuntil || 0),
+                startintervalminutes: Number(slot.startintervalminutes || 0),
+                bookedranges: Array.isArray(slot.bookedranges) ? slot.bookedranges : [],
             };
 
             if (!this.slotsByDay.has(dayKey)) {
@@ -250,7 +263,9 @@ export class SlotCalendarPicker {
 
         this.container.appendChild(this.toolbar);
         this.container.appendChild(this.calendarGrid);
-        this.container.appendChild(this.slotList);
+        if (this.showSlotList) {
+            this.container.appendChild(this.slotList);
+        }
         this.container.appendChild(this.selectionInfo);
         this.root.appendChild(this.container);
 
@@ -362,7 +377,9 @@ export class SlotCalendarPicker {
         this.weekBtn.classList.toggle('btn-outline-secondary', this.viewMode !== 'week');
 
         this.renderCalendarGrid();
-        this.renderSlotList();
+        if (this.showSlotList) {
+            this.renderSlotList();
+        }
         this.renderSelectionInfo();
         this.updateNavigationState();
     }
@@ -448,7 +465,7 @@ export class SlotCalendarPicker {
                 this.render();
 
                 if (changed) {
-                    this.onDayChange(dayKey);
+                    this.onDayChange(dayKey, daySlots);
                 }
             });
 

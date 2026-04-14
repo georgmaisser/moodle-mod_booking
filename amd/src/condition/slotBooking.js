@@ -29,6 +29,50 @@ const SELECTOR = {
     CONTINUEBUTTON: ' div.prepage-booking-footer .continue-button',
 };
 
+const isActuallyVisible = (el) => {
+    if (!el) {
+        return false;
+    }
+
+    if (el.closest('[aria-hidden="true"]')) {
+        return false;
+    }
+
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+        return false;
+    }
+
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 || rect.height > 0 || el.getClientRects().length > 0;
+};
+
+const getActiveFormContainer = () => {
+    const containers = Array.from(document.querySelectorAll(SELECTOR.FORMCONTAINER))
+        .filter(el => isActuallyVisible(el) && el.querySelector('[data-region="slotbooking-form"]'));
+
+    if (containers.length === 0) {
+        return null;
+    }
+
+    const modalContainers = containers.filter(el => el.closest('div.modal.show'));
+    const preferred = modalContainers.length > 0 ? modalContainers : containers;
+    return preferred[preferred.length - 1] || null;
+};
+
+const getActiveContinueButton = (container) => {
+    if (!container) {
+        return null;
+    }
+
+    const prepageBody = container.closest(SELECTOR.PREPAGEBODY);
+    if (!prepageBody || !isActuallyVisible(prepageBody)) {
+        return null;
+    }
+
+    return prepageBody.querySelector(SELECTOR.CONTINUEBUTTON);
+};
+
 const parseSlots = (jsonInput) => {
     if (!jsonInput) {
         return [];
@@ -97,7 +141,6 @@ const snapStartTimestamp = (timestamp, openFrom, openUntil, duration, intervalSe
 };
 
 const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSelect) => {
-    container.innerHTML = '';
     if (!daySlot || !hiddenStartInput || !durationSelect) {
         return;
     }
@@ -109,6 +152,8 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
     if (openFrom <= 0 || openUntil <= openFrom) {
         return;
     }
+
+    container.innerHTML = '';
 
     const existingStart = Number(hiddenStartInput.value || 0);
     const selectedDuration = Number(durationSelect.value || 0);
@@ -141,6 +186,8 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
 
     const timelineWrapper = document.createElement('div');
     timelineWrapper.className = 'd-flex align-items-stretch gap-1';
+    timelineWrapper.style.width = '100%';
+    timelineWrapper.style.minWidth = '0';
     container.appendChild(timelineWrapper);
 
     const labelsCol = document.createElement('div');
@@ -268,6 +315,172 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
 
     syncStart(defaultStart);
 };
+
+
+const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots) => {
+    container.innerHTML = '';
+    if (!Array.isArray(daySlots) || daySlots.length === 0 || !selectionInput) {
+        return;
+    }
+
+    const openFrom = Math.min(...daySlots.map(s => Number(s.start || 0)));
+    const openUntil = Math.max(...daySlots.map(s => Number(s.end || 0)));
+    const span = openUntil - openFrom;
+    if (span <= 0) {
+        return;
+    }
+
+    const currentKeys = new Set(
+        String(selectionInput.value || '').split(',').map(v => v.trim()).filter(Boolean)
+    );
+
+    const applyBlockStyle = (block, isSelected) => {
+        if (isSelected) {
+            block.style.background = 'rgba(13,110,253,0.22)';
+            block.style.borderTop = '1px solid rgba(13,110,253,0.75)';
+            block.style.borderBottom = '1px solid rgba(13,110,253,0.75)';
+            block.style.color = 'rgb(13,70,170)';
+        } else {
+            block.style.background = 'rgba(25,135,84,0.12)';
+            block.style.borderTop = '1px solid rgba(25,135,84,0.45)';
+            block.style.borderBottom = '1px solid rgba(25,135,84,0.45)';
+            block.style.color = 'rgb(20,100,60)';
+        }
+    };
+
+    const updateSelectionInput = () => {
+        selectionInput.value = Array.from(currentKeys).join(',');
+        selectionInput.dispatchEvent(new Event('change', {bubbles: true}));
+    };
+
+    const timelineWrapper = document.createElement('div');
+    timelineWrapper.className = 'd-flex align-items-stretch gap-1';
+    container.appendChild(timelineWrapper);
+
+    const labelsCol = document.createElement('div');
+    labelsCol.className = 'position-relative flex-shrink-0';
+    labelsCol.style.width = '2.8rem';
+    labelsCol.style.height = '200px';
+    timelineWrapper.appendChild(labelsCol);
+
+    const timeline = document.createElement('div');
+    timeline.className = 'border rounded position-relative flex-grow-1';
+    timeline.style.flex = '1 1 auto';
+    timeline.style.minWidth = '12rem';
+    timeline.style.height = '200px';
+    timeline.style.background = 'linear-gradient(to bottom, #f8f9fa, #ffffff)';
+    timeline.style.overflow = 'hidden';
+    timelineWrapper.appendChild(timeline);
+
+    const tickCandidates = [5 * 60, 10 * 60, 15 * 60, 20 * 60, 30 * 60, 3600, 2 * 3600, 3 * 3600];
+    const tickInterval = tickCandidates.find(c => span / c <= 8) || 3600;
+    const firstTick = Math.ceil(openFrom / tickInterval) * tickInterval;
+    for (let tick = firstTick; tick <= openUntil; tick += tickInterval) {
+        const ratio = (tick - openFrom) / span;
+
+        const lbl = document.createElement('div');
+        lbl.className = 'position-absolute text-muted';
+        lbl.style.top = `${ratio * 100}%`;
+        lbl.style.transform = 'translateY(-50%)';
+        lbl.style.left = '0';
+        lbl.style.right = '0';
+        lbl.style.fontSize = '0.65rem';
+        lbl.style.lineHeight = '1';
+        lbl.style.textAlign = 'right';
+        lbl.style.whiteSpace = 'nowrap';
+        lbl.textContent = toLocalTimeValue(tick);
+        labelsCol.appendChild(lbl);
+
+        const tickLine = document.createElement('div');
+        tickLine.className = 'position-absolute';
+        tickLine.style.left = '0';
+        tickLine.style.right = '0';
+        tickLine.style.top = `${ratio * 100}%`;
+        tickLine.style.height = '1px';
+        tickLine.style.background = 'rgba(0,0,0,0.10)';
+        tickLine.style.pointerEvents = 'none';
+        timeline.appendChild(tickLine);
+    }
+
+    daySlots.forEach(slot => {
+        const slotStart = Number(slot.start || 0);
+        const slotEnd = Number(slot.end || 0);
+        if (slotEnd <= slotStart) {
+            return;
+        }
+
+        const key = String(slot.key || `${slotStart}:${slotEnd}`);
+        const top = ((slotStart - openFrom) / span) * 100;
+        const height = Math.max(3, ((slotEnd - slotStart) / span) * 100);
+
+        const block = document.createElement('div');
+        block.className = 'position-absolute';
+        block.style.left = '1px';
+        block.style.right = '1px';
+        block.style.top = `${top}%`;
+        block.style.height = `${height}%`;
+        block.style.cursor = 'pointer';
+        block.style.overflow = 'hidden';
+        block.style.borderRadius = '2px';
+        block.style.padding = '1px 3px';
+        applyBlockStyle(block, currentKeys.has(key));
+
+        const timeText = document.createElement('div');
+        timeText.style.fontSize = '0.65rem';
+        timeText.style.lineHeight = '1.2';
+        timeText.style.fontWeight = '600';
+        timeText.textContent = `${toLocalTimeValue(slotStart)} \u2013 ${toLocalTimeValue(slotEnd)}`;
+        block.appendChild(timeText);
+
+        const slotPrice = Number(slot.price || 0);
+        if (slotPrice > 0 && slot.priceformatted) {
+            const priceEl = document.createElement('div');
+            priceEl.style.fontSize = '0.6rem';
+            priceEl.style.lineHeight = '1.2';
+            priceEl.textContent = String(slot.priceformatted);
+            block.appendChild(priceEl);
+        }
+
+        const teachers = Array.isArray(slot.teachers) ? slot.teachers : [];
+        if (teachers.length > 0) {
+            const teacherEl = document.createElement('div');
+            teacherEl.style.fontSize = '0.6rem';
+            teacherEl.style.lineHeight = '1.2';
+            if (teachers.length <= 2) {
+                teacherEl.textContent = teachers
+                    .map(t => String(t.fullname || ''))
+                    .filter(Boolean)
+                    .join(', ');
+            } else {
+                teacherEl.textContent = '\u{1F464} \xd7' + teachers.length;
+            }
+            block.appendChild(teacherEl);
+        }
+
+        block.addEventListener('click', () => {
+            if (currentKeys.has(key)) {
+                currentKeys.delete(key);
+            } else {
+                if (maxSlots <= 1) {
+                    currentKeys.clear();
+                    timeline.querySelectorAll('.position-absolute').forEach(b => {
+                        if (b.style.cursor === 'pointer') {
+                            applyBlockStyle(b, false);
+                        }
+                    });
+                } else if (currentKeys.size >= maxSlots) {
+                    return;
+                }
+                currentKeys.add(key);
+            }
+            applyBlockStyle(block, currentKeys.has(key));
+            updateSelectionInput();
+        });
+
+        timeline.appendChild(block);
+    });
+};
+
 
 const getSelectedSlotKeys = (selectionInput) => {
     if (!selectionInput) {
@@ -422,19 +635,9 @@ const renderTeacherSelection = (
  * Init function.
  */
 export async function init() {
-    let container = document.querySelector('div.modal.show ' + SELECTOR.FORMCONTAINER);
-
+    const container = getActiveFormContainer();
     if (!container) {
-        const containers = document.querySelectorAll('div.prepage-body ' + SELECTOR.FORMCONTAINER);
-        containers.forEach(el => {
-            if (!isHidden(el)) {
-                container = el;
-            }
-        });
-
-        if (!container) {
-            return;
-        }
+        return;
     }
 
     const optionid = container.dataset.optionid;
@@ -453,6 +656,7 @@ export async function init() {
         const jsonInput = container.querySelector('input[name="slot_calendar_data"]');
         const customEditorRoot = container.querySelector('[data-region="slot-custom-editor"]');
         const customStartInput = container.querySelector('input[name="slot_custom_start"]');
+            const fixedEditorRoot = container.querySelector('[data-region="slot-fixed-editor"]');
         const customDurationSelect = container.querySelector('select[name="slot_custom_duration"]');
         const teacherSelectionInput = container.querySelector('input[name="slot_teacher_selection"]');
         const examinersLabelInput = container.querySelector('input[name="slot_examiners_per_slot_label"]');
@@ -466,8 +670,66 @@ export async function init() {
         const slots = parseSlots(jsonInput);
 
         if (calendarRoot && customStartInput && customDurationSelect && customEditorRoot && slots.length > 0) {
+            let lastCustomDaySlot = slots[0] || null;
+            let customCalendarPicker = null;
+
+            const findCustomDaySlot = (dayKey, daySlots) => {
+                if (Array.isArray(daySlots) && daySlots.length > 0) {
+                    return daySlots[0];
+                }
+
+                if (dayKey) {
+                    const fromAllSlots = slots.find(slot => {
+                        const d = new Date(Number(slot.start || 0) * 1000);
+                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+                            + `-${String(d.getDate()).padStart(2, '0')}`;
+                        return key === dayKey;
+                    });
+                    if (fromAllSlots) {
+                        return fromAllSlots;
+                    }
+                }
+
+                return null;
+            };
+
+            const renderResolvedCustomDay = (dayKey = '', daySlots = []) => {
+                const daySlot = findCustomDaySlot(dayKey, daySlots);
+                if (!daySlot) {
+                    return false;
+                }
+
+                lastCustomDaySlot = daySlot;
+                renderCustomDayEditor(customEditorRoot, daySlot, customStartInput, customDurationSelect);
+                customEditorRoot.style.display = '';
+                return true;
+            };
+
+            const renderFromPickerState = () => {
+                if (!customCalendarPicker) {
+                    return false;
+                }
+
+                const activeDay = String(customCalendarPicker.activeDay || '');
+                const activeDaySlots = activeDay && customCalendarPicker.slotsByDay instanceof Map
+                    ? (customCalendarPicker.slotsByDay.get(activeDay) || [])
+                    : [];
+
+                if (renderResolvedCustomDay(activeDay, activeDaySlots)) {
+                    return true;
+                }
+
+                if (lastCustomDaySlot) {
+                    renderCustomDayEditor(customEditorRoot, lastCustomDaySlot, customStartInput, customDurationSelect);
+                    customEditorRoot.style.display = '';
+                    return true;
+                }
+
+                return false;
+            };
+
             if (!calendarRoot.dataset.slotCalendarInitialized) {
-                initSlotCalendarPicker(calendarRoot, {
+                customCalendarPicker = initSlotCalendarPicker(calendarRoot, {
                     slots,
                     maxSelection: 1,
                     dayCountFormatter: (daySlots) => {
@@ -483,24 +745,18 @@ export async function init() {
                     onChange: () => {
                         // Custom mode persists start/duration via dedicated inputs.
                     },
-                    onDayChange: (dayKey) => {
-                        const daySlot = slots.find(slot => {
-                            const d = new Date(Number(slot.start) * 1000);
-                            const year = d.getFullYear();
-                            const month = String(d.getMonth() + 1).padStart(2, '0');
-                            const day = String(d.getDate()).padStart(2, '0');
-                            const key = `${year}-${month}-${day}`;
-                            return key === dayKey;
-                        }) || null;
-
-                        renderCustomDayEditor(customEditorRoot, daySlot, customStartInput, customDurationSelect);
+                    onDayChange: (dayKey, daySlots) => {
+                        renderResolvedCustomDay(dayKey, daySlots);
                     },
                 });
 
                 calendarRoot.dataset.slotCalendarInitialized = '1';
-                if (slots.length > 0) {
-                    renderCustomDayEditor(customEditorRoot, slots[0], customStartInput, customDurationSelect);
-                }
+                renderFromPickerState();
+                window.requestAnimationFrame(() => {
+                    if (!customEditorRoot.childElementCount) {
+                        renderFromPickerState();
+                    }
+                });
             }
 
             return;
@@ -512,7 +768,8 @@ export async function init() {
             slotsMap.set(key, slot);
         });
 
-        const teacherContainer = ensureTeacherContainer(container, calendarRoot || selectionInput);
+        const teacherAnchor = fixedEditorRoot || calendarRoot || selectionInput;
+        const teacherContainer = ensureTeacherContainer(container, teacherAnchor);
         const teachersRequired = Math.max(0, Number(teachersRequiredInput?.value || 0));
 
         const refreshTeacherSelection = () => {
@@ -529,21 +786,37 @@ export async function init() {
 
         if (calendarRoot && !calendarRoot.dataset.slotCalendarInitialized) {
             const maxInput = container.querySelector('input[name="slot_max_selection"]');
+            const maxSlots = Number(maxInput?.value || 1);
 
-            const initialSelection = selectionInput.value
-                ? selectionInput.value.split(',').map(value => value.trim()).filter(Boolean)
-                : [];
-
-            initSlotCalendarPicker(calendarRoot, {
+            const calendarOptions = {
                 slots,
-                maxSelection: Number(maxInput?.value || 1),
-                initialSelection,
-                onChange: (selection) => {
-                    selectionInput.value = selection.join(',');
-                    selectionInput.dispatchEvent(new Event('change', {bubbles: true}));
-                },
-            });
+                maxSelection: maxSlots,
+                initialSelection: fixedEditorRoot
+                    ? []
+                    : (selectionInput.value
+                        ? selectionInput.value.split(',').map(v => v.trim()).filter(Boolean)
+                        : []),
+                onChange: fixedEditorRoot
+                    ? () => {}
+                    : (selection) => {
+                        selectionInput.value = selection.join(',');
+                        selectionInput.dispatchEvent(new Event('change', {bubbles: true}));
+                    },
+            };
 
+            if (fixedEditorRoot) {
+                calendarOptions.showSlotList = false;
+                calendarOptions.onDayChange = (_dayKey, daySlots) => {
+                    renderFixedSlotsEditor(
+                        fixedEditorRoot,
+                        Array.isArray(daySlots) ? daySlots : [],
+                        selectionInput,
+                        maxSlots
+                    );
+                };
+            }
+
+            initSlotCalendarPicker(calendarRoot, calendarOptions);
             calendarRoot.dataset.slotCalendarInitialized = '1';
         }
 
@@ -557,14 +830,14 @@ export async function init() {
 
     setupInteractiveUi();
 
-    let continuebutton = container.closest(SELECTOR.PREPAGEBODY).querySelector(SELECTOR.CONTINUEBUTTON);
+    let continuebutton = getActiveContinueButton(container);
 
     dynamicForm.addEventListener(dynamicForm.events.FORM_SUBMITTED, e => {
         const response = e.detail;
 
         if (response) {
             if (!continuebutton) {
-                continuebutton = container.closest(SELECTOR.PREPAGEBODY).querySelector(SELECTOR.CONTINUEBUTTON);
+                continuebutton = getActiveContinueButton(container);
             }
             if (continuebutton) {
                 continuebutton.dataset.blocked = 'false';
@@ -614,12 +887,3 @@ function showValidationFeedback(container) {
     }
 }
 
-/**
- * Function to check visibility of element.
- * @param {*} el
- * @returns {boolean}
- */
-function isHidden(el) {
-    var style = window.getComputedStyle(el);
-    return ((style.display === 'none') || (style.visibility === 'hidden'));
-}

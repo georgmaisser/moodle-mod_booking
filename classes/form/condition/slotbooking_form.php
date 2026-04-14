@@ -313,6 +313,11 @@ class slotbooking_form extends dynamic_form {
                 'data-region' => 'slot-calendar-picker',
             ]);
             $mform->addElement('static', 'slot_calendar_ui', get_string('slot_selection', 'mod_booking'), $calendarcontainer);
+
+            $fixededitorcontainer = html_writer::div('', 'booking-slot-fixed-editor mt-2', [
+                'data-region' => 'slot-fixed-editor',
+            ]);
+            $mform->addElement('static', 'slot_fixed_editor_ui', '', $fixededitorcontainer);
             return;
         }
 
