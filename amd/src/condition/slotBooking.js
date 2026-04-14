@@ -139,13 +139,56 @@ const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSel
 
     container.appendChild(controls);
 
+    const timelineWrapper = document.createElement('div');
+    timelineWrapper.className = 'd-flex align-items-stretch gap-1';
+    container.appendChild(timelineWrapper);
+
+    const labelsCol = document.createElement('div');
+    labelsCol.className = 'position-relative flex-shrink-0';
+    labelsCol.style.width = '2.8rem';
+    labelsCol.style.height = '140px';
+    timelineWrapper.appendChild(labelsCol);
+
     const timeline = document.createElement('div');
-    timeline.className = 'border rounded position-relative';
+    timeline.className = 'border rounded position-relative flex-grow-1';
     timeline.style.height = '140px';
     timeline.style.background = 'linear-gradient(to bottom, #f8f9fa, #ffffff)';
     timeline.style.cursor = 'crosshair';
     timeline.style.overflow = 'hidden';
-    container.appendChild(timeline);
+    timelineWrapper.appendChild(timeline);
+
+    const timelineSpan = openUntil - openFrom;
+    if (timelineSpan > 0) {
+        const tickCandidates = [5 * 60, 10 * 60, 15 * 60, 20 * 60, 30 * 60, 3600, 2 * 3600, 3 * 3600];
+        const tickInterval = tickCandidates.find(c => timelineSpan / c <= 8) || 3600;
+        const firstTick = Math.ceil(openFrom / tickInterval) * tickInterval;
+        for (let tick = firstTick; tick <= openUntil; tick += tickInterval) {
+            const ratio = (tick - openFrom) / timelineSpan;
+
+            const lbl = document.createElement('div');
+            lbl.className = 'position-absolute text-muted';
+            lbl.style.top = `${ratio * 100}%`;
+            lbl.style.transform = 'translateY(-50%)';
+            lbl.style.left = '0';
+            lbl.style.right = '0';
+            lbl.style.fontSize = '0.65rem';
+            lbl.style.lineHeight = '1';
+            lbl.style.textAlign = 'right';
+            lbl.style.whiteSpace = 'nowrap';
+            lbl.textContent = toLocalTimeValue(tick);
+            labelsCol.appendChild(lbl);
+
+            const tickLine = document.createElement('div');
+            tickLine.className = 'position-absolute';
+            tickLine.style.left = '0';
+            tickLine.style.right = '0';
+            tickLine.style.top = `${ratio * 100}%`;
+            tickLine.style.height = '1px';
+            tickLine.style.background = 'rgba(0,0,0,0.10)';
+            tickLine.style.pointerEvents = 'none';
+            timeline.appendChild(tickLine);
+        }
+    }
 
     const addBookedBlock = (start, end) => {
         const span = openUntil - openFrom;
