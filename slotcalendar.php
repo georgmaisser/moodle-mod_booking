@@ -24,6 +24,7 @@
 
 use mod_booking\local\slotbooking\slot_availability;
 use mod_booking\local\slotbooking\slot_answer;
+use mod_booking\local\slotbooking\slot_price;
 
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->dirroot . '/mod/booking/lib.php');
@@ -172,6 +173,12 @@ $teachers = !empty($allteacherids) ? user_get_users_by_id($allteacherids) : [];
 $events = [];
 foreach ($slots as $slot) {
     $capacity = max(1, (int)$slot['capacity']);
+    $slotpricedata = slot_price::calculate_slot_price_data($optionid, (int)$slot['start'], (int)$slot['end']);
+    $currency = trim((string)($slotpricedata['currency'] ?? ''));
+    $priceformatted = format_float((float)$slotpricedata['price'], 2);
+    if ($currency !== '') {
+        $priceformatted .= ' ' . $currency;
+    }
     $slotstudents = [];
     $slotbookinganswers = [];
     $slotteachers = [];
@@ -216,6 +223,9 @@ foreach ($slots as $slot) {
         'startts' => (int)$slot['start'],
         'endts' => (int)$slot['end'],
         'capacity' => $capacity,
+        'price' => (float)$slotpricedata['price'],
+        'currency' => $currency,
+        'priceformatted' => $priceformatted,
         'students' => array_values($slotstudents),
         'bookinganswers' => array_values($slotbookinganswers),
         'teachers' => array_values($slotteachers),
@@ -262,6 +272,9 @@ if (empty($events)) {
                 . ' (' . (int)$event['bookedcount'] . '/' . (int)$event['capacity'] . ')',
             'bookings' => (int)$event['bookedcount'],
             'capacity' => (int)$event['capacity'],
+            'price' => (float)($event['price'] ?? 0),
+            'currency' => (string)($event['currency'] ?? ''),
+            'priceformatted' => (string)($event['priceformatted'] ?? ''),
         ];
     }
 
@@ -273,6 +286,9 @@ if (empty($events)) {
             'endts' => (int)$event['endts'],
             'bookedcount' => (int)$event['bookedcount'],
             'capacity' => (int)$event['capacity'],
+            'price' => (float)($event['price'] ?? 0),
+            'currency' => (string)($event['currency'] ?? ''),
+            'priceformatted' => (string)($event['priceformatted'] ?? ''),
             'students' => array_values($event['students']),
             'bookinganswers' => array_values($event['bookinganswers'] ?? []),
             'teachers' => array_values($event['teachers'] ?? []),
@@ -293,6 +309,7 @@ if (empty($events)) {
         'data-students-label' => get_string('bookedusers', 'mod_booking'),
         'data-teachers-label' => get_string('slot_calendar_teachers', 'mod_booking'),
         'data-occupancy-label' => get_string('slot_calendar_occupancy', 'mod_booking'),
+        'data-price-label' => get_string('bookingoptionprice', 'mod_booking'),
         'data-moveslot-label' => get_string('slot_move_action', 'mod_booking'),
         'data-selectslot-label' => get_string('slot_calendar_select_slot', 'mod_booking'),
         'data-nobookedslots-label' => get_string('slot_calendar_no_booked_slots', 'mod_booking'),

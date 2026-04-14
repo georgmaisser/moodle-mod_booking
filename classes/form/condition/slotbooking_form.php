@@ -30,6 +30,7 @@ use core_form\dynamic_form;
 use html_writer;
 use mod_booking\local\mobile\slotbookingstore;
 use mod_booking\local\slotbooking\slot_availability;
+use mod_booking\local\slotbooking\slot_price;
 use mod_booking\singleton_service;
 use moodle_url;
 use stdClass;
@@ -412,7 +413,7 @@ class slotbooking_form extends dynamic_form {
      *
      * @param int $optionid booking option id
      * @param int $userid user id
-     * @return array<int, array{key:string,start:int,end:int,daylabel:string,timelabel:string,teachers:array}>
+     * @return array<int, array{key:string,start:int,end:int,daylabel:string,timelabel:string,teachers:array,price:float,currency:string,priceformatted:string}>
      */
     private static function get_open_slots(int $optionid, int $userid): array {
         $slots = slot_availability::get_slots_with_status($optionid, $userid);
@@ -435,6 +436,13 @@ class slotbooking_form extends dynamic_form {
                 $label .= ' (!)';
             }
 
+            $slotpricedata = slot_price::calculate_slot_price_data($optionid, $start, $end, $userid);
+            $currency = trim((string)($slotpricedata['currency'] ?? ''));
+            $priceformatted = format_float((float)$slotpricedata['price'], 2);
+            if ($currency !== '') {
+                $priceformatted .= ' ' . $currency;
+            }
+
             $openslots[] = [
                 'key' => $key,
                 'start' => $start,
@@ -442,6 +450,9 @@ class slotbooking_form extends dynamic_form {
                 'daylabel' => $daylabel,
                 'timelabel' => $label,
                 'teachers' => slot_availability::get_available_teachers_for_slot($optionid, $start, $end),
+                'price' => (float)$slotpricedata['price'],
+                'currency' => $currency,
+                'priceformatted' => $priceformatted,
             ];
         }
 

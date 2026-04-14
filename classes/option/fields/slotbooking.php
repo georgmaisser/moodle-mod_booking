@@ -199,9 +199,20 @@ class slotbooking extends field_base {
         $mform->setType('slot_booking_view_mode', PARAM_ALPHA);
         $mform->hideIf('slot_booking_view_mode', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
 
+        $mform->addElement('select', 'slot_add_examiners', get_string('slot_add_examiners_to_slots', 'mod_booking'), [
+            0 => get_string('no'),
+            1 => get_string('yes'),
+        ]);
+        $mform->setType('slot_add_examiners', PARAM_INT);
+        $mform->hideIf('slot_add_examiners', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+
         // Examiner Pool: Autocomplete für beliebige Nutzer (wie bei Lehrerauswahl in anderen booking-Formularen).
         $useroptions = [];
         if (!empty($formdata['cmid'])) {
+            global $CFG;
+
+            require_once($CFG->dirroot . '/user/lib.php');
+
             [$course] = get_course_and_cm_from_cmid((int)$formdata['cmid']);
             $coursecontext = context_course::instance($course->id);
             // Alle Nutzer mit Namen und E-Mail (ggf. einschränken, z.B. auf course users oder site users, je nach Policy).
@@ -209,7 +220,7 @@ class slotbooking extends field_base {
             $userids = array_map(static function ($user): int {
                 return (int)$user->id;
             }, $users);
-            $loadedusers = !empty($userids) ? \user_get_users_by_id($userids) : [];
+            $loadedusers = !empty($userids) ? user_get_users_by_id($userids) : [];
 
             foreach ($userids as $userid) {
                 if (empty($loadedusers[$userid])) {
@@ -227,10 +238,12 @@ class slotbooking extends field_base {
         ]);
         $mform->setType('slot_teacher_pool', PARAM_INT);
         $mform->hideIf('slot_teacher_pool', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        $mform->hideIf('slot_teacher_pool', 'slot_add_examiners', 'eq', 0);
 
         $mform->addElement('text', 'slot_teachers_required', get_string('slot_teachers_required', 'mod_booking'));
         $mform->setType('slot_teachers_required', PARAM_INT);
         $mform->hideIf('slot_teachers_required', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        $mform->hideIf('slot_teachers_required', 'slot_add_examiners', 'eq', 0);
 
         $currentoptionid = (int)($formdata['optionid'] ?? $formdata['id'] ?? 0);
         $cmid = (int)($formdata['cmid'] ?? 0);
@@ -363,8 +376,9 @@ class slotbooking extends field_base {
         $record->max_participants_per_slot = max(1, (int)($formdata->slot_max_participants_per_slot ?? 1));
         $record->max_slots_per_user = max(1, (int)($formdata->slot_max_slots_per_user ?? 1));
         $record->booking_interface = ($formdata->slot_booking_view_mode ?? 'calendar') === 'calendar' ? 'calendar' : 'list';
-        $record->teacher_pool = json_encode(self::extract_teacher_pool_from_formdata($formdata));
-        $record->teachers_required = max(0, (int)($formdata->slot_teachers_required ?? 0));
+        $addexaminers = !empty($formdata->slot_add_examiners);
+        $record->teacher_pool = json_encode($addexaminers ? self::extract_teacher_pool_from_formdata($formdata) : []);
+        $record->teachers_required = $addexaminers ? max(0, (int)($formdata->slot_teachers_required ?? 0)) : 0;
         $record->timemodified = $now;
 
         if ($existing = $DB->get_record('booking_slot_config', ['optionid' => $optionid], '*', IGNORE_MISSING)) {
@@ -400,6 +414,7 @@ class slotbooking extends field_base {
         $data->slot_max_participants_per_slot = 1;
         $data->slot_max_slots_per_user = 1;
         $data->slot_booking_view_mode = 'calendar';
+        $data->slot_add_examiners = 0;
         $data->slot_teacher_pool = [];
         $data->slot_teachers_required = 0;
         for ($i = 1; $i <= 7; $i++) {
@@ -429,6 +444,7 @@ class slotbooking extends field_base {
                     ? (string)$config->booking_interface
                     : 'calendar';
                 $data->slot_teachers_required = (int)$config->teachers_required;
+                $data->slot_add_examiners = !empty($config->teacher_pool) || !empty($config->teachers_required) ? 1 : 0;
 
                 $pool = json_decode((string)$config->teacher_pool, true);
                 if (is_array($pool)) {

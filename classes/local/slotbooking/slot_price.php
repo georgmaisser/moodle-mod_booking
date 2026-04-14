@@ -32,6 +32,38 @@ use mod_booking\singleton_service;
  */
 class slot_price {
     /**
+     * Calculate the final price data for a single slot.
+     *
+     * @param int $optionid booking option id
+     * @param int $slotstart slot start timestamp
+     * @param int $slotend slot end timestamp
+     * @param int $userid user id for price category resolution
+     * @return array{price:float,currency:string,pricecategoryidentifier:string}
+     */
+    public static function calculate_slot_price_data(
+        int $optionid,
+        int $slotstart,
+        int $slotend,
+        int $userid = 0
+    ): array {
+        $basedata = self::get_base_slot_price_data($optionid, $userid);
+
+        if ($slotstart <= 0 || $slotend <= $slotstart) {
+            return $basedata;
+        }
+
+        $basedata['price'] = round((float)slot_rules::apply_price_rules_to_slot_price(
+            $optionid,
+            $slotstart,
+            $slotend,
+            (float)$basedata['price'],
+            (string)$basedata['pricecategoryidentifier']
+        ), 2);
+
+        return $basedata;
+    }
+
+    /**
      * Calculate the final slot booking price for a number of slots.
      *
      * @param int $optionid booking option id
@@ -61,14 +93,8 @@ class slot_price {
                 continue;
             }
 
-            $slotprice = slot_rules::apply_price_rules_to_slot_price(
-                $optionid,
-                $slotstart,
-                $slotend,
-                $basepriceperslot,
-                $pricecategoryidentifier
-            );
-            $total += $slotprice;
+            $slotpricedata = self::calculate_slot_price_data($optionid, $slotstart, $slotend, $userid);
+            $total += (float)$slotpricedata['price'];
         }
 
         return round($total, 2);
@@ -79,7 +105,7 @@ class slot_price {
      *
      * @param int $optionid booking option id
      * @param int $userid user id for category-specific pricing
-     * @return array{price:float, pricecategoryidentifier:string}
+     * @return array{price:float,currency:string,pricecategoryidentifier:string}
      */
     private static function get_base_slot_price_data(int $optionid, int $userid = 0): array {
         $user = null;
@@ -91,6 +117,7 @@ class slot_price {
         if (isset($resolvedprice['price']) && $resolvedprice['price'] !== '') {
             return [
                 'price' => (float)$resolvedprice['price'],
+                'currency' => (string)($resolvedprice['currency'] ?? ''),
                 'pricecategoryidentifier' => (string)($resolvedprice['pricecategoryidentifier'] ?? 'default'),
             ];
         }
@@ -99,6 +126,7 @@ class slot_price {
         if (empty($records)) {
             return [
                 'price' => 0.0,
+                'currency' => '',
                 'pricecategoryidentifier' => 'default',
             ];
         }
@@ -108,6 +136,7 @@ class slot_price {
             if (in_array('default', $identifiers, true)) {
                 return [
                     'price' => (float)$record->price,
+                    'currency' => (string)($record->currency ?? ''),
                     'pricecategoryidentifier' => (string)$record->pricecategoryidentifier,
                 ];
             }
@@ -116,6 +145,7 @@ class slot_price {
         $first = reset($records);
         return [
             'price' => (float)($first->price ?? 0),
+            'currency' => (string)($first->currency ?? ''),
             'pricecategoryidentifier' => (string)($first->pricecategoryidentifier ?? 'default'),
         ];
     }

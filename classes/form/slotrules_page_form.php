@@ -28,6 +28,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir . '/formslib.php');
 
+use mod_booking\price as booking_price;
 use mod_booking\local\slotbooking\slot_rule_manager;
 
 /**
@@ -101,8 +102,14 @@ class slotrules_page_form extends \moodleform {
         $mform->addElement('header', 'slotrulepriceheader', get_string('slot_rule_priceheader', 'mod_booking'));
         $mform->hideIf('slotrulepriceheader', 'ruletype', 'neq', slot_rule_manager::RULETYPE_PRICE);
 
-        $mform->addElement('text', 'pricecategoryidentifier', get_string('slot_rule_pricecategoryidentifier', 'mod_booking'));
-        $mform->setType('pricecategoryidentifier', PARAM_TEXT);
+        $pricecategoryoptions = self::get_pricecategory_options($optionid);
+        $mform->addElement(
+            'select',
+            'pricecategoryidentifier',
+            get_string('slot_rule_pricecategoryidentifier', 'mod_booking'),
+            $pricecategoryoptions
+        );
+        $mform->setType('pricecategoryidentifier', PARAM_ALPHANUMEXT);
         $mform->setDefault('pricecategoryidentifier', 'default');
         $mform->hideIf('pricecategoryidentifier', 'ruletype', 'neq', slot_rule_manager::RULETYPE_PRICE);
 
@@ -156,9 +163,41 @@ class slotrules_page_form extends \moodleform {
         if (($data['ruletype'] ?? '') === slot_rule_manager::RULETYPE_PRICE) {
             if (($data['pricecategoryidentifier'] ?? '') === '') {
                 $errors['pricecategoryidentifier'] = get_string('required');
+            } else {
+                $pricecategoryoptions = self::get_pricecategory_options((int)($data['optionid'] ?? 0));
+                if (!array_key_exists((string)$data['pricecategoryidentifier'], $pricecategoryoptions)) {
+                    $errors['pricecategoryidentifier'] = get_string('invaliddata', 'error');
+                }
             }
         }
 
         return $errors;
+    }
+
+    /**
+     * Return selectable active price categories.
+     *
+     * @param int $optionid
+     * @return array
+     */
+    private static function get_pricecategory_options(int $optionid): array {
+        $pricehandler = new booking_price('option', $optionid);
+        $options = [];
+
+        foreach ((array)$pricehandler->pricecategories as $pricecategory) {
+            $identifier = (string)($pricecategory->identifier ?? '');
+            if ($identifier === '') {
+                continue;
+            }
+
+            $name = trim((string)($pricecategory->name ?? ''));
+            $options[$identifier] = $name !== '' ? $name . ' (' . $identifier . ')' : $identifier;
+        }
+
+        if (empty($options)) {
+            $options['default'] = 'default';
+        }
+
+        return $options;
     }
 }

@@ -106,6 +106,13 @@ const renderDetails = (target, slot, detail, labels) => {
     occupancy.textContent = `${labels.occupancy}: ${Number(detail.bookedcount || 0)}/${Number(detail.capacity || 0)}`;
     card.appendChild(occupancy);
 
+    if (detail.priceformatted) {
+        const price = document.createElement('div');
+        price.className = 'small mb-2';
+        price.textContent = `${labels.price}: ${detail.priceformatted}`;
+        card.appendChild(price);
+    }
+
     const studentsLabel = document.createElement('div');
     studentsLabel.className = 'small fw-bold';
     studentsLabel.textContent = labels.students;
@@ -163,6 +170,7 @@ export const init = (containerId) => {
         students: container.dataset.studentsLabel || 'Booked students',
         teachers: container.dataset.teachersLabel || 'Booked teachers',
         occupancy: container.dataset.occupancyLabel || 'Occupancy',
+        price: container.dataset.priceLabel || 'Price',
         moveSlot: container.dataset.moveslotLabel || 'Move slot',
         selectSlot: container.dataset.selectslotLabel || 'Select a slot to view booked students.',
         none: container.dataset.noneLabel || 'None',

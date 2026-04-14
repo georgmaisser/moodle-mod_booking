@@ -34,6 +34,7 @@ use mod_booking\booking_bookit;
 use mod_booking\booking_option;
 use mod_booking\enrollink;
 use mod_booking\event\booking_failed;
+use mod_booking\local\slotbooking\slot_answer;
 use mod_booking\semester;
 use mod_booking\singleton_service;
 use mod_booking\subbookings\subbookings_info;
@@ -58,6 +59,8 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
 
         global $CFG, $USER;
         require_once($CFG->dirroot . '/mod/booking/lib.php');
+
+        $effectiveuserid = empty($userid) ? (int)$USER->id : $userid;
 
         if ($area === 'option') {
             // First, we need to check if we have the right to actually load the item.
@@ -148,8 +151,8 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
 
             $ba = singleton_service::get_instance_of_booking_answers($settings);
             $users = $ba->get_usersreserved();
-            $userid = empty($userid) ? $userid : $USER->id;
-            $answer = $users[$userid] ?? [];
+            $answer = $users[$effectiveuserid] ?? [];
+            $item = self::apply_reserved_slotbooking_price($settings, $item, $answer);
             $nritems = enrollink::return_number_of_booked_licenses_from_booking_answer((object)$answer);
 
             $numberofitems = empty($nritems) ? 1 : $nritems;
@@ -227,6 +230,32 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
         } else {
             return ['error' => 'novalidarea'];
         }
+    }
+
+    /**
+     * Override cart item price from reserved slotbooking answer data when available.
+     *
+     * @param object $settings
+     * @param array $item
+     * @param mixed $answer
+     * @return array
+     */
+    private static function apply_reserved_slotbooking_price(object $settings, array $item, $answer): array {
+        if ((int)($settings->type ?? 0) !== MOD_BOOKING_OPTIONTYPE_SLOTBOOKING) {
+            return $item;
+        }
+
+        if (empty($answer)) {
+            return $item;
+        }
+
+        $slotdata = slot_answer::get_slot_data((object)$answer);
+        if (!is_array($slotdata) || !isset($slotdata['price']) || !is_numeric($slotdata['price'])) {
+            return $item;
+        }
+
+        $item['price'] = round((float)$slotdata['price'], 2);
+        return $item;
     }
 
     /**

@@ -110,6 +110,9 @@ export class SlotCalendarPicker {
                 teachers: Array.isArray(slot.teachers) ? slot.teachers : [],
                 bookings: Number(slot.bookings || 0),
                 capacity: Number(slot.capacity || 0),
+                price: Number(slot.price || 0),
+                currency: String(slot.currency || ''),
+                priceformatted: String(slot.priceformatted || '').trim(),
             };
 
             if (!this.slotsByDay.has(dayKey)) {
@@ -525,6 +528,22 @@ export class SlotCalendarPicker {
                 });
 
                 btn.appendChild(teacherLine);
+            }
+
+            if (slot.priceformatted) {
+                if (btn.textContent !== '') {
+                    btn.textContent = '';
+
+                    const timeLine = document.createElement('div');
+                    timeLine.className = 'fw-bold small';
+                    timeLine.textContent = slot.timelabel;
+                    btn.appendChild(timeLine);
+                }
+
+                const priceLine = document.createElement('div');
+                priceLine.className = 'small text-muted mt-1';
+                priceLine.textContent = slot.priceformatted;
+                btn.appendChild(priceLine);
             }
 
             const selected = this.selected.has(slot.key);
