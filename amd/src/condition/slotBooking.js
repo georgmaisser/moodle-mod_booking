@@ -68,6 +68,164 @@ const getSelectionInput = (container) => {
         || container.querySelector('select[name="slot_selection[]"]');
 };
 
+const toLocalTimeValue = (timestamp) => {
+    const date = new Date(Number(timestamp) * 1000);
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+};
+
+const toTimestampForDay = (dayTimestamp, timeValue) => {
+    if (!timeValue || !/^\d{2}:\d{2}$/.test(timeValue)) {
+        return 0;
+    }
+
+    const day = new Date(Number(dayTimestamp) * 1000);
+    const [hours, minutes] = timeValue.split(':').map(Number);
+    day.setHours(hours, minutes, 0, 0);
+    return Math.floor(day.getTime() / 1000);
+};
+
+const snapStartTimestamp = (timestamp, openFrom, openUntil, duration, intervalSeconds) => {
+    const minStart = Number(openFrom || 0);
+    const maxStart = Math.max(minStart, Number(openUntil || 0) - Math.max(1, Number(duration || 0)));
+    const interval = Math.max(1, Number(intervalSeconds || 0));
+    const raw = Math.max(minStart, Math.min(Number(timestamp || 0), maxStart));
+    const stepsFromOpen = Math.ceil((raw - minStart) / interval);
+    const snapped = minStart + (Math.max(0, stepsFromOpen) * interval);
+    return Math.max(minStart, Math.min(snapped, maxStart));
+};
+
+const renderCustomDayEditor = (container, daySlot, hiddenStartInput, durationSelect) => {
+    container.innerHTML = '';
+    if (!daySlot || !hiddenStartInput || !durationSelect) {
+        return;
+    }
+
+    const openFrom = Number(daySlot.openfrom || 0);
+    const openUntil = Number(daySlot.openuntil || 0);
+    const startIntervalMinutes = Math.max(1, Number(daySlot.startintervalminutes || 30));
+    const startIntervalSeconds = startIntervalMinutes * 60;
+    if (openFrom <= 0 || openUntil <= openFrom) {
+        return;
+    }
+
+    const existingStart = Number(hiddenStartInput.value || 0);
+    const selectedDuration = Number(durationSelect.value || 0);
+    const defaultStart = Math.max(openFrom, Math.min(existingStart || openFrom, openUntil - Math.max(1, selectedDuration)));
+
+    const info = document.createElement('div');
+    info.className = 'small text-muted mb-2';
+    info.textContent = `${daySlot.daylabel}: ${toLocalTimeValue(openFrom)} - ${toLocalTimeValue(openUntil)}`;
+    container.appendChild(info);
+
+    const controls = document.createElement('div');
+    controls.className = 'd-flex align-items-center gap-2 mb-2';
+
+    const label = document.createElement('label');
+    label.className = 'small mb-0';
+    label.textContent = 'Start';
+    controls.appendChild(label);
+
+    const timeInput = document.createElement('input');
+    timeInput.type = 'time';
+    timeInput.className = 'form-control form-control-sm';
+    timeInput.style.maxWidth = '10rem';
+    timeInput.step = String(startIntervalSeconds);
+    timeInput.min = toLocalTimeValue(openFrom);
+    timeInput.max = toLocalTimeValue(openUntil);
+    timeInput.value = toLocalTimeValue(defaultStart);
+    controls.appendChild(timeInput);
+
+    container.appendChild(controls);
+
+    const timeline = document.createElement('div');
+    timeline.className = 'border rounded position-relative';
+    timeline.style.height = '140px';
+    timeline.style.background = 'linear-gradient(to bottom, #f8f9fa, #ffffff)';
+    timeline.style.cursor = 'crosshair';
+    timeline.style.overflow = 'hidden';
+    container.appendChild(timeline);
+
+    const addBookedBlock = (start, end) => {
+        const span = openUntil - openFrom;
+        if (span <= 0) {
+            return;
+        }
+
+        const clippedStart = Math.max(openFrom, Number(start || 0));
+        const clippedEnd = Math.min(openUntil, Number(end || 0));
+        if (clippedEnd <= clippedStart) {
+            return;
+        }
+
+        const top = ((clippedStart - openFrom) / span) * 100;
+        const height = ((clippedEnd - clippedStart) / span) * 100;
+
+        const block = document.createElement('div');
+        block.className = 'position-absolute';
+        block.style.left = '0';
+        block.style.right = '0';
+        block.style.top = `${top}%`;
+        block.style.height = `${Math.max(2, height)}%`;
+        block.style.background = 'rgba(220,53,69,0.18)';
+        block.style.borderTop = '1px solid rgba(220,53,69,0.35)';
+        block.style.borderBottom = '1px solid rgba(220,53,69,0.35)';
+        timeline.appendChild(block);
+    };
+
+    (Array.isArray(daySlot.bookedranges) ? daySlot.bookedranges : []).forEach(range => {
+        addBookedBlock(range.start, range.end);
+    });
+
+    const selectionBlock = document.createElement('div');
+    selectionBlock.className = 'position-absolute';
+    selectionBlock.style.left = '0';
+    selectionBlock.style.right = '0';
+    selectionBlock.style.top = '0';
+    selectionBlock.style.height = '2px';
+    selectionBlock.style.background = 'rgba(13,110,253,0.20)';
+    selectionBlock.style.borderTop = '1px solid rgba(13,110,253,0.75)';
+    selectionBlock.style.borderBottom = '1px solid rgba(13,110,253,0.75)';
+    timeline.appendChild(selectionBlock);
+
+    const syncStart = (timestamp) => {
+        const duration = Math.max(1, Number(durationSelect.value || 0));
+        const clamped = snapStartTimestamp(
+            timestamp,
+            openFrom,
+            openUntil,
+            duration,
+            startIntervalSeconds
+        );
+        hiddenStartInput.value = String(clamped);
+        timeInput.value = toLocalTimeValue(clamped);
+
+        const span = openUntil - openFrom;
+        const top = span > 0 ? ((clamped - openFrom) / span) * 100 : 0;
+        const height = span > 0 ? (duration / span) * 100 : 0;
+        selectionBlock.style.top = `${Math.max(0, Math.min(100, top))}%`;
+        selectionBlock.style.height = `${Math.max(2, Math.min(100, height))}%`;
+    };
+
+    timeInput.addEventListener('change', () => {
+        syncStart(toTimestampForDay(daySlot.start, timeInput.value));
+    });
+
+    durationSelect.addEventListener('change', () => {
+        syncStart(Number(hiddenStartInput.value || openFrom));
+    });
+
+    timeline.addEventListener('click', (event) => {
+        const rect = timeline.getBoundingClientRect();
+        const ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0;
+        const timestamp = openFrom + Math.round((openUntil - openFrom) * Math.max(0, Math.min(1, ratio)));
+        syncStart(timestamp);
+    });
+
+    syncStart(defaultStart);
+};
+
 const getSelectedSlotKeys = (selectionInput) => {
     if (!selectionInput) {
         return [];
@@ -250,6 +408,9 @@ export async function init() {
         const calendarRoot = container.querySelector('[data-region="slot-calendar-picker"]');
         const selectionInput = getSelectionInput(container);
         const jsonInput = container.querySelector('input[name="slot_calendar_data"]');
+        const customEditorRoot = container.querySelector('[data-region="slot-custom-editor"]');
+        const customStartInput = container.querySelector('input[name="slot_custom_start"]');
+        const customDurationSelect = container.querySelector('select[name="slot_custom_duration"]');
         const teacherSelectionInput = container.querySelector('input[name="slot_teacher_selection"]');
         const examinersLabelInput = container.querySelector('input[name="slot_examiners_per_slot_label"]');
         const teachersRequiredInput = container.querySelector('input[name="slot_teachers_required_count"]');
@@ -260,6 +421,48 @@ export async function init() {
         }
 
         const slots = parseSlots(jsonInput);
+
+        if (calendarRoot && customStartInput && customDurationSelect && customEditorRoot && slots.length > 0) {
+            if (!calendarRoot.dataset.slotCalendarInitialized) {
+                initSlotCalendarPicker(calendarRoot, {
+                    slots,
+                    maxSelection: 1,
+                    dayCountFormatter: (daySlots) => {
+                        const daySlot = Array.isArray(daySlots) ? daySlots[0] : null;
+                        return daySlot && daySlot.bookable ? 'Buchbar' : 'Nicht buchbar';
+                    },
+                    dayStateResolver: (daySlots) => {
+                        const daySlot = Array.isArray(daySlots) ? daySlots[0] : null;
+                        return daySlot && daySlot.bookable ? '' : 'full';
+                    },
+                    slotFilter: () => false,
+                    emptySlotListText: '',
+                    onChange: () => {
+                        // Custom mode persists start/duration via dedicated inputs.
+                    },
+                    onDayChange: (dayKey) => {
+                        const daySlot = slots.find(slot => {
+                            const d = new Date(Number(slot.start) * 1000);
+                            const year = d.getFullYear();
+                            const month = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            const key = `${year}-${month}-${day}`;
+                            return key === dayKey;
+                        }) || null;
+
+                        renderCustomDayEditor(customEditorRoot, daySlot, customStartInput, customDurationSelect);
+                    },
+                });
+
+                calendarRoot.dataset.slotCalendarInitialized = '1';
+                if (slots.length > 0) {
+                    renderCustomDayEditor(customEditorRoot, slots[0], customStartInput, customDurationSelect);
+                }
+            }
+
+            return;
+        }
+
         const slotsMap = new Map();
         slots.forEach(slot => {
             const key = String(slot.key || `${slot.start}:${slot.end}`);

@@ -39,6 +39,9 @@ use stdClass;
  * Dynamic slot selection form.
  */
 class slotbooking_form extends dynamic_form {
+    /** @var int step size for custom duration options (minutes) */
+    private const CUSTOM_SLOT_DURATION_STEP_MINUTES = 15;
+
     /**
      * Context for dynamic submission.
      *
@@ -77,12 +80,24 @@ class slotbooking_form extends dynamic_form {
         $data->userid = $userid;
         $data->slot_selection = '';
         $data->slot_teacher_selection = '';
+        $data->slot_custom_start = 0;
+        $data->slot_custom_duration = 0;
 
         if (!empty($cached) && !empty($cached->slot_selection)) {
             $data->slot_selection = (string)$cached->slot_selection;
         }
         if (!empty($cached) && isset($cached->slot_teacher_selection)) {
             $data->slot_teacher_selection = (string)$cached->slot_teacher_selection;
+        }
+
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+        $config = $settings->slotconfig ?? null;
+        if ((string)($config->slot_type ?? 'fixed') === 'userdefined' && strpos((string)$data->slot_selection, ':') !== false) {
+            [$start, $end] = array_map('intval', explode(':', (string)$data->slot_selection, 2));
+            if ($start > 0 && $end > $start) {
+                $data->slot_custom_start = $start;
+                $data->slot_custom_duration = $end - $start;
+            }
         }
 
         $selectedslotkeys = array_values(array_unique(array_filter(
@@ -108,6 +123,28 @@ class slotbooking_form extends dynamic_form {
      */
     public function process_dynamic_submission(): stdClass {
         $data = $this->get_data();
+
+        $settings = singleton_service::get_instance_of_booking_option_settings((int)$data->id);
+        $config = $settings->slotconfig ?? null;
+        $slottype = (string)($config->slot_type ?? 'fixed');
+
+        if ($slottype === 'userdefined') {
+            $start = (int)($data->slot_custom_start ?? 0);
+            $duration = (int)($data->slot_custom_duration ?? 0);
+            $end = $start + $duration;
+            $selectionvalue = ($start > 0 && $end > $start) ? ($start . ':' . $end) : '';
+
+            $data->slot_selection = $selectionvalue;
+            $data->slot_teacher_selection = json_encode([]);
+
+            $store = new slotbookingstore((int)$data->userid, (int)$data->id);
+            $store->set_slotbooking_data((object)[
+                'slot_selection' => $selectionvalue,
+                'slot_teacher_selection' => $data->slot_teacher_selection,
+            ]);
+
+            return $data;
+        }
 
         $submittedvalues = (array)$data;
         $selectedfromcheckboxes = self::extract_selected_slot_entries_from_checkboxes($submittedvalues);
@@ -190,13 +227,18 @@ class slotbooking_form extends dynamic_form {
 
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
         $config = $settings->slotconfig ?? null;
+        $slottype = (string)($config->slot_type ?? 'fixed');
         $maxslots = max(1, (int)($config->max_slots_per_user ?? 1));
         $teachersrequired = max(0, (int)($config->teachers_required ?? 0));
         $viewmode = in_array((string)($config->booking_interface ?? 'list'), ['list', 'calendar'], true)
             ? (string)$config->booking_interface
             : 'list';
 
-        $openslots = self::get_open_slots($optionid, $userid);
+        if ($slottype === 'userdefined') {
+            $teachersrequired = 0;
+        }
+
+        $openslots = $slottype === 'userdefined' ? [] : self::get_open_slots($optionid, $userid);
 
         $mform->addElement('hidden', 'slot_max_selection', (string)$maxslots);
         $mform->setType('slot_max_selection', PARAM_INT);
@@ -212,6 +254,42 @@ class slotbooking_form extends dynamic_form {
 
         $mform->addElement('hidden', 'slot_validation_error_target', 'slot_selection');
         $mform->setType('slot_validation_error_target', PARAM_ALPHANUMEXT);
+
+        if ($slottype === 'userdefined') {
+            $mform->addElement('hidden', 'slot_selection', '');
+            $mform->setType('slot_selection', PARAM_TEXT);
+
+            $mform->addElement('hidden', 'slot_custom_start', 0);
+            $mform->setType('slot_custom_start', PARAM_INT);
+
+            $mform->setDefault('slot_validation_error_target', 'slot_custom_start');
+
+            $durationoptions = self::get_custom_duration_options($config);
+            $mform->addElement(
+                'select',
+                'slot_custom_duration',
+                get_string('slot_custom_duration', 'mod_booking'),
+                $durationoptions
+            );
+            $mform->setType('slot_custom_duration', PARAM_INT);
+            $mform->setDefault('slot_custom_duration', self::get_default_custom_duration($config, $durationoptions));
+
+            $customdays = self::get_custom_open_days($optionid, $userid);
+            $mform->addElement('hidden', 'slot_calendar_data', json_encode($customdays));
+            $mform->setType('slot_calendar_data', PARAM_RAW_TRIMMED);
+
+            $calendarcontainer = html_writer::div('', 'booking-slot-calendar-picker', [
+                'data-region' => 'slot-calendar-picker',
+            ]);
+            $mform->addElement('static', 'slot_calendar_ui', get_string('slot_selection', 'mod_booking'), $calendarcontainer);
+
+            $customeditorcontainer = html_writer::div('', 'booking-slot-custom-editor mt-2', [
+                'data-region' => 'slot-custom-editor',
+            ]);
+            $mform->addElement('static', 'slot_custom_editor_ui', '', $customeditorcontainer);
+
+            return;
+        }
 
         if (empty($openslots)) {
             $mform->addElement('static', 'slot_selection_info', '', get_string('slot_no_open_slots', 'mod_booking'));
@@ -286,6 +364,46 @@ class slotbooking_form extends dynamic_form {
         }
 
         $maxslots = max(1, (int)($data['slot_max_selection'] ?? 1));
+
+        $optionid = (int)($data['id'] ?? 0);
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+        $config = $settings->slotconfig ?? null;
+        $slottype = (string)($config->slot_type ?? 'fixed');
+
+        if ($slottype === 'userdefined') {
+            $start = (int)($data['slot_custom_start'] ?? 0);
+            $duration = (int)($data['slot_custom_duration'] ?? 0);
+            $durationoptions = self::get_custom_duration_options($config);
+            $startintervalseconds = max(1, (int)($config->slot_start_interval_minutes ?? 30)) * MINSECS;
+
+            if ($start <= 0 || $duration <= 0 || !array_key_exists($duration, $durationoptions)) {
+                $errors[$errortarget] = get_string('slot_error_selection_required', 'mod_booking');
+                return $errors;
+            }
+
+            $end = $start + $duration;
+            $openingseconds = self::time_to_seconds((string)($config->opening_time ?? '08:00'));
+            $daystart = strtotime('midnight', $start);
+            $dayopening = $daystart + $openingseconds;
+            if ($start < $dayopening || (($start - $dayopening) % $startintervalseconds) !== 0) {
+                $errors[$errortarget] = get_string('slot_error_selected_unavailable', 'mod_booking');
+                return $errors;
+            }
+
+            if (!slot_availability::is_within_slot_openings($optionid, $start, $end)) {
+                $errors[$errortarget] = get_string('slot_error_selected_unavailable', 'mod_booking');
+                return $errors;
+            }
+
+            $evaluation = slot_availability::evaluate_slot_for_user($optionid, $start, $end, (int)($data['userid'] ?? 0));
+            if (empty($evaluation['bookable'])) {
+                $errors[$errortarget] = (string)($evaluation['errormessage']
+                    ?? get_string('slot_error_selected_unavailable', 'mod_booking'));
+            }
+
+            return $errors;
+        }
+
         $entries = self::extract_selected_slot_entries_from_checkboxes($data);
         if (empty($entries)) {
             $selectiondata = $data['slot_selection'] ?? '';
@@ -310,8 +428,6 @@ class slotbooking_form extends dynamic_form {
             $errors[$errortarget] = get_string('slot_error_selection_toomany', 'mod_booking', $maxslots);
             return $errors;
         }
-
-        $optionid = (int)($data['id'] ?? 0);
 
         foreach ($entries as $entry) {
             if (strpos($entry, ':') === false) {
@@ -411,9 +527,7 @@ class slotbooking_form extends dynamic_form {
     /**
      * Return currently open slots with labels and teacher availability.
      *
-     * @param int $optionid booking option id
-     * @param int $userid user id
-     * @return array<int, array{key:string,start:int,end:int,daylabel:string,timelabel:string,teachers:array,price:float,currency:string,priceformatted:string}>
+     * @return array<int, array<string, mixed>>
      */
     private static function get_open_slots(int $optionid, int $userid): array {
         $slots = slot_availability::get_slots_with_status($optionid, $userid);
@@ -487,5 +601,194 @@ class slotbooking_form extends dynamic_form {
         }
 
         return array_values(array_unique($entries));
+    }
+
+    /**
+     * Build allowed duration options for user-defined slots.
+     *
+     * @param object|null $config
+     * @return array<int, string>
+     */
+    private static function get_custom_duration_options(?object $config): array {
+        $maxminutes = max(1, (int)($config->slot_duration_minutes ?? 30));
+        $minminutes = max(1, (int)($config->slot_interval_minutes ?? 60));
+        $maxdays = max(1, (int)($config->slot_max_days_per_slot ?? 1));
+
+        $lowerminutes = min($minminutes, $maxminutes);
+        $upperminutes = min(max($minminutes, $maxminutes), $maxdays * DAYMINS);
+        $step = self::CUSTOM_SLOT_DURATION_STEP_MINUTES;
+
+        $options = [];
+        for ($minutes = $lowerminutes; $minutes <= $upperminutes; $minutes += $step) {
+            $seconds = $minutes * MINSECS;
+            $options[$seconds] = format_time($seconds);
+        }
+
+        if (empty($options)) {
+            $seconds = $lowerminutes * MINSECS;
+            $options[$seconds] = format_time($seconds);
+        }
+
+        return $options;
+    }
+
+    /**
+     * Resolve default custom slot duration in seconds.
+     *
+     * @param object|null $config
+     * @param array<int, string> $options
+     * @return int
+     */
+    private static function get_default_custom_duration(?object $config, array $options): int {
+        $configured = max(1, (int)($config->slot_duration_minutes ?? 30)) * MINSECS;
+        if (array_key_exists($configured, $options)) {
+            return $configured;
+        }
+
+        return (int)array_key_first($options);
+    }
+
+    /**
+     * Build available day entries for user-defined slot selection calendar.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function get_custom_open_days(int $optionid, int $userid): array {
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+        $config = $settings->slotconfig ?? null;
+        if (empty($config)) {
+            return [];
+        }
+
+        $openingseconds = self::time_to_seconds((string)($config->opening_time ?? '08:00'));
+        $closingseconds = self::time_to_seconds((string)($config->closing_time ?? '18:00'));
+        if ($closingseconds <= $openingseconds) {
+            return [];
+        }
+
+        $alloweddays = self::parse_days_of_week((string)($config->days_of_week ?? '1,2,3,4,5'));
+        if (empty($alloweddays)) {
+            return [];
+        }
+
+        $rangestart = time();
+        $rangeend = strtotime('+90 days', $rangestart);
+        if (!empty($config->valid_from)) {
+            $rangestart = max($rangestart, (int)$config->valid_from);
+        }
+        if (!empty($config->valid_until)) {
+            $rangeend = min($rangeend, (int)$config->valid_until + DAYSECS);
+        }
+
+        $capacity = max(1, (int)($config->max_participants_per_slot ?? 1));
+        $mindurationseconds = max(1, (int)($config->slot_interval_minutes ?? 60)) * MINSECS;
+        $stepseconds = max(1, (int)($config->slot_start_interval_minutes ?? 30)) * MINSECS;
+        $days = [];
+        $daycursor = strtotime('midnight', $rangestart);
+
+        while ($daycursor < $rangeend) {
+            $dayofweek = (int)date('N', $daycursor);
+            if (!in_array($dayofweek, $alloweddays, true)) {
+                $daycursor += DAYSECS;
+                continue;
+            }
+
+            $openfrom = $daycursor + $openingseconds;
+            $openuntil = $daycursor + $closingseconds;
+            if ($openuntil <= $openfrom) {
+                $daycursor += DAYSECS;
+                continue;
+            }
+
+            if ($openuntil <= $rangestart || $openfrom >= $rangeend) {
+                $daycursor += DAYSECS;
+                continue;
+            }
+
+            $openfrom = max($openfrom, $rangestart);
+            $openuntil = min($openuntil, $rangeend);
+
+            $bookable = false;
+            for ($candidate = $openfrom; $candidate + $mindurationseconds <= $openuntil; $candidate += $stepseconds) {
+                $evaluation = slot_availability::evaluate_slot_for_user(
+                    $optionid,
+                    $candidate,
+                    $candidate + $mindurationseconds,
+                    $userid
+                );
+                if (!empty($evaluation['bookable'])) {
+                    $bookable = true;
+                    break;
+                }
+            }
+
+            if (!$bookable) {
+                $daycursor += DAYSECS;
+                continue;
+            }
+
+            $bookedranges = slot_availability::get_booked_ranges_for_day($optionid, $daycursor, $daycursor + DAYSECS);
+            $days[] = [
+                'key' => (string)$daycursor,
+                'start' => $daycursor,
+                'end' => $daycursor + DAYSECS,
+                'daylabel' => userdate($daycursor, get_string('strftimedaydate', 'langconfig')),
+                'timelabel' => userdate($openfrom, get_string('strftimetime', 'langconfig'))
+                    . ' - '
+                    . userdate($openuntil, get_string('strftimetime', 'langconfig')),
+                'openfrom' => $openfrom,
+                'openuntil' => $openuntil,
+                'startintervalminutes' => max(1, (int)($config->slot_start_interval_minutes ?? 30)),
+                'bookable' => 1,
+                'capacity' => $capacity,
+                'bookedranges' => $bookedranges,
+            ];
+
+            $daycursor += DAYSECS;
+        }
+
+        return $days;
+    }
+
+    /**
+     * Parse HH:MM to seconds from midnight.
+     *
+     * @param string $time
+     * @return int
+     */
+    private static function time_to_seconds(string $time): int {
+        if (!preg_match('/^(\d{2}):(\d{2})$/', $time, $matches)) {
+            return 0;
+        }
+
+        $hours = (int)$matches[1];
+        $minutes = (int)$matches[2];
+        if ($hours < 0 || $hours > 23 || $minutes < 0 || $minutes > 59) {
+            return 0;
+        }
+
+        return ($hours * HOURSECS) + ($minutes * MINSECS);
+    }
+
+    /**
+     * Parse CSV day list (1..7).
+     *
+     * @param string $dayscsv
+     * @return int[]
+     */
+    private static function parse_days_of_week(string $dayscsv): array {
+        $parts = array_filter(array_map('trim', explode(',', $dayscsv)), static function (string $value): bool {
+            return $value !== '';
+        });
+
+        $days = [];
+        foreach ($parts as $part) {
+            $day = (int)$part;
+            if ($day >= 1 && $day <= 7) {
+                $days[] = $day;
+            }
+        }
+
+        return array_values(array_unique($days));
     }
 }

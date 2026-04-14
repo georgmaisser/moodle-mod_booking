@@ -124,9 +124,18 @@ class slotbooking extends field_base {
             'fixed' => get_string('slot_type_fixed', 'mod_booking'),
             'rolling' => get_string('slot_type_rolling', 'mod_booking'),
             'session' => get_string('slot_type_session', 'mod_booking'),
+            'userdefined' => get_string('slot_type_userdefined', 'mod_booking'),
         ]);
         $mform->setType('slot_type', PARAM_ALPHA);
         $mform->hideIf('slot_type', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+
+        $mform->addElement('select', 'slot_booking_view_mode', get_string('slot_booking_view_mode', 'mod_booking'), [
+            'list' => get_string('slot_booking_view_list', 'mod_booking'),
+            'calendar' => get_string('slot_booking_view_calendar', 'mod_booking'),
+        ]);
+        $mform->setType('slot_booking_view_mode', PARAM_ALPHA);
+        $mform->hideIf('slot_booking_view_mode', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        $mform->hideIf('slot_booking_view_mode', 'slot_type', 'eq', 'userdefined');
 
         $mform->registerNoSubmitButton('btn_slot_type');
         $mform->addElement(
@@ -143,12 +152,50 @@ class slotbooking extends field_base {
         $mform->setType('slot_duration_minutes', PARAM_INT);
         $mform->hideIf('slot_duration_minutes', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
         $mform->hideIf('slot_duration_minutes', 'slot_type', 'eq', 'session');
+        $mform->hideIf('slot_duration_minutes', 'slot_type', 'eq', 'userdefined');
 
         $mform->addElement('text', 'slot_interval_minutes', get_string('slot_interval_minutes', 'mod_booking'));
         $mform->setType('slot_interval_minutes', PARAM_INT);
         $mform->hideIf('slot_interval_minutes', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
         $mform->hideIf('slot_interval_minutes', 'slot_type', 'eq', 'fixed');
         $mform->hideIf('slot_interval_minutes', 'slot_type', 'eq', 'session');
+        $mform->hideIf('slot_interval_minutes', 'slot_type', 'eq', 'userdefined');
+
+        $mform->addElement('duration', 'slot_custom_max_duration', get_string('slot_custom_max_duration', 'mod_booking'));
+        $mform->setType('slot_custom_max_duration', PARAM_INT);
+        $mform->setDefault('slot_custom_max_duration', 30 * MINSECS);
+        $mform->hideIf('slot_custom_max_duration', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        $mform->hideIf('slot_custom_max_duration', 'slot_type', 'neq', 'userdefined');
+
+        $mform->addElement('duration', 'slot_custom_min_duration', get_string('slot_custom_min_duration', 'mod_booking'));
+        $mform->setType('slot_custom_min_duration', PARAM_INT);
+        $mform->setDefault('slot_custom_min_duration', 60 * MINSECS);
+        $mform->hideIf('slot_custom_min_duration', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        $mform->hideIf('slot_custom_min_duration', 'slot_type', 'neq', 'userdefined');
+
+        $mform->addElement('duration', 'slot_custom_max_days', get_string('slot_custom_max_days', 'mod_booking'));
+        $mform->setType('slot_custom_max_days', PARAM_INT);
+        $mform->setDefault('slot_custom_max_days', DAYSECS);
+        $mform->hideIf('slot_custom_max_days', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        $mform->hideIf('slot_custom_max_days', 'slot_type', 'neq', 'userdefined');
+
+        $mform->addElement(
+            'select',
+            'slot_custom_start_interval_minutes',
+            get_string('slot_custom_start_interval_minutes', 'mod_booking'),
+            [
+                1 => '1',
+                5 => '5',
+                10 => '10',
+                15 => '15',
+                30 => '30',
+                60 => '60',
+            ]
+        );
+        $mform->setType('slot_custom_start_interval_minutes', PARAM_INT);
+        $mform->setDefault('slot_custom_start_interval_minutes', 30);
+        $mform->hideIf('slot_custom_start_interval_minutes', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        $mform->hideIf('slot_custom_start_interval_minutes', 'slot_type', 'neq', 'userdefined');
 
         $mform->addElement('text', 'slot_opening_time', get_string('slot_opening_time', 'mod_booking'));
         $mform->setType('slot_opening_time', PARAM_TEXT);
@@ -192,19 +239,13 @@ class slotbooking extends field_base {
         $mform->setType('slot_max_slots_per_user', PARAM_INT);
         $mform->hideIf('slot_max_slots_per_user', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
 
-        $mform->addElement('select', 'slot_booking_view_mode', get_string('slot_booking_view_mode', 'mod_booking'), [
-            'list' => get_string('slot_booking_view_list', 'mod_booking'),
-            'calendar' => get_string('slot_booking_view_calendar', 'mod_booking'),
-        ]);
-        $mform->setType('slot_booking_view_mode', PARAM_ALPHA);
-        $mform->hideIf('slot_booking_view_mode', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
-
         $mform->addElement('select', 'slot_add_examiners', get_string('slot_add_examiners_to_slots', 'mod_booking'), [
             0 => get_string('no'),
             1 => get_string('yes'),
         ]);
         $mform->setType('slot_add_examiners', PARAM_INT);
         $mform->hideIf('slot_add_examiners', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
+        $mform->hideIf('slot_add_examiners', 'slot_type', 'eq', 'userdefined');
 
         // Examiner Pool: Autocomplete für beliebige Nutzer (wie bei Lehrerauswahl in anderen booking-Formularen).
         $useroptions = [];
@@ -239,11 +280,13 @@ class slotbooking extends field_base {
         $mform->setType('slot_teacher_pool', PARAM_INT);
         $mform->hideIf('slot_teacher_pool', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
         $mform->hideIf('slot_teacher_pool', 'slot_add_examiners', 'eq', 0);
+        $mform->hideIf('slot_teacher_pool', 'slot_type', 'eq', 'userdefined');
 
         $mform->addElement('text', 'slot_teachers_required', get_string('slot_teachers_required', 'mod_booking'));
         $mform->setType('slot_teachers_required', PARAM_INT);
         $mform->hideIf('slot_teachers_required', 'optiontype', 'neq', MOD_BOOKING_OPTIONTYPE_SLOTBOOKING);
         $mform->hideIf('slot_teachers_required', 'slot_add_examiners', 'eq', 0);
+        $mform->hideIf('slot_teachers_required', 'slot_type', 'eq', 'userdefined');
 
         $currentoptionid = (int)($formdata['optionid'] ?? $formdata['id'] ?? 0);
         $cmid = (int)($formdata['cmid'] ?? 0);
@@ -286,8 +329,23 @@ class slotbooking extends field_base {
         }
 
         $slottype = (string)($data['slot_type'] ?? 'fixed');
-        if (!in_array($slottype, ['fixed', 'rolling', 'session'], true)) {
+        if (!in_array($slottype, ['fixed', 'rolling', 'session', 'userdefined'], true)) {
             $errors['slot_type'] = get_string('required');
+        }
+
+        if ($slottype === 'userdefined') {
+            if ((int)($data['slot_custom_max_duration'] ?? 0) <= 0) {
+                $errors['slot_custom_max_duration'] = get_string('slot_error_positive', 'mod_booking');
+            }
+            if ((int)($data['slot_custom_min_duration'] ?? 0) <= 0) {
+                $errors['slot_custom_min_duration'] = get_string('slot_error_positive', 'mod_booking');
+            }
+            if ((int)($data['slot_custom_max_days'] ?? 0) < DAYSECS) {
+                $errors['slot_custom_max_days'] = get_string('slot_error_positive', 'mod_booking');
+            }
+            if ((int)($data['slot_custom_start_interval_minutes'] ?? 0) <= 0) {
+                $errors['slot_custom_start_interval_minutes'] = get_string('slot_error_positive', 'mod_booking');
+            }
         }
 
         if ($slottype !== 'session') {
@@ -355,15 +413,22 @@ class slotbooking extends field_base {
         $record = new stdClass();
         $record->optionid = $optionid;
         $slottype = (string)($formdata->slot_type ?? 'fixed');
-        if (!in_array($slottype, ['fixed', 'rolling', 'session'], true)) {
+        if (!in_array($slottype, ['fixed', 'rolling', 'session', 'userdefined'], true)) {
             $slottype = 'fixed';
         }
 
         $record->slot_type = $slottype;
-        $record->slot_duration_minutes = max(1, (int)($formdata->slot_duration_minutes ?? 30));
+        $record->slot_duration_minutes = $record->slot_type === 'userdefined'
+            ? max(1, (int)floor((int)($formdata->slot_custom_max_duration ?? (30 * MINSECS)) / MINSECS))
+            : max(1, (int)($formdata->slot_duration_minutes ?? 30));
         $record->slot_interval_minutes = $record->slot_type === 'rolling'
             ? max(1, (int)($formdata->slot_interval_minutes ?? 15))
-            : $record->slot_duration_minutes;
+            : ($record->slot_type === 'userdefined'
+                ? max(1, (int)floor((int)($formdata->slot_custom_min_duration ?? (60 * MINSECS)) / MINSECS))
+                : $record->slot_duration_minutes);
+        $record->slot_start_interval_minutes = $record->slot_type === 'userdefined'
+            ? max(1, (int)($formdata->slot_custom_start_interval_minutes ?? 30))
+            : 0;
         $record->opening_time = $record->slot_type === 'session'
             ? '00:00'
             : (string)($formdata->slot_opening_time ?? '08:00');
@@ -373,10 +438,11 @@ class slotbooking extends field_base {
         $record->valid_from = $record->slot_type === 'session' ? 0 : (int)($formdata->slot_valid_from ?? 0);
         $record->valid_until = $record->slot_type === 'session' ? 0 : (int)($formdata->slot_valid_until ?? 0);
         $record->days_of_week = $record->slot_type === 'session' ? '1,2,3,4,5,6,7' : self::extract_days_of_week($formdata);
+        $record->slot_max_days_per_slot = max(1, (int)ceil((int)($formdata->slot_custom_max_days ?? DAYSECS) / DAYSECS));
         $record->max_participants_per_slot = max(1, (int)($formdata->slot_max_participants_per_slot ?? 1));
         $record->max_slots_per_user = max(1, (int)($formdata->slot_max_slots_per_user ?? 1));
         $record->booking_interface = ($formdata->slot_booking_view_mode ?? 'calendar') === 'calendar' ? 'calendar' : 'list';
-        $addexaminers = !empty($formdata->slot_add_examiners);
+        $addexaminers = $record->slot_type !== 'userdefined' && !empty($formdata->slot_add_examiners);
         $record->teacher_pool = json_encode($addexaminers ? self::extract_teacher_pool_from_formdata($formdata) : []);
         $record->teachers_required = $addexaminers ? max(0, (int)($formdata->slot_teachers_required ?? 0)) : 0;
         $record->timemodified = $now;
@@ -407,6 +473,10 @@ class slotbooking extends field_base {
         $data->slot_type = 'fixed';
         $data->slot_duration_minutes = 30;
         $data->slot_interval_minutes = 15;
+        $data->slot_custom_max_duration = 30 * MINSECS;
+        $data->slot_custom_min_duration = 60 * MINSECS;
+        $data->slot_custom_max_days = DAYSECS;
+        $data->slot_custom_start_interval_minutes = 30;
         $data->slot_opening_time = '08:00';
         $data->slot_closing_time = '18:00';
         $data->slot_valid_from = 0;
@@ -429,6 +499,10 @@ class slotbooking extends field_base {
                 $data->slot_type = $config->slot_type;
                 $data->slot_duration_minutes = (int)$config->slot_duration_minutes;
                 $data->slot_interval_minutes = (int)$config->slot_interval_minutes;
+                $data->slot_custom_max_duration = max(1, (int)$config->slot_duration_minutes) * MINSECS;
+                $data->slot_custom_min_duration = max(1, (int)$config->slot_interval_minutes) * MINSECS;
+                $data->slot_custom_max_days = max(1, (int)($config->slot_max_days_per_slot ?? 1)) * DAYSECS;
+                $data->slot_custom_start_interval_minutes = max(1, (int)($config->slot_start_interval_minutes ?? 30));
                 $data->slot_opening_time = $config->opening_time;
                 $data->slot_closing_time = $config->closing_time;
                 $data->slot_valid_from = (int)$config->valid_from;

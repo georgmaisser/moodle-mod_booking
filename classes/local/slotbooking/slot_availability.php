@@ -414,6 +414,63 @@ class slot_availability {
     }
 
     /**
+     * Check if a custom slot stays within configured fixed/rolling boundaries.
+     *
+     * @param int $optionid booking option id
+     * @param int $slotstart slot start timestamp
+     * @param int $slotend slot end timestamp
+     * @return bool
+     */
+    public static function is_within_slot_openings(int $optionid, int $slotstart, int $slotend): bool {
+        $config = self::get_slot_config($optionid);
+        if (empty($config) || $slotend <= $slotstart) {
+            return false;
+        }
+
+        if (!empty($config->valid_from) && $slotstart < (int)$config->valid_from) {
+            return false;
+        }
+
+        if (!empty($config->valid_until) && $slotend > ((int)$config->valid_until + DAYSECS)) {
+            return false;
+        }
+
+        $openingseconds = self::time_to_seconds((string)$config->opening_time);
+        $closingseconds = self::time_to_seconds((string)$config->closing_time);
+        if ($closingseconds <= $openingseconds) {
+            return false;
+        }
+
+        $alloweddays = self::parse_days_of_week((string)$config->days_of_week);
+        if (empty($alloweddays)) {
+            return false;
+        }
+
+        $daycursor = strtotime('midnight', $slotstart);
+        $lastday = strtotime('midnight', $slotend - 1);
+        while ($daycursor <= $lastday) {
+            $dayofweek = (int)date('N', $daycursor);
+            if (!in_array($dayofweek, $alloweddays, true)) {
+                return false;
+            }
+
+            $daystartlimit = $daycursor + $openingseconds;
+            $dayendlimit = $daycursor + $closingseconds;
+
+            $segmentstart = max($slotstart, $daycursor);
+            $segmentend = min($slotend, $daycursor + DAYSECS);
+
+            if ($segmentstart < $segmentend && ($segmentstart < $daystartlimit || $segmentend > $dayendlimit)) {
+                return false;
+            }
+
+            $daycursor += DAYSECS;
+        }
+
+        return true;
+    }
+
+    /**
      * Returns all virtual slots for a given option id and date range as array of [start, end].
      *
      * @param int $optionid booking option id
@@ -449,6 +506,10 @@ class slot_availability {
         if ((string)($config->slot_type ?? 'fixed') === 'session') {
             $slots = self::get_session_slots_for_range($optionid, $rangestart, $rangeend);
             return slot_rules::apply_to_slots($optionid, $slots);
+        }
+
+        if ((string)($config->slot_type ?? 'fixed') === 'userdefined') {
+            return [];
         }
 
         $duration = (int)$config->slot_duration_minutes * MINSECS;
@@ -560,6 +621,40 @@ class slot_availability {
         }
 
         return self::get_slots_with_status_for_range($optionid, $rangestart, $rangeend, $userid);
+    }
+
+    /**
+     * Return booked slot ranges that overlap with the given day window.
+     *
+     * @param int $optionid booking option id
+     * @param int $daystart start of day timestamp
+     * @param int $dayend end of day timestamp
+     * @return array<int, array{start:int,end:int}>
+     */
+    public static function get_booked_ranges_for_day(int $optionid, int $daystart, int $dayend): array {
+        $rangesbyanswer = self::get_booked_slot_ranges_by_answer($optionid);
+        if (empty($rangesbyanswer)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($rangesbyanswer as $ranges) {
+            foreach ($ranges as $range) {
+                $start = (int)($range['start'] ?? 0);
+                $end = (int)($range['end'] ?? 0);
+                if ($end <= $start || !self::slots_overlap($start, $end, $daystart, $dayend)) {
+                    continue;
+                }
+
+                $key = $start . ':' . $end;
+                $result[$key] = [
+                    'start' => $start,
+                    'end' => $end,
+                ];
+            }
+        }
+
+        return array_values($result);
     }
 
     /**

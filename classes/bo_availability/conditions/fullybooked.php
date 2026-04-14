@@ -127,11 +127,18 @@ class fullybooked implements bo_condition {
 
             if ($isslotoption) {
                 $hasopenslots = false;
-                $slots = slot_availability::get_slots_with_status((int)$settings->id, $userid);
-                foreach ($slots as $slot) {
-                    if (in_array((string)($slot['status'] ?? ''), ['open', 'warning'], true)) {
-                        $hasopenslots = true;
-                        break;
+                $slottype = (string)($settings->slotconfig->slot_type ?? 'fixed');
+
+                if ($slottype === 'userdefined') {
+                    // User-defined slots are selected dynamically in prepage; no fixed open-slot list exists up-front.
+                    $hasopenslots = true;
+                } else {
+                    $slots = slot_availability::get_slots_with_status((int)$settings->id, $userid);
+                    foreach ($slots as $slot) {
+                        if (in_array((string)($slot['status'] ?? ''), ['open', 'warning'], true)) {
+                            $hasopenslots = true;
+                            break;
+                        }
                     }
                 }
 

@@ -110,6 +110,7 @@ export class SlotCalendarPicker {
                 teachers: Array.isArray(slot.teachers) ? slot.teachers : [],
                 bookings: Number(slot.bookings || 0),
                 capacity: Number(slot.capacity || 0),
+                bookable: Boolean(slot.bookable),
                 price: Number(slot.price || 0),
                 currency: String(slot.currency || ''),
                 priceformatted: String(slot.priceformatted || '').trim(),
