@@ -189,9 +189,38 @@ export var SELECTORS = {
     MODALFOOTER: 'div.modalFooter',
     CONTINUEBUTTON: 'a.continue-button',
     BACKBUTTON: 'a.back-button',
-    BOOKITBUTTON: 'div.booking-button-area.noprice',
+    BOOKITBUTTON_NOPRICE: 'div.booking-button-area.noprice',
+    BOOKITBUTTON_SHOPPINGCART: 'div.booking-button-area.wb_shopping_cart',
+    BOOKITBUTTON: 'div.booking-button-area.noprice, div.booking-button-area.wb_shopping_cart',
+    BOOKITBUTTON_WITH_DATA:
+        'div.booking-button-area.noprice[data-itemid][data-area], ' +
+        'div.booking-button-area.wb_shopping_cart[data-itemid][data-area]',
     INMODALBUTTON: 'div.in-modal-button',
     STATICBACKDROP: 'div.modal-backdrop',
+};
+
+/**
+ * Build selector for matching a bookit button by item and area.
+ *
+ * @param {int|string} itemid
+ * @param {string} area
+ * @returns {string}
+ */
+const getBookitButtonByItemAreaSelector = (itemid, area) => {
+    return `${SELECTORS.BOOKITBUTTON_NOPRICE}[data-itemid='${itemid}'][data-area='${area}'], ` +
+        `${SELECTORS.BOOKITBUTTON_SHOPPINGCART}[data-itemid='${itemid}'][data-area='${area}']`;
+};
+
+/**
+ * Build selector for matching visible modal bookit button by item and area.
+ *
+ * @param {int|string} itemid
+ * @param {string} area
+ * @returns {string}
+ */
+const getVisibleModalBookitButtonSelector = (itemid, area) => {
+    return `[id^='${SELECTORS.MODALID}'].show ${SELECTORS.BOOKITBUTTON_NOPRICE}[data-itemid='${itemid}'][data-area='${area}'], ` +
+        `[id^='${SELECTORS.MODALID}'].show ${SELECTORS.BOOKITBUTTON_SHOPPINGCART}[data-itemid='${itemid}'][data-area='${area}']`;
 };
 
 /**
@@ -222,7 +251,7 @@ export const initbookitbutton = () => {
             if (!cancelButton) {
                 return;
             }
-            const button = cancelButton.closest(SELECTORS.BOOKITBUTTON + '[data-itemid][data-area]');
+            const button = cancelButton.closest(SELECTORS.BOOKITBUTTON_WITH_DATA);
             if (!button || button.classList.contains('disabled')) {
                 return;
             }
@@ -236,7 +265,7 @@ export const initbookitbutton = () => {
             // Cancel actions must never carry overrideids — strip them from the payload.
             const cancelData = { ...button.dataset };
             delete cancelData.overrideids;
-            // Mark if this was clicked from inside a modal
+            // Mark if this was clicked from inside a modal or inline prepage.
             const inModal = !!button.closest('[id^="' + SELECTORS.MODALID + '"], [id^="' + SELECTORS.INLINEID + '"]');
             bookit(itemid, area, userid, cancelData, inModal);
         }, true);
@@ -254,7 +283,7 @@ export const initbookitbutton = () => {
 
             const cancelButton = e.target.closest('.bo-cancel-button');
 
-            const button = e.target.closest(SELECTORS.BOOKITBUTTON + '[data-itemid][data-area]');
+            const button = e.target.closest(SELECTORS.BOOKITBUTTON_WITH_DATA);
             if (!button) {
                 return;
             }
@@ -325,20 +354,14 @@ export function bookit(itemid, area, userid, data, clickedFromModal = null) {
     if (typeof resolvedClickedFromModal !== 'boolean') {
         const activeElement = document.activeElement;
         const activeButton = activeElement?.closest(
-            SELECTORS.BOOKITBUTTON +
-            '[data-itemid=\'' + itemid + '\']' +
-            '[data-area=\'' + area + '\']'
+            getBookitButtonByItemAreaSelector(itemid, area)
         );
 
         if (activeButton) {
             resolvedClickedFromModal = !!activeButton.closest(modalSelector);
         } else {
             const visibleModalButton = document.querySelector(
-                '[id^="' + SELECTORS.MODALID + '"]' +
-                '.show ' +
-                SELECTORS.BOOKITBUTTON +
-                '[data-itemid=\'' + itemid + '\']' +
-                '[data-area=\'' + area + '\']'
+                getVisibleModalBookitButtonSelector(itemid, area)
             );
             resolvedClickedFromModal = !!visibleModalButton;
         }
@@ -366,9 +389,7 @@ export function bookit(itemid, area, userid, data, clickedFromModal = null) {
             const templates = res.template.split(',');
 
             // There might be more than one button area.
-            const buttons = document.querySelectorAll(SELECTORS.BOOKITBUTTON +
-                '[data-itemid=\'' + itemid + '\']' +
-                '[data-area=\'' + area + '\']');
+            const buttons = document.querySelectorAll(getBookitButtonByItemAreaSelector(itemid, area));
 
             const promises = [];
 
