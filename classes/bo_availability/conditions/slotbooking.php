@@ -134,8 +134,6 @@ class slotbooking implements bo_condition {
      * @return bool
      */
     public function hard_block(booking_option_settings $settings, $userid): bool {
-
-        return false;
         if (!$this->is_slot_booking_enabled($settings)) {
             return false;
         }
@@ -354,7 +352,12 @@ class slotbooking implements bo_condition {
         $slotdata = [
             'slots' => $slots,
             'num_slots' => count($slots),
-            'price' => slot_price::calculate_price($optionid, count($slots), (int)$userid, $slots),
+            'price' => \mod_booking\local\slotbooking\slot_price::calculate_price(
+                $optionid,
+                count($slots),
+                (int)$userid,
+                $slots
+            ),
             'teachers_per_slot' => $teachersperslot,
             'teachers' => array_values(array_unique($allteacherids)),
         ];
