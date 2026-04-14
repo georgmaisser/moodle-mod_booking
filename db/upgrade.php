@@ -5440,5 +5440,45 @@ function xmldb_booking_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026041005, 'booking');
     }
 
+    if ($oldversion < 2026041006) {
+        $table = new xmldb_table('booking_slot_config');
+
+        $field = new xmldb_field(
+            'slot_max_days_per_slot',
+            XMLDB_TYPE_INTEGER,
+            '10',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            '1',
+            'slot_interval_minutes'
+        );
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026041006, 'booking');
+    }
+
+    if ($oldversion < 2026041007) {
+        $table = new xmldb_table('booking_slot_config');
+
+        $field = new xmldb_field(
+            'slot_start_interval_minutes',
+            XMLDB_TYPE_INTEGER,
+            '10',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            '30',
+            'slot_interval_minutes'
+        );
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026041007, 'booking');
+    }
+
     return true;
 }

@@ -229,6 +229,8 @@
         <FIELD NAME="slot_type" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="fixed" SEQUENCE="false"/>
         <FIELD NAME="slot_duration_minutes" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="slot_interval_minutes" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="slot_start_interval_minutes" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="30" SEQUENCE="false"/>
+        <FIELD NAME="slot_max_days_per_slot" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="1" SEQUENCE="false"/>
         <FIELD NAME="opening_time" TYPE="char" LENGTH="5" NOTNULL="true" DEFAULT="08:00" SEQUENCE="false"/>
         <FIELD NAME="closing_time" TYPE="char" LENGTH="5" NOTNULL="true" DEFAULT="18:00" SEQUENCE="false"/>
         <FIELD NAME="valid_from" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
