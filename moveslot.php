@@ -25,6 +25,7 @@
 use mod_booking\event\bookinganswer_slotmoved;
 use mod_booking\local\slotbooking\slot_answer;
 use mod_booking\local\slotbooking\slot_availability;
+use mod_booking\local\slotbooking\slot_price;
 use mod_booking\booking_option;
 use mod_booking\singleton_service;
 
@@ -224,6 +225,59 @@ if (optional_param('savemoveslot', 0, PARAM_INT) && confirm_sesskey()) {
     }
 
     $slotdata['slots'] = $newslots;
+
+    // Keep per-slot teacher assignments aligned with moved slot ranges.
+    if (!empty($slotdata['teachers_per_slot']) && is_array($slotdata['teachers_per_slot'])) {
+        $oldteachersperslot = [];
+        foreach ($slotdata['teachers_per_slot'] as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $teacherids = array_values(array_unique(array_filter(
+                array_map('intval', (array)($entry['teachers'] ?? [])),
+                static function (int $id): bool {
+                    return $id > 0;
+                }
+            )));
+            $oldteachersperslot[] = [
+                'teachers' => $teacherids,
+            ];
+        }
+
+        $newteachersperslot = [];
+        foreach ($newslots as $index => $slot) {
+            $teacherids = $oldteachersperslot[$index]['teachers'] ?? [];
+            $newteachersperslot[] = [
+                'start' => (int)$slot['start'],
+                'end' => (int)$slot['end'],
+                'teachers' => $teacherids,
+            ];
+        }
+
+        $slotdata['teachers_per_slot'] = $newteachersperslot;
+
+        $allteacherids = [];
+        foreach ($newteachersperslot as $entry) {
+            foreach ((array)($entry['teachers'] ?? []) as $teacherid) {
+                $allteacherids[(int)$teacherid] = true;
+            }
+        }
+        $slotdata['teachers'] = array_values(array_keys($allteacherids));
+    }
+
+    // Slot rules may depend on time; recalculate aggregated slot price after moving.
+    $movetotalprice = 0.0;
+    foreach ($newslots as $slot) {
+        $pricedata = slot_price::calculate_slot_price_data(
+            $optionid,
+            (int)$slot['start'],
+            (int)$slot['end'],
+            (int)$answer->userid
+        );
+        $movetotalprice += (float)($pricedata['price'] ?? 0);
+    }
+    $slotdata['price'] = round($movetotalprice, 2);
     $slotdata['move_reason'] = $movereason;
 
     slot_answer::set_slot_data($answer, $slotdata);
