@@ -227,6 +227,7 @@ class slotbooking_form extends dynamic_form {
 
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
         $config = $settings->slotconfig ?? null;
+        $showprices = !empty($settings->useprice) ? 1 : 0;
         $slottype = (string)($config->slot_type ?? 'fixed');
         $maxslots = max(1, (int)($config->max_slots_per_user ?? 1));
         $teachersrequired = max(0, (int)($config->teachers_required ?? 0));
@@ -251,6 +252,9 @@ class slotbooking_form extends dynamic_form {
 
         $mform->addElement('hidden', 'slot_examiners_per_slot_label', get_string('slot_examiners_per_slot', 'mod_booking'));
         $mform->setType('slot_examiners_per_slot_label', PARAM_TEXT);
+
+        $mform->addElement('hidden', 'slot_use_prices', (string)$showprices);
+        $mform->setType('slot_use_prices', PARAM_INT);
 
         $mform->addElement('hidden', 'slot_validation_error_target', 'slot_selection');
         $mform->setType('slot_validation_error_target', PARAM_ALPHANUMEXT);

@@ -76,6 +76,7 @@ export class SlotCalendarPicker {
             ? 'No open slots on this day.'
             : String(options.emptySlotListText);
         this.showSlotList = options.showSlotList !== false;
+        this.showPriceLegend = Boolean(options.showPriceLegend);
         this.dayStateResolver = typeof options.dayStateResolver === 'function' ? options.dayStateResolver : null;
         this.resetSelectionOnDayChange = Boolean(options.resetSelectionOnDayChange);
 
@@ -88,6 +89,9 @@ export class SlotCalendarPicker {
         this.availableWeekKeys = [];
         this.activeDay = null;
         this.currentDate = new Date();
+        this.priceLevels = [];
+        this.priceScaleMin = 0;
+        this.priceScaleMax = 0;
 
         this.prepareData();
         this.buildLayout();
@@ -150,6 +154,20 @@ export class SlotCalendarPicker {
 
         this.availableMonthKeys = Array.from(monthSet).sort();
         this.availableWeekKeys = Array.from(weekSet).sort();
+
+        const priceSet = new Set();
+        this.slotsByDay.forEach(daySlots => {
+            daySlots.forEach(slot => {
+                if (Number.isFinite(slot.price)) {
+                    priceSet.add(Number(slot.price));
+                }
+            });
+        });
+        this.priceLevels = Array.from(priceSet).sort((a, b) => a - b);
+
+        const positivePriceLevels = this.priceLevels.filter(price => price > 0);
+        this.priceScaleMin = positivePriceLevels.length ? Math.min(...positivePriceLevels) : 0;
+        this.priceScaleMax = positivePriceLevels.length ? Math.max(...positivePriceLevels) : 0;
 
         if (this.allDayKeys.length > 0) {
             this.activeDay = this.allDayKeys[0];
@@ -261,7 +279,13 @@ export class SlotCalendarPicker {
         this.selectionInfo = document.createElement('div');
         this.selectionInfo.className = 'small text-muted mt-2';
 
+        this.priceLegend = document.createElement('div');
+        this.priceLegend.className = 'small text-muted mb-2';
+
         this.container.appendChild(this.toolbar);
+        if (this.showPriceLegend) {
+            this.container.appendChild(this.priceLegend);
+        }
         this.container.appendChild(this.calendarGrid);
         if (this.showSlotList) {
             this.container.appendChild(this.slotList);
@@ -376,6 +400,10 @@ export class SlotCalendarPicker {
         this.weekBtn.classList.toggle('btn-primary', this.viewMode === 'week');
         this.weekBtn.classList.toggle('btn-outline-secondary', this.viewMode !== 'week');
 
+        if (this.showPriceLegend) {
+            this.renderPriceLegend();
+        }
+
         this.renderCalendarGrid();
         if (this.showSlotList) {
             this.renderSlotList();
@@ -451,6 +479,34 @@ export class SlotCalendarPicker {
                     count.textContent = `${daySlots.length} slots`;
                 }
                 btn.appendChild(count);
+
+                if (this.showPriceLegend && this.priceLevels.length > 0) {
+                    const dayPriceDots = document.createElement('div');
+                    dayPriceDots.className = 'mt-1 d-flex flex-wrap align-items-center';
+                    dayPriceDots.style.gap = '0.2rem';
+
+                    const daySelected = new Set(daySlots
+                        .filter(slot => this.selected.has(slot.key))
+                        .map(slot => Number(slot.price || 0)));
+                    const dayPrices = Array.from(new Set(daySlots.map(slot => Number(slot.price || 0))))
+                        .sort((a, b) => a - b);
+
+                    dayPrices.forEach(price => {
+                        const dot = document.createElement('span');
+                        dot.style.width = '0.5rem';
+                        dot.style.height = '0.5rem';
+                        dot.style.borderRadius = '999px';
+                        dot.style.display = 'inline-block';
+                        dot.style.backgroundColor = this.getPriceColor(price);
+                        dot.style.border = daySelected.has(price)
+                            ? '2px solid #0d6efd'
+                            : '1px solid rgba(0,0,0,0.15)';
+                        dot.title = this.getPriceLabel(price);
+                        dayPriceDots.appendChild(dot);
+                    });
+
+                    btn.appendChild(dayPriceDots);
+                }
             }
 
             btn.addEventListener('click', () => {
@@ -623,6 +679,81 @@ export class SlotCalendarPicker {
 
     renderSelectionInfo() {
         this.selectionInfo.textContent = `${this.selected.size}/${this.maxSelection} selected`;
+    }
+
+    getPriceColor(price) {
+        const numericPrice = Number(price || 0);
+        if (numericPrice <= 0) {
+            return '#198754';
+        }
+
+        if (this.priceScaleMax <= this.priceScaleMin) {
+            return '#f59f00';
+        }
+
+        const ratio = Math.max(0, Math.min(1, (numericPrice - this.priceScaleMin) / (this.priceScaleMax - this.priceScaleMin)));
+        const hue = Math.round(120 - (120 * ratio));
+        return `hsl(${hue}, 75%, 45%)`;
+    }
+
+    getPriceLabel(price) {
+        const numericPrice = Number(price || 0);
+        if (numericPrice <= 0) {
+            return 'Free';
+        }
+
+        const slotWithPrice = this.slots.find(slot => Number(slot.price || 0) === numericPrice);
+        if (slotWithPrice && String(slotWithPrice.priceformatted || '').trim() !== '') {
+            return String(slotWithPrice.priceformatted).trim();
+        }
+
+        return String(numericPrice);
+    }
+
+    renderPriceLegend() {
+        this.priceLegend.innerHTML = '';
+
+        if (!this.showPriceLegend || this.priceLevels.length === 0) {
+            return;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'd-flex flex-wrap align-items-center';
+        row.style.gap = '0.5rem';
+
+        const title = document.createElement('span');
+        title.className = 'fw-bold';
+        title.textContent = 'Preis-Legende:';
+        row.appendChild(title);
+
+        const addLegendItem = (color, label, selected = false) => {
+            const item = document.createElement('span');
+            item.className = 'd-inline-flex align-items-center';
+            item.style.gap = '0.25rem';
+
+            const dot = document.createElement('span');
+            dot.style.width = '0.6rem';
+            dot.style.height = '0.6rem';
+            dot.style.borderRadius = '999px';
+            dot.style.display = 'inline-block';
+            dot.style.backgroundColor = color;
+            dot.style.border = selected ? '2px solid #0d6efd' : '1px solid rgba(0,0,0,0.2)';
+
+            const text = document.createElement('span');
+            text.textContent = label;
+
+            item.appendChild(dot);
+            item.appendChild(text);
+            row.appendChild(item);
+        };
+
+        addLegendItem('#198754', 'Kostenlos');
+        this.priceLevels.filter(price => price > 0).forEach(price => {
+            addLegendItem(this.getPriceColor(price), this.getPriceLabel(price));
+        });
+        addLegendItem('#ffffff', 'Ausgewaehlt', true);
+
+        this.priceLegend.appendChild(row);
     }
 
     emitChange() {

@@ -656,12 +656,14 @@ export async function init() {
         const jsonInput = container.querySelector('input[name="slot_calendar_data"]');
         const customEditorRoot = container.querySelector('[data-region="slot-custom-editor"]');
         const customStartInput = container.querySelector('input[name="slot_custom_start"]');
-            const fixedEditorRoot = container.querySelector('[data-region="slot-fixed-editor"]');
+        const fixedEditorRoot = container.querySelector('[data-region="slot-fixed-editor"]');
         const customDurationSelect = container.querySelector('select[name="slot_custom_duration"]');
         const teacherSelectionInput = container.querySelector('input[name="slot_teacher_selection"]');
         const examinersLabelInput = container.querySelector('input[name="slot_examiners_per_slot_label"]');
+        const usePricesInput = container.querySelector('input[name="slot_use_prices"]');
         const teachersRequiredInput = container.querySelector('input[name="slot_teachers_required_count"]');
         const examinersLabel = (examinersLabelInput?.value || 'Examiners per slot').trim();
+        const usePrices = Number(usePricesInput?.value || 0) === 1;
 
         if (!selectionInput) {
             return;
@@ -806,6 +808,7 @@ export async function init() {
 
             if (fixedEditorRoot) {
                 calendarOptions.showSlotList = false;
+                calendarOptions.showPriceLegend = usePrices;
                 calendarOptions.onDayChange = (_dayKey, daySlots) => {
                     renderFixedSlotsEditor(
                         fixedEditorRoot,
