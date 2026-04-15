@@ -95,7 +95,7 @@ class prepageinlinestart implements renderable, templatable {
      */
     public function export_for_template(renderer_base $output) {
         $now = time();
-        $rand = rand(1, 1000);
+        $rand = random_int(1, 1000);
 
         // Two distinct uniquids: one for the inline-start area, one for the remaining pages container.
         $uniquid = substr(md5($this->optionid . $now . $rand . 'start'), 0, 16);

@@ -1032,7 +1032,7 @@ export const initprepageinlinestart = (optionid, userid, skipcondition, remainin
             }
 
             const onShown = () => {
-                loadPreBookingPage(btnOptionid, btnUserid, btnRemaininguniqid);
+                loadPreBookingPage(btnOptionid, btnUserid, btnRemaininguniqid, btnSkipcondition);
             };
 
             const CollapseCtor = window.bootstrap && window.bootstrap.Collapse;

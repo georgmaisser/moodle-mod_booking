@@ -190,7 +190,7 @@ class booking_bookit {
                 }
             }
 
-            if ($skipconditionclass !== null) {
+            if ($skipconditionclass !== null && class_exists($skipconditionclass)) {
                 // Instantiate the condition and render its page data.
                 if (method_exists($skipconditionclass, 'instance')) {
                     $skipcondition = $skipconditionclass::instance();
