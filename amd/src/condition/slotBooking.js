@@ -329,6 +329,14 @@ const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots) =
     if (span <= 0) {
         return;
     }
+    const slotDurations = daySlots
+        .map(s => Number(s.end || 0) - Number(s.start || 0))
+        .filter(duration => duration > 0);
+    const shortestSlotDuration = Math.min(...slotDurations);
+    const minReadableSlotPx = 32;
+    const heightForShortestSlot = Math.round((span / shortestSlotDuration) * minReadableSlotPx);
+    const heightForSlotCount = 110 + (daySlots.length * 6);
+    const timelineHeight = Math.max(140, Math.min(420, Math.max(heightForShortestSlot, heightForSlotCount)));
 
     const currentKeys = new Set(
         String(selectionInput.value || '').split(',').map(v => v.trim()).filter(Boolean)
@@ -360,14 +368,14 @@ const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots) =
     const labelsCol = document.createElement('div');
     labelsCol.className = 'position-relative flex-shrink-0';
     labelsCol.style.width = '2.8rem';
-    labelsCol.style.height = '200px';
+    labelsCol.style.height = `${timelineHeight}px`;
     timelineWrapper.appendChild(labelsCol);
 
     const timeline = document.createElement('div');
     timeline.className = 'border rounded position-relative flex-grow-1';
     timeline.style.flex = '1 1 auto';
     timeline.style.minWidth = '12rem';
-    timeline.style.height = '200px';
+    timeline.style.height = `${timelineHeight}px`;
     timeline.style.background = 'linear-gradient(to bottom, #f8f9fa, #ffffff)';
     timeline.style.overflow = 'hidden';
     timelineWrapper.appendChild(timeline);
@@ -411,7 +419,8 @@ const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots) =
 
         const key = String(slot.key || `${slotStart}:${slotEnd}`);
         const top = ((slotStart - openFrom) / span) * 100;
-        const height = Math.max(3, ((slotEnd - slotStart) / span) * 100);
+        const minSlotHeightPercent = (minReadableSlotPx / timelineHeight) * 100;
+        const height = Math.max(minSlotHeightPercent, ((slotEnd - slotStart) / span) * 100);
 
         const block = document.createElement('div');
         block.className = 'position-absolute';
@@ -422,30 +431,47 @@ const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots) =
         block.style.cursor = 'pointer';
         block.style.overflow = 'hidden';
         block.style.borderRadius = '2px';
-        block.style.padding = '1px 3px';
+        block.style.padding = '2px 4px';
         applyBlockStyle(block, currentKeys.has(key));
+
+        const headerRow = document.createElement('div');
+        headerRow.style.display = 'flex';
+        headerRow.style.alignItems = 'center';
+        headerRow.style.justifyContent = 'space-between';
+        headerRow.style.gap = '0.35rem';
 
         const timeText = document.createElement('div');
         timeText.style.fontSize = '0.65rem';
         timeText.style.lineHeight = '1.2';
         timeText.style.fontWeight = '600';
+        timeText.style.whiteSpace = 'nowrap';
+        timeText.style.overflow = 'hidden';
+        timeText.style.textOverflow = 'ellipsis';
         timeText.textContent = `${toLocalTimeValue(slotStart)} \u2013 ${toLocalTimeValue(slotEnd)}`;
-        block.appendChild(timeText);
+        headerRow.appendChild(timeText);
 
         const slotPrice = Number(slot.price || 0);
         if (slotPrice > 0 && slot.priceformatted) {
             const priceEl = document.createElement('div');
             priceEl.style.fontSize = '0.6rem';
             priceEl.style.lineHeight = '1.2';
+            priceEl.style.fontWeight = '600';
+            priceEl.style.whiteSpace = 'nowrap';
+            priceEl.style.marginLeft = 'auto';
             priceEl.textContent = String(slot.priceformatted);
-            block.appendChild(priceEl);
+            headerRow.appendChild(priceEl);
         }
+
+        block.appendChild(headerRow);
 
         const teachers = Array.isArray(slot.teachers) ? slot.teachers : [];
         if (teachers.length > 0) {
             const teacherEl = document.createElement('div');
             teacherEl.style.fontSize = '0.6rem';
             teacherEl.style.lineHeight = '1.2';
+            teacherEl.style.whiteSpace = 'nowrap';
+            teacherEl.style.overflow = 'hidden';
+            teacherEl.style.textOverflow = 'ellipsis';
             if (teachers.length <= 2) {
                 teacherEl.textContent = teachers
                     .map(t => String(t.fullname || ''))
