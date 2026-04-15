@@ -805,6 +805,11 @@ class shortcodes {
         // Set common table options requirelogin, sortorder, sortby.
         self::set_common_table_options_from_arguments($table, $args);
 
+        // If inlinestartpage is set, pass it to the table so col_booknow renders inline.
+        if (!empty($args['inlinestartpage'])) {
+            $table->inlinestartpage = $args['inlinestartpage'];
+        }
+
         $showfilter = !empty($args['filter']) ? true : false;
         $showsort = !empty($args['sort']) ? true : false;
         $showsearch = !empty($args['search']) ? true : false;

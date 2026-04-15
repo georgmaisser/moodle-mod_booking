@@ -75,6 +75,14 @@ class bookingoptions_wbtable extends wunderbyte_table {
     public $customfieldarea = 'booking';
 
     /**
+     * Condition shortname to render inline instead of behind the "Book" button.
+     * When set (e.g. 'slotbooking'), that condition's page is displayed directly on the page
+     * and a "Continue" button opens the remaining prepage modal/collapse.
+     * @var string
+     */
+    public $inlinestartpage = '';
+
+    /**
      * Customfield columns.
      * @var array
      */
@@ -302,7 +310,7 @@ class bookingoptions_wbtable extends wunderbyte_table {
             $buyforuser = $USER->id;
         }
 
-        return booking_bookit::render_bookit_button($settings, $buyforuser);
+        return booking_bookit::render_bookit_button($settings, $buyforuser, $this->inlinestartpage);
     }
 
     /**

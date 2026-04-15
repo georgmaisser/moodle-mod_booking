@@ -691,9 +691,10 @@ class bo_info {
      * @param int $optionid
      * @param int $pagenumber
      * @param int $userid
+     * @param string $skipcondition optional condition shortname to exclude (e.g. 'slotbooking')
      * @return array
      */
-    public static function load_pre_booking_page(int $optionid, int $pagenumber, int $userid) {
+    public static function load_pre_booking_page(int $optionid, int $pagenumber, int $userid, string $skipcondition = '') {
 
         $results = self::get_condition_results($optionid, $userid);
 
@@ -703,7 +704,7 @@ class bo_info {
         });
 
         // Sorted List of blocking conditions which also provide a proper page.
-        $conditions = self::return_sorted_conditions($results);
+        $conditions = self::return_sorted_conditions($results, $skipcondition);
         $condition = self::return_class_of_current_page($conditions, $pagenumber);
 
         // If the current condition doesn't have the "pre" key...
@@ -1089,9 +1090,10 @@ class bo_info {
      * If there are just booking & confirmation pages, we supress them.
      *
      * @param array $results
+     * @param string $skipcondition optional condition shortname to exclude (e.g. 'slotbooking')
      * @return array
      */
-    public static function return_sorted_conditions(array $results) {
+    public static function return_sorted_conditions(array $results, string $skipcondition = '') {
 
         // Make sure the keys are set.
         $prepages = [];
@@ -1123,6 +1125,15 @@ class bo_info {
             // One no button condition determines this for all.
             if ($result['button'] === MOD_BOOKING_BO_BUTTON_NOBUTTON) {
                 $showbutton = false;
+            }
+
+            // Skip a condition whose shortname matches $skipcondition (case-insensitive).
+            if (!empty($skipcondition)) {
+                $classparts = explode('\\', $result['classname']);
+                $conditionshortname = array_pop($classparts);
+                if (strcasecmp($conditionshortname, $skipcondition) === 0) {
+                    continue;
+                }
             }
 
             $newclass = [

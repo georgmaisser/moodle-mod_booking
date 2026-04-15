@@ -29,6 +29,8 @@ import { closeModal, closeInline } from 'mod_booking/bookingpage/prepageFooter';
 var currentbookitpage = {};
 var totalbookitpages = {};
 var inlineprepageconfig = {};
+/** @type {Object.<number, string>} Maps optionid → condition shortname to skip in load_pre_booking_page calls. */
+var skipconditions = {};
 
 /**
  * Registers one delegated listener for bootstrap modal show events.
@@ -78,7 +80,9 @@ const registerPrepageModalDelegatedListener = () => {
         currentbookitpage[optionid] = 0;
         totalbookitpages[optionid] = totalnumberofpages;
 
-        loadPreBookingPage(optionid, userid, uniquid);
+        // Read skipcondition from modal data attribute or from module-level state.
+        const skipcondition = modal.dataset.skipcondition || skipconditions[optionid] || '';
+        loadPreBookingPage(optionid, userid, uniquid, skipcondition);
     });
 };
 
@@ -695,9 +699,13 @@ export const initprepageinline = (optionid, userid, totalnumberofpages, uniquid)
  * @param {integer} optionid
  * @param {integer} userid
  * @param {string} uniquid
+ * @param {string} skipcondition optional condition shortname to exclude from the sorted pages
  */
 export const loadPreBookingPage = (
-    optionid, userid = 0, uniquid = '') => {
+    optionid, userid = 0, uniquid = '', skipcondition = null) => {
+
+    // If skipcondition not explicitly provided, fall back to module-level state.
+    const actualSkipcondition = skipcondition !== null ? skipcondition : (skipconditions[optionid] || '');
 
     const element = returnVisibleElement(optionid, uniquid, SELECTORS.INMODALDIV);
 
@@ -728,6 +736,7 @@ export const loadPreBookingPage = (
                         optionid,
                         userid,
                         'pagenumber': currentbookitpage[optionid],
+                        'skipcondition': actualSkipcondition,
                     },
                     done: function (res) {
                         // If we are on the last page, we reset it to 0.
@@ -949,3 +958,120 @@ export function setBackModalVariables(optionid) {
 
     currentbookitpage[optionid] = 0;
 }
+
+/**
+ * Initialises the inline-start prepage area (rendered server-side).
+ *
+ * The condition (e.g. slotbooking) is already visible on the page.  When the user
+ * clicks "Continue", the remaining prepage pages are shown in the standard
+ * Bootstrap modal or inline collapse (depending on site configuration).
+ *
+ * @param {number} optionid
+ * @param {number} userid
+ * @param {string} skipcondition condition shortname shown inline (e.g. 'slotbooking')
+ * @param {number} remainingpages number of prepage pages still to be shown after the inline one
+ * @param {string} remaininguniqid uniquid of the remaining pages modal/collapse element
+ * @param {boolean} useinline true = remaining pages use inline collapse; false = modal
+ */
+export const initprepageinlinestart = (optionid, userid, skipcondition, remainingpages, remaininguniqid, useinline) => {
+
+    // Persist skipcondition so subsequent loadPreBookingPage calls carry it automatically.
+    if (skipcondition) {
+        skipconditions[optionid] = skipcondition;
+    }
+
+    if (!remainingpages || remainingpages <= 0) {
+        // Nothing more to show after the inline condition.
+        return;
+    }
+
+    currentbookitpage[optionid] = 0;
+    totalbookitpages[optionid] = remainingpages;
+
+    if (useinline && remaininguniqid) {
+        inlineprepageconfig[optionid] = {userid, uniquid: remaininguniqid};
+    }
+
+    // Register a single delegated click listener for all inline-start continue buttons.
+    const body = document.querySelector('body');
+    if (!body || body.dataset.inlinestartContinueDelegated) {
+        return;
+    }
+    body.dataset.inlinestartContinueDelegated = 'true';
+
+    body.addEventListener('click', e => {
+        const btn = e.target.closest('.inlinestart-continue-btn');
+        if (!btn) {
+            return;
+        }
+
+        const btnOptionid = parseInt(btn.dataset.optionid, 10);
+        const btnUserid = parseInt(btn.dataset.userid, 10);
+        const btnSkipcondition = btn.dataset.skipcondition || '';
+        const btnRemainingpages = parseInt(btn.dataset.remainingpages, 10);
+        const btnRemaininguniqid = btn.dataset.remaininguniqid || '';
+        const btnUseinline = btn.dataset.useinline === '1';
+
+        // Persist skipcondition for subsequent navigation inside the remaining pages.
+        if (btnSkipcondition) {
+            skipconditions[btnOptionid] = btnSkipcondition;
+        }
+
+        // Update page-count state for the remaining flow.
+        currentbookitpage[btnOptionid] = 0;
+        totalbookitpages[btnOptionid] = btnRemainingpages;
+
+        if (btnUseinline) {
+            if (btnRemaininguniqid) {
+                inlineprepageconfig[btnOptionid] = {userid: btnUserid, uniquid: btnRemaininguniqid};
+            }
+
+            const inlineEl = document.getElementById(SELECTORS.INLINEID + btnOptionid + '_' + btnRemaininguniqid);
+            if (!inlineEl) {
+                return;
+            }
+
+            const onShown = () => {
+                loadPreBookingPage(btnOptionid, btnUserid, btnRemaininguniqid);
+            };
+
+            const CollapseCtor = window.bootstrap && window.bootstrap.Collapse;
+            if (CollapseCtor) {
+                inlineEl.addEventListener('shown.bs.collapse', onShown, {once: true});
+                CollapseCtor.getOrCreateInstance(inlineEl).show();
+            } else {
+                // Bootstrap 4 fallback – open collapse manually then load.
+                inlineEl.classList.add('show');
+                onShown();
+            }
+        } else {
+            // Modal mode – the shown.bs.modal handler (registerPrepageModalDelegatedListener)
+            // will pick up skipconditions[optionid] when loading the first page.
+            const modalEl = document.getElementById(SELECTORS.MODALID + btnOptionid + '_' + btnRemaininguniqid);
+            if (!modalEl) {
+                return;
+            }
+
+            const bootstrapVersion = detectBootstrapVersion();
+            if (bootstrapVersion === 5) {
+                registerPrepageModalDelegatedListener();
+                const ModalCtor = window.bootstrap.Modal;
+                ModalCtor.getOrCreateInstance(modalEl).show();
+            } else {
+                // Bootstrap 4: trigger via MutationObserver already registered by initprepagemodal.
+                respondToVisibility(
+                    btnOptionid,
+                    btnUserid,
+                    btnRemaininguniqid,
+                    btnRemainingpages,
+                    (oid, uid, uid2) => {
+                        loadPreBookingPage(oid, uid, uid2);
+                    }
+                );
+                // Trigger modal open via attribute-based approach.
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+            }
+        }
+    });
+};

@@ -34,6 +34,7 @@ use mod_booking\local\modechecker;
 use mod_booking\output\bookingoption_description;
 use mod_booking\output\bookit_button;
 use mod_booking\output\prepagemodal;
+use mod_booking\output\prepageinlinestart;
 use mod_booking\output\renderer;
 use mod_booking\subbookings\subbookings_info;
 use moodle_exception;
@@ -64,15 +65,20 @@ class booking_bookit {
      *
      * @param booking_option_settings $settings
      * @param int $userid
+     * @param string $inlinestartpage optional condition shortname to render inline (e.g. 'slotbooking')
      * @return string
      */
-    public static function render_bookit_button(booking_option_settings $settings, int $userid = 0) {
+    public static function render_bookit_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        string $inlinestartpage = ''
+    ) {
 
         global $PAGE;
 
         /** @var renderer $output */
         $output = $PAGE->get_renderer('mod_booking');
-        [$templates, $datas] = self::render_bookit_template_data($settings, $userid);
+        [$templates, $datas] = self::render_bookit_template_data($settings, $userid, true, $inlinestartpage);
 
         $html = '';
 
@@ -82,6 +88,8 @@ class booking_bookit {
                 $html .= $output->render_prepagemodal($data);
             } else if ($template == 'mod_booking/bookingpage/prepageinline') {
                 $html .= $output->render_prepageinline($data);
+            } else if ($template == 'mod_booking/bookingpage/prepageinlinestart') {
+                $html .= $output->render_prepageinlinestart($data);
             } else {
                 $html .= $output->render_bookit_button($data, $template);
             }
@@ -96,13 +104,17 @@ class booking_bookit {
      * @param booking_option_settings $settings
      * @param int $userid
      * @param bool $renderprepagemodal
+     * @param string $inlinestartpage optional condition shortname to render inline (e.g. 'slotbooking')
      * @return array
      */
     public static function render_bookit_template_data(
         booking_option_settings $settings,
         int $userid = 0,
-        bool $renderprepagemodal = true
+        bool $renderprepagemodal = true,
+        string $inlinestartpage = ''
     ) {
+        global $PAGE;
+
         $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($settings->cmid);
 
         // Get blocking conditions, including prepages$prepages etc.
@@ -162,6 +174,68 @@ class booking_bookit {
 
         // Do we really want to render a modal?
         $showprepagemodal = (!$justmyalert && (count($prepages) > 0) && $renderprepagemodal);
+
+        // ── Inline-start rendering ──────────────────────────────────────────────
+        // When $inlinestartpage is set and there is a matching condition in the prepage list,
+        // render that condition server-side and display it inline.  Remaining pages open via
+        // the normal modal/inline collapse when the user clicks "Continue".
+        if ($showprepagemodal && !empty($inlinestartpage)) {
+            $skipconditionclass = null;
+            foreach ($prepages as $page) {
+                $classparts = explode('\\', $page['classname']);
+                $conditionshortname = array_pop($classparts);
+                if (strcasecmp($conditionshortname, $inlinestartpage) === 0) {
+                    $skipconditionclass = $page['classname'];
+                    break;
+                }
+            }
+
+            if ($skipconditionclass !== null) {
+                // Instantiate the condition and render its page data.
+                if (method_exists($skipconditionclass, 'instance')) {
+                    $skipcondition = $skipconditionclass::instance();
+                } else {
+                    $skipcondition = new $skipconditionclass();
+                }
+                $conditionrenderdata = $skipcondition->render_page($settings->id, $userid);
+
+                // Render the condition HTML via the Moodle template engine (server-side).
+                /** @var renderer $output */
+                $output = $PAGE->get_renderer('mod_booking');
+                $conditiontmpldata = $conditionrenderdata['data'][0]['data'] ?? [];
+                $conditionhtml = $output->render_from_template($conditionrenderdata['template'], $conditiontmpldata);
+
+                // Remaining pages = all prepage pages minus the one shown inline.
+                $remainingpages = count($prepages) - 1;
+
+                // Determine inline vs modal for the remaining pages container.
+                $viewparam = booking::get_value_of_json_by_key($settings->bookingid, 'viewparam');
+                $turnoffmodals = 0;
+                if (
+                    ($viewparam != MOD_BOOKING_VIEW_PARAM_CARDS)
+                    && !(
+                        $bookingsettings->switchtemplates
+                        && in_array(MOD_BOOKING_VIEW_PARAM_CARDS, $bookingsettings->switchtemplatesselection)
+                    )
+                ) {
+                    $turnoffmodals = get_config('booking', 'turnoffmodals');
+                }
+
+                $data = new prepageinlinestart(
+                    $settings->id,
+                    $userid,
+                    $conditionhtml,
+                    $inlinestartpage,
+                    $remainingpages,
+                    !empty($turnoffmodals)
+                );
+
+                $datas[] = $data;
+                $templates[] = 'mod_booking/bookingpage/prepageinlinestart';
+                return [$templates, $datas];
+            }
+        }
+        // ── End inline-start rendering ──────────────────────────────────────────
 
         // Big decision: can we render the button right away, or do we need to introduce a modal.
         if ($showprepagemodal) {
