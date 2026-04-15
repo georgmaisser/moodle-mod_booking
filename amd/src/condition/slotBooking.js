@@ -338,12 +338,12 @@ const renderFixedSlotsEditor = (container, daySlots, selectionInput, maxSlots) =
         if (isSelected) {
             block.style.background = 'rgba(13,110,253,0.22)';
             block.style.borderTop = '1px solid rgba(13,110,253,0.75)';
-            block.style.borderBottom = '1px solid rgba(13,110,253,0.75)';
+            block.style.borderBottom = 'none';
             block.style.color = 'rgb(13,70,170)';
         } else {
             block.style.background = 'rgba(25,135,84,0.12)';
             block.style.borderTop = '1px solid rgba(25,135,84,0.45)';
-            block.style.borderBottom = '1px solid rgba(25,135,84,0.45)';
+            block.style.borderBottom = 'none';
             block.style.color = 'rgb(20,100,60)';
         }
     };
