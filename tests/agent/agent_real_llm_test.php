@@ -43,7 +43,6 @@ use mod_booking\local\wbagent\conversation_store;
  *
  * @coversNothing
  * @runTestsInSeparateProcesses
- * @preserveGlobalState disabled
  */
 final class agent_real_llm_test extends advanced_testcase {
     /** @var \stdClass */
@@ -78,17 +77,16 @@ final class agent_real_llm_test extends advanced_testcase {
     }
 
     /**
-     * Skip test unless explicit opt-in env is enabled.
+     * Skip test only when real-LLM credentials are unavailable.
      */
     private function require_real_llm_opt_in(): void {
-        $explicitoptin = (string)getenv('BOOKING_AI_REAL_LLM') === '1';
         $hascredentials = (string)getenv('BOOKING_TEST_AI_KEY') !== ''
             && (string)getenv('BOOKING_TEST_AI_MODEL') !== ''
             && (string)getenv('BOOKING_TEST_AI_ENDPOINT') !== '';
 
-        if (!$explicitoptin && !$hascredentials) {
+        if (!$hascredentials) {
             $this->markTestSkipped(
-                'Set BOOKING_AI_REAL_LLM=1 or provide BOOKING_TEST_AI_KEY/BOOKING_TEST_AI_MODEL/BOOKING_TEST_AI_ENDPOINT.'
+                'Real-LLM tests require BOOKING_TEST_AI_KEY/BOOKING_TEST_AI_MODEL/BOOKING_TEST_AI_ENDPOINT.'
             );
         }
     }
@@ -142,7 +140,7 @@ final class agent_real_llm_test extends advanced_testcase {
         $orc = new orchestrator($registry, new interpreter($registry), $store);
 
         if (!$orc->is_provider_available((int)$this->booking->cmid, (int)$this->teacher->id)) {
-            $this->markTestSkipped('No core_ai text provider configured/enabled for this context.');
+            $this->fail('Real-LLM credentials exist, but no core_ai text provider is configured/enabled for this context.');
         }
     }
 
@@ -174,8 +172,12 @@ final class agent_real_llm_test extends advanced_testcase {
         $commandsjson = '[]';
         $commands = [];
         $prompts = [
-            'Erstelle eine neue Buchungsoption mit folgenden festen Angaben: Titel "LLM Confirm Option", maxanswers 5, coursestarttime 2045-03-15T09:00:00, courseendtime 2045-03-15T17:00:00, teacherquery "current". Gib das als bestaetigbaren Befehl aus.',
-            'Erstelle eine neue Buchungsoption mit Titel "LLM Confirm Option Retry", maxanswers 6, coursestarttime 2045-03-16T09:00:00, courseendtime 2045-03-16T17:00:00 und teacherquery "current". Gib nur einen bestaetigbaren Befehl aus.',
+            'Erstelle eine neue Buchungsoption mit folgenden festen Angaben:
+                Titel "LLM Confirm Option", maxanswers 5, coursestarttime 2045-03-15T09:00:00, courseendtime 2045-03-15T17:00:00,
+                teacherquery "current". Gib das als bestaetigbaren Befehl aus.',
+            'Erstelle eine neue Buchungsoption mit Titel
+                "LLM Confirm Option Retry", maxanswers 6, coursestarttime 2045-03-16T09:00:00,
+                courseendtime 2045-03-16T17:00:00 und teacherquery "current". Gib nur einen bestaetigbaren Befehl aus.',
         ];
 
         foreach ($prompts as $prompt) {

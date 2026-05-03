@@ -170,7 +170,9 @@ final class agent_e2e_bulk_update_test extends abstract_agent_testcase {
         ]);
 
         $this->assertEquals('error', $result['status']);
-        $this->assertStringContainsString('bookusersquery', $result['detail']);
+
+        $unchanged = $this->get_option_from_db((int)$opt->id);
+        $this->assertNotEquals(5, (int)$unchanged->maxanswers, 'Bulk update must not be applied when forbidden input is used.');
     }
 
     /**

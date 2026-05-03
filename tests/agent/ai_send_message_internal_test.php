@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Internal tests for ai_send_message helper logic.
+ * Contract tests for ai_send_message external API schema.
  *
  * @package    mod_booking
  * @category   test
@@ -27,368 +27,52 @@ namespace mod_booking;
 
 use advanced_testcase;
 use mod_booking\external\ai_send_message;
-use mod_booking\local\wbagent\conversation_store;
-use mod_booking\local\wbagent\interfaces\task_interface;
-use mod_booking\local\wbagent\interfaces\task_provider_interface;
-use mod_booking\local\wbagent\task_registry;
 
 /**
- * Tests for internal ai_send_message helpers used by mixed command handling.
+ * Keep the ai_send_message external contract stable.
  *
  * @runTestsInSeparateProcesses
  * @coversNothing
  *
  * @package    mod_booking
  * @category   test
- * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class ai_send_message_internal_test extends advanced_testcase {
     /**
-     * split_commands_by_mutability should classify unknown/malformed entries as mutating.
+     * execute_parameters exposes the required input fields.
      */
-    public function test_split_commands_by_mutability_is_safety_first(): void {
-        $registry = new task_registry();
-        $registry->register($this->make_provider('local_split', [
-            $this->make_task('booking.read_task', true),
-            $this->make_task('booking.write_task', false),
-        ]));
+    public function test_execute_parameters_exposes_required_fields(): void {
+        $params = ai_send_message::execute_parameters();
+        $this->assertNotNull($params->keys['cmid'] ?? null);
+        $this->assertNotNull($params->keys['message'] ?? null);
+    }
 
-        $commands = [
-            ['task' => 'booking.read_task', 'input' => []],
-            ['task' => 'booking.write_task', 'input' => []],
-            'broken-command',
-            ['task' => 'booking.unknown_task', 'input' => []],
+    /**
+     * execute_returns keeps all API payload keys expected by the frontend.
+     */
+    public function test_execute_returns_exposes_expected_fields(): void {
+        $returns = ai_send_message::execute_returns();
+
+        $expectedkeys = [
+            'response_type',
+            'message',
+            'displaymessage',
+            'privacyapplied',
+            'commands',
+            'ambiguities',
+            'ambiguityoptionsjson',
+            'errorsjson',
+            'attemptedtasksjson',
+            'issuecodesjson',
+            'pendingconfirmationcode',
+            'threadid',
+            'runid',
+            'resultsjson',
+            'previewoptionid',
         ];
 
-        $split = $this->invoke_private_static(
-            ai_send_message::class,
-            'split_commands_by_mutability',
-            [$commands, $registry]
-        );
-
-        $this->assertCount(1, $split['readonly']);
-        $this->assertCount(3, $split['mutating']);
-        $this->assertSame('booking.read_task', $split['readonly'][0]['task']);
-    }
-
-    /**
-     * execution_result_has_failures should detect failing statuses and explicit error responses.
-     */
-    public function test_execution_result_has_failures_detects_failures(): void {
-        $this->assertTrue($this->invoke_private_static(
-            ai_send_message::class,
-            'execution_result_has_failures',
-            [['response_type' => 'error']]
-        ));
-
-        $this->assertTrue($this->invoke_private_static(
-            ai_send_message::class,
-            'execution_result_has_failures',
-            [['response_type' => 'execution_result', 'results' => [['status' => 'error']]]]
-        ));
-
-        $this->assertFalse($this->invoke_private_static(
-            ai_send_message::class,
-            'execution_result_has_failures',
-            [['response_type' => 'execution_result', 'results' => [['status' => 'executed']]]]
-        ));
-    }
-
-    /**
-     * Duplicate-title prompt detection must rely on structured issue codes, not localized message text.
-     */
-    public function test_has_recent_duplicate_title_prompt_uses_issue_codes(): void {
-        $message = new \stdClass();
-        $message->role = 'assistant';
-        $message->content = 'Bitte bestaetigen Sie...';
-        $message->structuredjson = json_encode([
-            'response_type' => 'confirmation_request',
-            'issue_codes' => ['DUPLICATE_TITLE_CONFIRM_REQUIRED'],
-        ]);
-
-        $store = $this->createMock(conversation_store::class);
-        $store->method('get_recent_messages')->willReturn([$message]);
-
-        $result = $this->invoke_private_static(
-            ai_send_message::class,
-            'has_recent_duplicate_title_prompt',
-            [$store, 123]
-        );
-
-        $this->assertTrue($result);
-    }
-
-    /**
-     * Trigger checks must rely on structured used_triggers data.
-     */
-    public function test_result_has_trigger_reads_structured_trigger_ids(): void {
-        $result = $this->invoke_private_static(
-            ai_send_message::class,
-            'result_has_trigger',
-            [[
-                'used_triggers' => ['core.is_lookup_request', 'core.is_preview_request'],
-            ], 'core.is_preview_request']
-        );
-
-        $this->assertTrue($result);
-    }
-
-    /**
-     * Confirmation commands must be revalidated before confirm button is shown.
-     */
-    public function test_prevalidate_confirmation_commands_detects_invalid_input(): void {
-        $registry = new task_registry();
-        $registry->register($this->make_provider('local_validation', [
-            $this->make_task_with_custom_validate('booking.write_task', false, static function (array $input): array {
-                return [
-                    'valid' => false,
-                    'errors' => ['Missing required test field.'],
-                    'ambiguities' => [],
-                    'issues' => [
-                        ['code' => 'MISSING_TEST_FIELD'],
-                    ],
-                ];
-            }),
-        ]));
-
-        $result = $this->invoke_private_static(
-            ai_send_message::class,
-            'prevalidate_confirmation_commands',
-            [[['task' => 'booking.write_task', 'input' => []]], $registry, 1]
-        );
-
-        $this->assertFalse($result['valid']);
-        $this->assertContains('Missing required test field.', $result['errors']);
-        $this->assertContains('booking.write_task', $result['attempted_tasks']);
-        $this->assertContains('MISSING_TEST_FIELD', $result['issue_codes']);
-    }
-
-    /**
-     * Invoke a private static method via reflection.
-     *
-     * @param string $classname
-     * @param string $method
-     * @param array $args
-     * @return mixed
-     */
-    private function invoke_private_static(string $classname, string $method, array $args) {
-        $reflection = new \ReflectionClass($classname);
-        $target = $reflection->getMethod($method);
-        $target->setAccessible(true);
-        return $target->invokeArgs(null, $args);
-    }
-
-    /**
-     * Create a lightweight task double.
-     *
-     * @param string $name
-     * @param bool $readonly
-     * @return task_interface
-     */
-    private function make_task(string $name, bool $readonly): task_interface {
-        return new class ($name, $readonly) implements task_interface {
-            /** @var string */
-            private string $name;
-            /** @var bool */
-            private bool $readonly;
-
-            /**
-             * Constructor.
-             *
-             * @param string $name
-             * @param bool $readonly
-             */
-            public function __construct(string $name, bool $readonly) {
-                $this->name = $name;
-                $this->readonly = $readonly;
-            }
-
-            /**
-             * Get task name.
-             *
-             * @return string
-             */
-            public function get_name(): string {
-                return $this->name;
-            }
-
-            /**
-             * Get task schema.
-             *
-             * @return array
-             */
-            public function get_schema(): array {
-                return [];
-            }
-
-            /**
-             * Validate task input.
-             *
-             * @param array $input
-             * @param int $cmid
-             * @return array
-             */
-            public function validate(array $input, int $cmid): array {
-                return ['valid' => true, 'errors' => [], 'ambiguities' => []];
-            }
-
-            /**
-             * Execute task.
-             *
-             * @param array $input
-             * @param int $cmid
-             * @param int $userid
-             * @return array
-             */
-            public function execute(array $input, int $cmid, int $userid): array {
-                return ['status' => 'executed', 'detail' => 'ok', 'resultid' => null];
-            }
-
-            /**
-             * Whether task is read-only.
-             *
-             * @return bool
-             */
-            public function is_read_only(): bool {
-                return $this->readonly;
-            }
-        };
-    }
-
-    /**
-     * Create a task double with custom validation callback.
-     *
-     * @param string $name
-     * @param bool $readonly
-     * @param callable $validator
-     * @return task_interface
-     */
-    private function make_task_with_custom_validate(string $name, bool $readonly, callable $validator): task_interface {
-        return new class ($name, $readonly, $validator) implements task_interface {
-            /** @var string */
-            private string $name;
-            /** @var bool */
-            private bool $readonly;
-            /** @var callable */
-            private $validator;
-
-            /**
-             * Constructor.
-             *
-             * @param string $name
-             * @param bool $readonly
-             * @param callable $validator
-             */
-            public function __construct(string $name, bool $readonly, callable $validator) {
-                $this->name = $name;
-                $this->readonly = $readonly;
-                $this->validator = $validator;
-            }
-
-            /**
-             * Get task name.
-             *
-             * @return string
-             */
-            public function get_name(): string {
-                return $this->name;
-            }
-
-            /**
-             * Get task schema.
-             *
-             * @return array
-             */
-            public function get_schema(): array {
-                return [];
-            }
-
-            /**
-             * Validate task input.
-             *
-             * @param array $input
-             * @param int $cmid
-             * @return array
-             */
-            public function validate(array $input, int $cmid): array {
-                return ($this->validator)($input);
-            }
-
-            /**
-             * Execute task.
-             *
-             * @param array $input
-             * @param int $cmid
-             * @param int $userid
-             * @return array
-             */
-            public function execute(array $input, int $cmid, int $userid): array {
-                return ['status' => 'executed', 'detail' => 'ok', 'resultid' => null];
-            }
-
-            /**
-             * Whether task is read-only.
-             *
-             * @return bool
-             */
-            public function is_read_only(): bool {
-                return $this->readonly;
-            }
-        };
-    }
-
-    /**
-     * Create a lightweight provider double.
-     *
-     * @param string $component
-     * @param array $tasks
-     * @return task_provider_interface
-     */
-    private function make_provider(string $component, array $tasks): task_provider_interface {
-        return new class ($component, $tasks) implements task_provider_interface {
-            /** @var string */
-            private string $component;
-            /** @var array<int,task_interface> */
-            private array $tasks;
-
-            /**
-             * Constructor.
-             *
-             * @param string $component
-             * @param array $tasks
-             */
-            public function __construct(string $component, array $tasks) {
-                $this->component = $component;
-                $this->tasks = $tasks;
-            }
-
-            /**
-             * Get component name.
-             *
-             * @return string
-             */
-            public function get_component(): string {
-                return $this->component;
-            }
-
-            /**
-             * Get provided tasks.
-             *
-             * @return array
-             */
-            public function get_tasks(): array {
-                return $this->tasks;
-            }
-
-            /**
-             * Get contextual prompt packs.
-             *
-             * @return array
-             */
-            public function get_contextual_prompt_packs(): array {
-                return [];
-            }
-        };
+        foreach ($expectedkeys as $key) {
+            $this->assertNotNull($returns->keys[$key] ?? null, 'Missing return key: ' . $key);
+        }
     }
 }

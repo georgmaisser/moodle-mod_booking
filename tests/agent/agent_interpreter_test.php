@@ -161,7 +161,7 @@ final class agent_interpreter_test extends advanced_testcase {
     }
 
     /**
-     * Test that an update_option without optionid produces an ambiguity.
+     * Test that update_option without target is rejected during validation.
      */
     public function test_update_option_without_optionid_produces_ambiguity(): void {
         $raw = json_encode([
@@ -172,9 +172,9 @@ final class agent_interpreter_test extends advanced_testcase {
             ],
         ]);
         $result = $this->interpreter->interpret($raw, $this->cmid, 1);
-        // Should become a clarification because of the ambiguity.
-        $this->assertEquals('clarification', $result['response_type']);
-        $this->assertNotEmpty($result['ambiguities']);
+        $this->assertEquals('error', $result['response_type']);
+        $this->assertNotEmpty($result['errors']);
+        $this->assertEmpty($result['commands']);
     }
 
     /**
@@ -350,15 +350,15 @@ final class agent_interpreter_test extends advanced_testcase {
                 [
                     'task'    => 'test.ambiguous_docs',
                     'version' => 1,
-                    'input'   => [],   // no 'question' field
+                    'input'   => [],
                 ],
             ],
         ]);
 
         $result = $interpreter->interpret($raw, $this->cmid, 1);
 
-        // Structural check_structure() errors block the command and return clarification.
-        $this->assertEquals('clarification', $result['response_type']);
+        // Structural check_structure() errors block the command.
+        $this->assertEquals('error', $result['response_type']);
         $this->assertNotEmpty($result['errors']);
     }
 

@@ -139,15 +139,20 @@ final class agent_e2e_update_option_test extends abstract_agent_testcase {
     }
 
     /**
-     * update_option with an optionid that does not belong to the booking instance → error.
+     * Preflight rejects option ids that do not belong to the current booking instance.
      */
     public function test_update_with_foreign_optionid_returns_error(): void {
-        $result = $this->exec_command('booking.update_option', [
+        $registry = \mod_booking\local\wbagent\task_registry::make_default();
+        $task = $registry->get_task('booking.update_option');
+        $this->assertNotNull($task);
+
+        $preflight = $task->preflight([
             'optionid'   => 999999,
             'maxanswers' => 10,
-        ]);
+        ], (int)$this->booking->cmid, (int)$this->teacher->id);
 
-        $this->assertEquals('error', $result['status']);
+        $this->assertFalse($preflight->is_valid);
+        $this->assertNotEmpty($preflight->issues);
     }
 
     /**

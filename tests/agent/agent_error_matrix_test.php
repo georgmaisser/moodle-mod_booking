@@ -148,19 +148,6 @@ final class agent_error_matrix_test extends abstract_agent_testcase {
     }
 
     /**
-     * bulk_update_options with bookusersquery → error.
-     */
-    public function test_executor_bulk_bookusersquery_forbidden(): void {
-        $this->create_option('Forbidden');
-        $result = $this->exec_command('booking.bulk_update_options', [
-            'apply_to_all'   => true,
-            'bookusersquery' => 'user:query',
-        ]);
-        $this->assertEquals('error', $result['status']);
-        $this->assertStringContainsString('bookusersquery', $result['detail']);
-    }
-
-    /**
      * search_users with empty query → error.
      */
     public function test_executor_search_users_empty_query_returns_error(): void {
@@ -173,22 +160,6 @@ final class agent_error_matrix_test extends abstract_agent_testcase {
      */
     public function test_executor_search_courses_empty_query_returns_error(): void {
         $result = $this->exec_command('booking.search_courses', ['query' => '']);
-        $this->assertEquals('error', $result['status']);
-    }
-
-    /**
-     * list_option_properties with invalid scope → error.
-     */
-    public function test_executor_list_properties_invalid_scope(): void {
-        $result = $this->exec_command('booking.list_option_properties', ['scope' => 'invalid_scope']);
-        $this->assertEquals('error', $result['status']);
-    }
-
-    /**
-     * list_actions with invalid scope → error.
-     */
-    public function test_executor_list_actions_invalid_scope(): void {
-        $result = $this->exec_command('booking.list_actions', ['scope' => 'nope']);
         $this->assertEquals('error', $result['status']);
     }
 

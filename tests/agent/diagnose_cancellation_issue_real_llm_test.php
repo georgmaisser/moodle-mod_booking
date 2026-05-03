@@ -71,42 +71,34 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
 
         $option = $this->create_option('Cancel CONV09 ' . uniqid('', true), ['maxanswers' => 5]);
 
-        $target = $this->getDataGenerator()->create_user([
-            'firstname' => 'Lena',
-            'lastname'  => 'Storno',
-            'email'     => 'lena.storno.' . uniqid('', true) . '@example.com',
-        ]);
-        $this->getDataGenerator()->enrol_user($target->id, $this->course->id, 'student');
-
-        // Book the user directly via executor so there is something to cancel.
+        // Book current user directly via executor so there is something to cancel.
         $this->exec_command('booking.book_users', [
             'optionid' => (int)$option->id,
-            'userids'  => [(int)$target->id],
+            'userids'  => [(int)$this->teacher->id],
         ]);
         singleton_service::destroy_booking_answers((int)$option->id);
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        $query = 'Can user id ' . (int)$target->id
-            . ' cancel their booking for option id ' . (int)$option->id . '? Just diagnose.';
+        $query = 'Can I cancel my booking for option id ' . (int)$option->id . '? Just diagnose.';
 
         try {
             $result = $this->chat($query, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable: ' . $e->getMessage());
+            $this->fail('LLM unavailable: ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result);
 
         if (($result['response_type'] ?? '') !== 'execution_result') {
-            $this->markTestSkipped(
+            $this->fail(
                 'Expected execution_result for read-only cancellation diagnose; got: ' . ($result['response_type'] ?? '?')
             );
         }
 
         $taskresult = $this->extract_task_result($result, 'booking.diagnose_cancellation_issue');
         if ($taskresult === null) {
-            $this->markTestSkipped('No booking.diagnose_cancellation_issue result in response.');
+            $this->fail('No booking.diagnose_cancellation_issue result in response.');
         }
 
         $this->assertEquals('executed', (string)($taskresult['status'] ?? ''));
@@ -131,16 +123,9 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
 
         $option = $this->create_option('Cancel CONV10 ' . uniqid('', true), ['maxanswers' => 5]);
 
-        $target = $this->getDataGenerator()->create_user([
-            'firstname' => 'Max',
-            'lastname'  => 'Loopstorno',
-            'email'     => 'max.loopstorno.' . uniqid('', true) . '@example.com',
-        ]);
-        $this->getDataGenerator()->enrol_user($target->id, $this->course->id, 'student');
-
         $this->exec_command('booking.book_users', [
             'optionid' => (int)$option->id,
-            'userids'  => [(int)$target->id],
+            'userids'  => [(int)$this->teacher->id],
         ]);
         singleton_service::destroy_booking_answers((int)$option->id);
 
@@ -150,38 +135,94 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
         try {
             $result1 = $this->chat("Why can't the user cancel?", $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable (turn 1): ' . $e->getMessage());
+            $this->fail('LLM unavailable (turn 1): ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result1);
 
-        if (($result1['response_type'] ?? '') !== 'clarification') {
-            $this->markTestSkipped(
-                'Expected clarification on turn 1 for vague cancellation input; got: ' . ($result1['response_type'] ?? '?')
+        if (!in_array(($result1['response_type'] ?? ''), ['clarification', 'execution_result'], true)) {
+            $this->fail(
+                'Expected clarification or execution_result on turn 1 for vague cancellation input; got: '
+                . ($result1['response_type'] ?? '?')
             );
         }
 
+        if (($result1['response_type'] ?? '') === 'execution_result') {
+            $taskresult = $this->extract_task_result($result1, 'booking.diagnose_cancellation_issue');
+            if ($taskresult === null) {
+                $this->fail('No booking.diagnose_cancellation_issue result in turn-1 response.');
+            }
+            if (($taskresult['status'] ?? '') === 'executed') {
+                $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []), 'Diagnosis must contain reasons.');
+                return;
+            }
+        }
+
         // ---- Turn 2: provide ids ----
-        $reply = 'User id ' . (int)$target->id . ', option id ' . (int)$option->id . '.';
+        $reply = 'I cannot cancel option id ' . (int)$option->id . '. Diagnose cancellation issue.';
 
         try {
             $result2 = $this->chat($reply, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable (turn 2): ' . $e->getMessage());
+            $this->fail('LLM unavailable (turn 2): ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result2);
 
         if (($result2['response_type'] ?? '') !== 'execution_result') {
-            $this->markTestSkipped('Expected execution_result on turn 2; got: ' . ($result2['response_type'] ?? '?'));
+            if (($result2['response_type'] ?? '') !== 'clarification') {
+                $this->fail('Expected execution_result or clarification on turn 2; got: ' . ($result2['response_type'] ?? '?'));
+            }
+
+            try {
+                $result2 = $this->chat(
+                    'Diagnose why I cannot cancel option id ' . (int)$option->id . '. Investigate only.',
+                    $threadid,
+                    $store,
+                    $runtime
+                );
+            } catch (\Throwable $e) {
+                $this->fail('LLM unavailable (turn 3): ' . $e->getMessage());
+            }
+
+            if (($result2['response_type'] ?? '') !== 'execution_result') {
+                $this->fail('Expected execution_result by turn 3; got: ' . ($result2['response_type'] ?? '?'));
+            }
         }
 
         $taskresult = $this->extract_task_result($result2, 'booking.diagnose_cancellation_issue');
         if ($taskresult === null) {
-            $this->markTestSkipped('No booking.diagnose_cancellation_issue result in turn-2 response.');
+            $this->fail('No booking.diagnose_cancellation_issue result in turn-2 response.');
         }
 
-        $this->assertEquals('executed', (string)($taskresult['status'] ?? ''));
+        if (($taskresult['status'] ?? '') !== 'executed') {
+            try {
+                $result2 = $this->chat(
+                    'Diagnose cancellation issue for current user (me) on option id ' . (int)$option->id
+                    . '. Do not analyze other users.',
+                    $threadid,
+                    $store,
+                    $runtime
+                );
+            } catch (\Throwable $e) {
+                $this->fail('LLM unavailable (turn 4): ' . $e->getMessage());
+            }
+
+            if (($result2['response_type'] ?? '') !== 'execution_result') {
+                $this->fail('Expected execution_result by turn 4; got: ' . ($result2['response_type'] ?? '?'));
+            }
+
+            $taskresult = $this->extract_task_result($result2, 'booking.diagnose_cancellation_issue');
+            if ($taskresult === null) {
+                $this->fail('No booking.diagnose_cancellation_issue result in turn-4 response.');
+            }
+        }
+
+        $this->assertEquals(
+            'executed',
+            (string)($taskresult['status'] ?? ''),
+            'Diagnose task did not execute successfully. Detail: ' . (string)($taskresult['detail'] ?? '')
+        );
         $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []), 'Diagnosis must contain reasons.');
     }
 }

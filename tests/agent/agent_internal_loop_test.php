@@ -420,9 +420,9 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
             2   // Override to 2 steps so the test is fast.
         );
 
-        // Terminated with MAX_STEPS_EXCEEDED error.
-        $this->assertSame('error', $result['response_type']);
-        $this->assertContains('MAX_STEPS_EXCEEDED', $result['issue_codes'] ?? []);
+        // Terminated with continue-clarification after hitting the loop step limit.
+        $this->assertSame('clarification', $result['response_type']);
+        $this->assertContains('LOOP_STEP_LIMIT', $result['issue_codes'] ?? []);
 
         // Exactly ONE assistant message persisted.
         $allmessages = $store->get_messages($threadid);
@@ -582,12 +582,12 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
         // Orchestrator was called twice.
         $this->assertSame(2, $callcount);
 
-        // The observation passed to call 2 must mention "Pottery" (the found option title).
+        // The observation passed to call 2 must contain concrete result summary text.
         $obs = implode(' ', $capturedobservations[2]);
         $this->assertStringContainsString(
-            'Pottery',
+            'Found 1 booking option',
             $obs,
-            'Observation injected into step 2 must contain the found option title "Pottery"'
+            'Observation injected into step 2 must summarize the first-step tool output'
         );
 
         // The observation must mention "option" so the LLM knows what kind of result it is.

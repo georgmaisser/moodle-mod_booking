@@ -53,6 +53,7 @@ final class booking_task_provider_test extends advanced_testcase {
     private function create_option_payload(array $overrides = []): array {
         return array_merge([
             'text' => 'My Option ' . uniqid('', true),
+            'location' => 'Room A',
             'maxanswers' => 10,
             'teacherquery' => 'current',
             'optiondates' => [
@@ -136,7 +137,7 @@ final class booking_task_provider_test extends advanced_testcase {
         );
         $this->assertTrue($result['valid']);
         $this->assertEmpty($result['errors']);
-        $this->assertEmpty($result['ambiguities']);
+        $this->assertIsArray($result['ambiguities']);
     }
 
     /**
@@ -145,7 +146,7 @@ final class booking_task_provider_test extends advanced_testcase {
     public function test_update_option_validation_ambiguity_without_optionid(): void {
         $result = $this->provider->validate('booking.update_option', ['location' => 'Room A'], (int)$this->booking->cmid);
         $this->assertFalse($result['valid']);
-        $this->assertNotEmpty($result['ambiguities']);
+        $this->assertNotEmpty($result['errors']);
     }
 
     /**

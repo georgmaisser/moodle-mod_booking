@@ -85,13 +85,13 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
         try {
             $result = $this->chat($query, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable: ' . $e->getMessage());
+            $this->fail('LLM unavailable: ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result);
 
         if (($result['response_type'] ?? '') !== 'confirmation_request') {
-            $this->markTestSkipped('Expected confirmation_request; got: ' . ($result['response_type'] ?? '?'));
+            $this->fail('Expected confirmation_request; got: ' . ($result['response_type'] ?? '?'));
         }
 
         // Execute all returned commands (may be one per option or one for all).
@@ -138,14 +138,15 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
         try {
             $result1 = $this->chat('Update all options.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable (turn 1): ' . $e->getMessage());
+            $this->fail('LLM unavailable (turn 1): ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result1);
 
-        if (($result1['response_type'] ?? '') !== 'clarification') {
-            $this->markTestSkipped(
-                'Expected clarification on turn 1 for vague bulk_update input; got: ' . ($result1['response_type'] ?? '?')
+        if (!in_array(($result1['response_type'] ?? ''), ['clarification', 'confirmation_request'], true)) {
+            $this->fail(
+                'Expected clarification or confirmation_request on turn 1 for vague bulk_update input; got: '
+                . ($result1['response_type'] ?? '?')
             );
         }
 
@@ -155,13 +156,13 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
         try {
             $result2 = $this->chat($reply, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable (turn 2): ' . $e->getMessage());
+            $this->fail('LLM unavailable (turn 2): ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result2);
 
         if (($result2['response_type'] ?? '') !== 'confirmation_request') {
-            $this->markTestSkipped('Expected confirmation_request on turn 2; got: ' . ($result2['response_type'] ?? '?'));
+            $this->fail('Expected confirmation_request on turn 2; got: ' . ($result2['response_type'] ?? '?'));
         }
 
         $execresults = $this->execute_all_commands($result2);

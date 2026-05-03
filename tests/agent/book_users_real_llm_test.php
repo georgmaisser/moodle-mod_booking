@@ -50,7 +50,6 @@ require_once(__DIR__ . '/abstract_agent_testcase.php');
  * @coversNothing
  */
 final class book_users_real_llm_test extends abstract_agent_testcase {
-
     protected function setUp(): void {
         parent::setUp();
         $this->require_real_llm();
@@ -87,18 +86,36 @@ final class book_users_real_llm_test extends abstract_agent_testcase {
         try {
             $result = $this->chat($query, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable: ' . $e->getMessage());
+            $this->fail('LLM unavailable: ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result);
 
         if (($result['response_type'] ?? '') !== 'confirmation_request') {
-            $this->markTestSkipped('Expected confirmation_request; got: ' . ($result['response_type'] ?? '?'));
+            if (($result['response_type'] ?? '') !== 'clarification') {
+                $this->fail('Expected confirmation_request or clarification; got: ' . ($result['response_type'] ?? '?'));
+            }
+
+            try {
+                $result = $this->chat(
+                    'Please prepare booking command for user id ' . (int)$target->id
+                    . ' into option id ' . (int)$option->id . '. Do not execute yet.',
+                    $threadid,
+                    $store,
+                    $runtime
+                );
+            } catch (\Throwable $e) {
+                $this->fail('LLM unavailable (turn 2): ' . $e->getMessage());
+            }
+
+            if (($result['response_type'] ?? '') !== 'confirmation_request') {
+                $this->fail('Expected confirmation_request by turn 2; got: ' . ($result['response_type'] ?? '?'));
+            }
         }
 
         $command = $this->extract_command($result, 'booking.book_users');
         if ($command === null) {
-            $this->markTestSkipped('No booking.book_users command in response.');
+            $this->fail('No booking.book_users command in response.');
         }
 
         // Make sure the correct ids are in the command input.
@@ -150,13 +167,13 @@ final class book_users_real_llm_test extends abstract_agent_testcase {
         try {
             $result1 = $this->chat('Book a user into an option.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable (turn 1): ' . $e->getMessage());
+            $this->fail('LLM unavailable (turn 1): ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result1);
 
         if (($result1['response_type'] ?? '') !== 'clarification') {
-            $this->markTestSkipped(
+            $this->fail(
                 'Expected clarification on turn 1 for vague book_users input; got: ' . ($result1['response_type'] ?? '?')
             );
         }
@@ -167,20 +184,20 @@ final class book_users_real_llm_test extends abstract_agent_testcase {
         try {
             $result2 = $this->chat($reply, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable (turn 2): ' . $e->getMessage());
+            $this->fail('LLM unavailable (turn 2): ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result2);
 
         if (($result2['response_type'] ?? '') !== 'confirmation_request') {
-            $this->markTestSkipped(
+            $this->fail(
                 'Expected confirmation_request on turn 2; got: ' . ($result2['response_type'] ?? '?')
             );
         }
 
         $command = $this->extract_command($result2, 'booking.book_users');
         if ($command === null) {
-            $this->markTestSkipped('No booking.book_users command in turn-2 response.');
+            $this->fail('No booking.book_users command in turn-2 response.');
         }
 
         $command['input'] = array_merge($command['input'] ?? [], [

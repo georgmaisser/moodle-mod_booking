@@ -77,18 +77,18 @@ final class create_option_real_llm_test extends abstract_agent_testcase {
         try {
             $result = $this->chat($query, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable: ' . $e->getMessage());
+            $this->fail('LLM unavailable: ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result);
 
         if (($result['response_type'] ?? '') !== 'confirmation_request') {
-            $this->markTestSkipped('Expected confirmation_request; got: ' . ($result['response_type'] ?? '?'));
+            $this->fail('Expected confirmation_request; got: ' . ($result['response_type'] ?? '?'));
         }
 
         $command = $this->extract_command($result, 'booking.create_option');
         if ($command === null) {
-            $this->markTestSkipped('No booking.create_option command in response.');
+            $this->fail('No booking.create_option command in response.');
         }
 
         $execresult = $this->execute_command($command);
@@ -124,13 +124,13 @@ final class create_option_real_llm_test extends abstract_agent_testcase {
         try {
             $result1 = $this->chat('Create a new booking option.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable (turn 1): ' . $e->getMessage());
+            $this->fail('LLM unavailable (turn 1): ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result1);
 
         if (($result1['response_type'] ?? '') !== 'clarification') {
-            $this->markTestSkipped(
+            $this->fail(
                 'Expected clarification on turn 1 for vague input; got: ' . ($result1['response_type'] ?? '?')
             );
         }
@@ -142,20 +142,20 @@ final class create_option_real_llm_test extends abstract_agent_testcase {
         try {
             $result2 = $this->chat($reply, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable (turn 2): ' . $e->getMessage());
+            $this->fail('LLM unavailable (turn 2): ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result2);
 
         if (($result2['response_type'] ?? '') !== 'confirmation_request') {
-            $this->markTestSkipped(
+            $this->fail(
                 'Expected confirmation_request on turn 2; got: ' . ($result2['response_type'] ?? '?')
             );
         }
 
         $command = $this->extract_command($result2, 'booking.create_option');
         if ($command === null) {
-            $this->markTestSkipped('No booking.create_option command in turn-2 response.');
+            $this->fail('No booking.create_option command in turn-2 response.');
         }
 
         $execresult = $this->execute_command($command);
@@ -196,7 +196,7 @@ final class create_option_real_llm_test extends abstract_agent_testcase {
         try {
             $result = $this->chat($query, $threadid, $store, $runtime);
         } catch (\Throwable $e) {
-            $this->markTestSkipped('LLM unavailable: ' . $e->getMessage());
+            $this->fail('LLM unavailable: ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result);

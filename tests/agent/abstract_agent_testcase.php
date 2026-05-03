@@ -292,17 +292,21 @@ abstract class abstract_agent_testcase extends advanced_testcase {
      * Skip the current test unless the real-LLM environment is fully configured.
      *
      * Required env-vars:
-     *   BOOKING_AI_REAL_LLM=1
      *   BOOKING_TEST_AI_KEY, BOOKING_TEST_AI_MODEL, BOOKING_TEST_AI_ENDPOINT
      */
     protected function require_real_llm(): void {
-        if ((string)getenv('BOOKING_AI_REAL_LLM') !== '1') {
-            $this->markTestSkipped('Set BOOKING_AI_REAL_LLM=1 to run real-LLM tests.');
-        }
-        if (!$this->hasliveprovider) {
+        $apikey = trim((string)(getenv('BOOKING_TEST_AI_KEY') ?: ''));
+        $model = trim((string)(getenv('BOOKING_TEST_AI_MODEL') ?: ''));
+        $endpoint = trim((string)(getenv('BOOKING_TEST_AI_ENDPOINT') ?: ''));
+
+        if ($apikey === '' || $model === '' || $endpoint === '') {
             $this->markTestSkipped(
-                'Set BOOKING_TEST_AI_KEY + BOOKING_TEST_AI_MODEL + BOOKING_TEST_AI_ENDPOINT to run real-LLM tests.'
+                'Real-LLM tests require BOOKING_TEST_AI_KEY + BOOKING_TEST_AI_MODEL + BOOKING_TEST_AI_ENDPOINT.'
             );
+        }
+
+        if (!$this->hasliveprovider) {
+            $this->fail('Real-LLM credentials exist, but provider registration is not active.');
         }
     }
 
