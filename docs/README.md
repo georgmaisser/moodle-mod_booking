@@ -10,6 +10,7 @@ This `docs/` directory is the central reference for administrators, teachers, an
 
 | I want to… | Go to… |
 |------------|--------|
+| Understand how booking messages work | [Booking messages](00_booking_messages/README.md) |
 | Send any kind of messages and reminders in relation to booking events or course start etc. | [Booking rules](booking_rules/README.md) |
 | Restrict who can book an option | [Booking conditions](booking_conditions/README.md) |
 | Adapt booking forms depending on capabilities of users | [Booking option form](booking-option/README.md) |
