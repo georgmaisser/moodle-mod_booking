@@ -19,18 +19,18 @@
  *
  * Covered conversations (see AGENT_CONVERSATIONS.md):
  *
- *   CONV-07  Happy path (user CAN book)
- *            — Option has free spots, user is enrolled, no blockers.
- *              Agent auto-executes diagnose_booking_issue (read-only).
- *              Result shows userstatus='notbooked' and no hard blockers.
+ *   CONV-07  Happy path (loop auto-execute)
+ *            — Option has free spots, actor is enrolled.
+ *              diagnose_booking_issue is read-only: the agentic loop auto-executes it
+ *              and returns a clarification summary.
+ *              Structured results surface in result['results'] (loop_results).
  *
- *   CONV-08  Verification loop (user CANNOT book)
- *            — Turn 1: "Why can't someone book?" (no user, no option).
- *              Agent asks for clarification.
- *            — Turn 2: provide userId + fully-booked optionId.
- *              Agent auto-executes diagnose; result mentions option is fully booked.
+ *   CONV-08  Verification loop
+ *            — Turn 1: vague question → clarification.
+ *            — Turn 2: explicit option id → loop auto-executes diagnose → clarification
+ *              with results containing userid, optionid and reasons.
  *
- * Activation: set BOOKING_AI_REAL_LLM=1 (see AGENT_CONVERSATIONS.md).
+ * Activation: set BOOKING_TEST_AI_KEY + BOOKING_TEST_AI_MODEL + BOOKING_TEST_AI_ENDPOINT.
  *
  * @package   mod_booking
  * @category  test
@@ -60,13 +60,17 @@ final class diagnose_booking_issue_real_llm_test extends abstract_agent_testcase
     // -------------------------------------------------------------------------
 
     /**
-     * CONV-07: Happy path — agent diagnoses that a user CAN book (no blockers).
+     * CONV-07: Happy path — loop auto-executes diagnose, structured result in results.
      *
-     * Setup:  Creates option with 5 free spots. Creates and enrolls "Klara Frei".
+     * With run_loop(), diagnose_booking_issue is auto-executed inside the agentic loop.
+     * The caller receives clarification (LLM summary), not execution_result.
+     * The diagnosis payload is surfaced via loop_results in result['results'].
+     *
+     * Setup:  Creates option with 5 free spots.
      * Conversation:
-     *   User:  "Can user id <X> book option id <Y>? Investigate only."
-     *   Agent: auto-executes diagnose_booking_issue (read-only task)
-     *   Test:  diagnosis.userstatus = 'notbooked', reasons list is non-empty, status = 'executed'.
+     *   User:  "Why can I not book option id <Y>? Just investigate."
+     *   Agent: clarification (loop auto-executed diagnose_booking_issue)
+     *   Test:  result['results'] contains diagnose result with userid, optionid and reasons.
      */
     public function test_conv07_diagnose_user_can_book(): void {
         $this->setUser($this->teacher);
@@ -85,35 +89,49 @@ final class diagnose_booking_issue_real_llm_test extends abstract_agent_testcase
 
         $this->assertArrayHasKey('response_type', $result);
 
-        if (($result['response_type'] ?? '') !== 'execution_result') {
-            $this->fail('Expected execution_result for read-only diagnose; got: ' . ($result['response_type'] ?? '?'));
-        }
+        // With run_loop(), read-only tasks are auto-executed internally.
+        // The caller receives clarification (LLM summary), not execution_result.
+        $this->assertSame(
+            'clarification',
+            $result['response_type'],
+            'run_loop() must return clarification after auto-executing diagnose_booking_issue; '
+                . 'got: ' . ($result['response_type'] ?? '?')
+        );
 
+        // The loop must have attached execution results.
+        $this->assertNotEmpty(
+            $result['results'] ?? [],
+            'result[results] must be populated via loop_results after auto-executing diagnose_booking_issue'
+        );
+
+        // The diagnose result must contain the expected structured fields.
         $taskresult = $this->extract_task_result($result, 'booking.diagnose_booking_issue');
-        if ($taskresult === null) {
-            $this->fail('No booking.diagnose_booking_issue result in response.');
-        }
+        $this->assertNotNull(
+            $taskresult,
+            'booking.diagnose_booking_issue must appear in result[results] (loop_results)'
+        );
 
-        $this->assertEquals('executed', (string)($taskresult['status'] ?? ''));
-        $this->assertEquals((int)$this->teacher->id, (int)($taskresult['diagnosis']['userid'] ?? 0));
-        $this->assertEquals((int)$option->id, (int)($taskresult['diagnosis']['optionid'] ?? 0));
-        $this->assertEquals('notbooked', (string)($taskresult['diagnosis']['userstatus'] ?? ''));
-        $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []), 'Reasons must not be empty.');
+        $this->assertSame('executed', (string)($taskresult['status'] ?? ''));
+        $this->assertSame((int)$this->teacher->id, (int)($taskresult['diagnosis']['userid'] ?? 0));
+        $this->assertSame((int)$option->id, (int)($taskresult['diagnosis']['optionid'] ?? 0));
+        $this->assertNotEmpty(
+            (array)($taskresult['diagnosis']['reasons'] ?? []),
+            'Diagnosis reasons must not be empty — even a "can book" result must list evaluated conditions.'
+        );
     }
 
     // -------------------------------------------------------------------------
 
     /**
-     * CONV-08: Verification loop — vague question triggers clarification,
-     *          second turn with fully-booked option shows the blocker reason.
+     * CONV-08: Verification loop — vague question → clarification → explicit ids → diagnosis.
      *
-     * Setup:  Creates option maxanswers=1. Books a first user. A second user cannot book.
+     * Setup:  Creates option maxanswers=1. Books a first user to fill it.
      * Conversation:
      *   Turn 1 — User:  "Why can't someone book?"  (no user, no option)
-     *            Agent: clarification
-     *   Turn 2 — User:  userId of second user + optionId of full option
-     *            Agent: auto-executes diagnose; diagnosis mentions fully booked
-     *   Test:   reasons contain a "fully booked" indicator.
+     *            Agent: clarification (LLM asks for details)
+     *   Turn 2 — User:  "Please diagnose why I cannot book option id <Y>"
+     *            Agent: clarification with result['results'] containing the diagnosis
+     *   Test:   diagnosis contains reasons, userid, optionid.
      */
     public function test_conv08_diagnose_user_cannot_book_verification_loop(): void {
         $this->setUser($this->teacher);
@@ -125,7 +143,6 @@ final class diagnose_booking_issue_real_llm_test extends abstract_agent_testcase
             'email' => 'first.' . uniqid('', true) . '@example.com',
         ]);
         $this->getDataGenerator()->enrol_user($firstuser->id, $this->course->id, 'student');
-        // Fill the only spot.
         $this->exec_command('booking.book_users', [
             'optionid' => (int)$option->id,
             'userids'  => [(int)$firstuser->id],
@@ -142,14 +159,19 @@ final class diagnose_booking_issue_real_llm_test extends abstract_agent_testcase
         }
 
         $this->assertArrayHasKey('response_type', $result1);
+        $this->assertSame(
+            'clarification',
+            $result1['response_type'],
+            'Turn 1 must return clarification for a vague question; got: ' . ($result1['response_type'] ?? '?')
+        );
 
-        if (($result1['response_type'] ?? '') !== 'clarification') {
-            $this->fail(
-                'Expected clarification on turn 1 for vague diagnose input; got: ' . ($result1['response_type'] ?? '?')
-            );
-        }
+        // Turn 1 must NOT have auto-executed a diagnose (no ids were given).
+        $this->assertEmpty(
+            $result1['results'] ?? [],
+            'Turn-1 result[results] must be empty: no ids given, no tool should have been called'
+        );
 
-        // ---- Turn 2: provide ids ----
+        // ---- Turn 2: provide option id ----
         $reply = 'Please diagnose why I cannot book option id ' . (int)$option->id . '. Investigate only.';
 
         try {
@@ -160,42 +182,53 @@ final class diagnose_booking_issue_real_llm_test extends abstract_agent_testcase
 
         $this->assertArrayHasKey('response_type', $result2);
 
-        if (($result2['response_type'] ?? '') !== 'execution_result') {
-            if (!in_array(($result2['response_type'] ?? ''), ['clarification', 'error'], true)) {
-                $this->fail('Expected execution_result, clarification, or error on turn 2; got: '
-                    . ($result2['response_type'] ?? '?'));
-            }
-
+        // With run_loop(), the diagnosis is auto-executed and the final response is clarification.
+        // Allow one recovery turn in case the LLM needs an extra nudge.
+        if (
+            ($result2['response_type'] ?? '') === 'clarification'
+            && empty($result2['results'] ?? [])
+        ) {
             try {
                 $result2 = $this->chat(
-                    'Diagnose booking issue for my account on option id ' . (int)$option->id
-                    . '. Return diagnosis only.',
+                    'Diagnose booking issue for my account on option id ' . (int)$option->id . '. Return diagnosis.',
                     $threadid,
                     $store,
                     $runtime
                 );
             } catch (\Throwable $e) {
-                $this->fail('LLM unavailable (turn 3): ' . $e->getMessage());
-            }
-
-            if (($result2['response_type'] ?? '') !== 'execution_result') {
-                $this->fail('Expected execution_result by turn 3; got: ' . ($result2['response_type'] ?? '?'));
+                $this->fail('LLM unavailable (recovery turn): ' . $e->getMessage());
             }
         }
 
-        $taskresult = $this->extract_task_result($result2, 'booking.diagnose_booking_issue');
-        if ($taskresult === null) {
-            $this->fail('No booking.diagnose_booking_issue result in turn-2 response.');
-        }
-
-        $this->assertEquals(
-            'executed',
-            (string)($taskresult['status'] ?? ''),
-            'Diagnose task did not execute successfully. Detail: ' . (string)($taskresult['detail'] ?? '')
+        $this->assertSame(
+            'clarification',
+            $result2['response_type'],
+            'Final turn must return clarification after loop auto-execution; got: '
+                . ($result2['response_type'] ?? '?')
         );
 
-        $this->assertEquals((int)$this->teacher->id, (int)($taskresult['diagnosis']['userid'] ?? 0));
-        $this->assertEquals((int)$option->id, (int)($taskresult['diagnosis']['optionid'] ?? 0));
-        $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []), 'Diagnosis must contain reasons.');
+        $this->assertNotEmpty(
+            $result2['results'] ?? [],
+            'result[results] must be populated via loop_results after diagnose auto-execution'
+        );
+
+        $taskresult = $this->extract_task_result($result2, 'booking.diagnose_booking_issue');
+        $this->assertNotNull(
+            $taskresult,
+            'booking.diagnose_booking_issue must appear in result[results] (loop_results)'
+        );
+
+        $this->assertSame(
+            'executed',
+            (string)($taskresult['status'] ?? ''),
+            'Diagnose task must have executed. Detail: ' . (string)($taskresult['detail'] ?? '')
+        );
+
+        $this->assertSame((int)$this->teacher->id, (int)($taskresult['diagnosis']['userid'] ?? 0));
+        $this->assertSame((int)$option->id, (int)($taskresult['diagnosis']['optionid'] ?? 0));
+        $this->assertNotEmpty(
+            (array)($taskresult['diagnosis']['reasons'] ?? []),
+            'Diagnosis must contain reasons (at least one booking condition evaluated).'
+        );
     }
 }

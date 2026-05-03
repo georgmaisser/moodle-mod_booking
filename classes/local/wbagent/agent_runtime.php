@@ -270,6 +270,7 @@ class agent_runtime {
 
             // Any other response type requires user interaction or signals completion.
             // Persist the SINGLE final assistant message and return.
+            $result = $this->attach_loop_results($result, $state);
             $this->persist_assistant_message($threadid, $result);
             return $result;
         }
@@ -282,7 +283,44 @@ class agent_runtime {
             'expiresat'    => time() + 900,
         ]);
         $result = $this->loop_continue_result(current_language(), $limit);
+        $result = $this->attach_loop_results($result, $state);
         $this->persist_assistant_message($threadid, $result);
+        return $result;
+    }
+
+    /**
+     * Attach accumulated internal-step results to the final loop response.
+     *
+     * Collects all execution results recorded in $state and populates:
+     *  - $result['loop_results']  — flat list of every result from every step.
+     *  - $result['results']       — same list, but only when the response itself
+     *                               carries no results (backward compat).
+     *
+     * This makes structured tool outputs available to callers (tests, UI)
+     * even when the final response_type is 'clarification'.
+     *
+     * @param  array       $result Final result array.
+     * @param  agent_state $state  Loop state with recorded steps.
+     * @return array Updated result array.
+     */
+    private function attach_loop_results(array $result, agent_state $state): array {
+        if ($state->step_count() === 0) {
+            return $result;
+        }
+        $accumulated = [];
+        foreach ($state->get_steps() as $step) {
+            foreach ((array)($step['results'] ?? []) as $r) {
+                $accumulated[] = $r;
+            }
+        }
+        if (empty($accumulated)) {
+            return $result;
+        }
+        $result['loop_results'] = $accumulated;
+        // Populate 'results' when the final response has none of its own.
+        if (empty($result['results'])) {
+            $result['results'] = $accumulated;
+        }
         return $result;
     }
 

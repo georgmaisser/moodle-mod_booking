@@ -351,7 +351,7 @@ abstract class abstract_agent_testcase extends advanced_testcase {
         $anon     = new privacy_anonymizer($store);
         $precheck = $anon->precheck_user_message($threadid, $message);
         $store->add_message($threadid, 'user', (string)($precheck['sanitizedmessage'] ?? $message));
-        return $runtime->run($threadid, (int)$this->booking->cmid, (int)$this->teacher->id);
+        return $runtime->run_loop($threadid, (int)$this->booking->cmid, (int)$this->teacher->id);
     }
 
     /**

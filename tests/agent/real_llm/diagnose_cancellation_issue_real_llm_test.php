@@ -19,15 +19,17 @@
  *
  * Covered conversations (see AGENT_CONVERSATIONS.md):
  *
- *   CONV-09  Happy path        — User is booked. Agent auto-executes the diagnose task.
- *                                Result is 'executed' and contains a diagnosis.
+ *   CONV-09  Happy path (loop auto-execute)
+ *            — User is booked. diagnose_cancellation_issue is read-only: the loop
+ *              auto-executes it and returns a clarification summary.
+ *              Structured results surface in result['results'] (loop_results).
  *
- *   CONV-10  Verification loop — User says "Why can't the user cancel?" with no
- *                                user or option. Agent asks for clarification (turn 1).
- *                                User provides userId + optionId (turn 2).
- *                                Agent auto-executes; result contains diagnosis.
+ *   CONV-10  Verification loop
+ *            — Turn 1: vague question → clarification (no results).
+ *            — Turn 2: explicit option id → loop auto-executes diagnose →
+ *              clarification with result['results'] containing the diagnosis.
  *
- * Activation: set BOOKING_AI_REAL_LLM=1 (see AGENT_CONVERSATIONS.md).
+ * Activation: set BOOKING_TEST_AI_KEY + BOOKING_TEST_AI_MODEL + BOOKING_TEST_AI_ENDPOINT.
  *
  * @package   mod_booking
  * @category  test
@@ -58,20 +60,23 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
     // -------------------------------------------------------------------------
 
     /**
-     * CONV-09: Happy path — booked user, agent diagnoses cancellation status.
+     * CONV-09: Happy path — booked user, loop auto-executes diagnose, result in results.
      *
-     * Setup:  Creates option, books "Lena Storno" via executor.
+     * With run_loop(), diagnose_cancellation_issue is auto-executed inside the loop.
+     * The caller receives clarification (LLM summary), not execution_result.
+     * The diagnosis payload is surfaced via loop_results in result['results'].
+     *
+     * Setup:  Creates option, books teacher via executor.
      * Conversation:
-     *   User:  "Can user id <X> cancel their booking for option id <Y>?"
-     *   Agent: auto-executes diagnose_cancellation_issue (read-only task)
-     *   Test:  status = 'executed', diagnosis contains reasons.
+     *   User:  "Can I cancel my booking for option id <Y>? Just diagnose."
+     *   Agent: clarification (loop auto-executed diagnose_cancellation_issue)
+     *   Test:  result['results'] contains diagnose result with reasons.
      */
     public function test_conv09_diagnose_cancellation_happy_path(): void {
         $this->setUser($this->teacher);
 
         $option = $this->create_option('Cancel CONV09 ' . uniqid('', true), ['maxanswers' => 5]);
 
-        // Book current user directly via executor so there is something to cancel.
         $this->exec_command('booking.book_users', [
             'optionid' => (int)$option->id,
             'userids'  => [(int)$this->teacher->id],
@@ -80,7 +85,8 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        $query = 'Can I cancel my booking for option id ' . (int)$option->id . '? Just diagnose.';
+        $query = 'Diagnose cancellation issue for current user (me) on option id ' . (int)$option->id
+            . '. Investigate only with booking.diagnose_cancellation_issue.';
 
         try {
             $result = $this->chat($query, $threadid, $store, $runtime);
@@ -90,33 +96,46 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
 
         $this->assertArrayHasKey('response_type', $result);
 
-        if (($result['response_type'] ?? '') !== 'execution_result') {
-            $this->fail(
-                'Expected execution_result for read-only cancellation diagnose; got: ' . ($result['response_type'] ?? '?')
-            );
-        }
+        // With run_loop(), read-only tasks are auto-executed inside the loop.
+        // The caller receives clarification (LLM summary), not execution_result.
+        $this->assertSame(
+            'clarification',
+            $result['response_type'],
+            'run_loop() must return clarification after auto-executing diagnose_cancellation_issue; '
+                . 'got: ' . ($result['response_type'] ?? '?')
+        );
+
+        // The loop must have attached execution results.
+        $this->assertNotEmpty(
+            $result['results'] ?? [],
+            'result[results] must be populated via loop_results after auto-executing diagnose_cancellation_issue'
+        );
 
         $taskresult = $this->extract_task_result($result, 'booking.diagnose_cancellation_issue');
-        if ($taskresult === null) {
-            $this->fail('No booking.diagnose_cancellation_issue result in response.');
-        }
+        $this->assertNotNull(
+            $taskresult,
+            'booking.diagnose_cancellation_issue must appear in result[results] (loop_results)'
+        );
 
-        $this->assertEquals('executed', (string)($taskresult['status'] ?? ''));
-        $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []), 'Diagnosis must contain reasons.');
+        $this->assertSame('executed', (string)($taskresult['status'] ?? ''));
+        $this->assertNotEmpty(
+            (array)($taskresult['diagnosis']['reasons'] ?? []),
+            'Diagnosis must contain reasons (at least one cancellation condition evaluated).'
+        );
     }
 
     // -------------------------------------------------------------------------
 
     /**
-     * CONV-10: Verification loop — vague cancellation question triggers clarification.
+     * CONV-10: Verification loop — vague question → clarification → explicit ids → diagnosis.
      *
-     * Setup:  Creates option, books "Max Loopstorno" via executor.
+     * Setup:  Creates option, books teacher via executor.
      * Conversation:
      *   Turn 1 — User:  "Why can't the user cancel?"  (no user, no option)
-     *            Agent: clarification
-     *   Turn 2 — User:  userId + optionId
-     *            Agent: auto-executes diagnose_cancellation_issue
-     *   Test:   status = 'executed', diagnosis contains reasons.
+     *            Agent: clarification (no results — no ids given, no tool called)
+     *   Turn 2 — User:  "Diagnose cancellation for option id <Y>"
+     *            Agent: clarification with result['results'] containing the diagnosis
+     *   Test:   diagnosis contains reasons.
      */
     public function test_conv10_diagnose_cancellation_verification_loop(): void {
         $this->setUser($this->teacher);
@@ -131,7 +150,7 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        // ---- Turn 1: no specifics ----
+        // ---- Turn 1: vague ----
         try {
             $result1 = $this->chat("Why can't the user cancel?", $threadid, $store, $runtime);
         } catch (\Throwable $e) {
@@ -139,27 +158,20 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
         }
 
         $this->assertArrayHasKey('response_type', $result1);
+        $this->assertSame(
+            'clarification',
+            $result1['response_type'],
+            'Turn 1 must return clarification for a vague question; got: ' . ($result1['response_type'] ?? '?')
+        );
 
-        if (!in_array(($result1['response_type'] ?? ''), ['clarification', 'execution_result'], true)) {
-            $this->fail(
-                'Expected clarification or execution_result on turn 1 for vague cancellation input; got: '
-                . ($result1['response_type'] ?? '?')
-            );
-        }
+        $this->assertNull(
+            $this->extract_task_result($result1, 'booking.diagnose_cancellation_issue'),
+            'Turn 1 must not already contain booking.diagnose_cancellation_issue without an option reference.'
+        );
 
-        if (($result1['response_type'] ?? '') === 'execution_result') {
-            $taskresult = $this->extract_task_result($result1, 'booking.diagnose_cancellation_issue');
-            if ($taskresult === null) {
-                $this->fail('No booking.diagnose_cancellation_issue result in turn-1 response.');
-            }
-            if (($taskresult['status'] ?? '') === 'executed') {
-                $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []), 'Diagnosis must contain reasons.');
-                return;
-            }
-        }
-
-        // ---- Turn 2: provide ids ----
-        $reply = 'I cannot cancel option id ' . (int)$option->id . '. Diagnose cancellation issue.';
+        // ---- Turn 2: provide option id ----
+        $reply = 'Diagnose cancellation issue for current user (me) on option id ' . (int)$option->id
+            . '. Investigate only with booking.diagnose_cancellation_issue.';
 
         try {
             $result2 = $this->chat($reply, $threadid, $store, $runtime);
@@ -169,60 +181,51 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
 
         $this->assertArrayHasKey('response_type', $result2);
 
-        if (($result2['response_type'] ?? '') !== 'execution_result') {
-            if (($result2['response_type'] ?? '') !== 'clarification') {
-                $this->fail('Expected execution_result or clarification on turn 2; got: ' . ($result2['response_type'] ?? '?'));
-            }
-
+        // Allow one recovery turn if the LLM still asks for clarification without running the tool.
+        if (
+            ($result2['response_type'] ?? '') === 'clarification'
+            && empty($result2['results'] ?? [])
+        ) {
             try {
                 $result2 = $this->chat(
-                    'Diagnose why I cannot cancel option id ' . (int)$option->id . '. Investigate only.',
+                    'Diagnose why current user (me) cannot cancel option id ' . (int)$option->id
+                    . '. Use booking.diagnose_cancellation_issue only.',
                     $threadid,
                     $store,
                     $runtime
                 );
             } catch (\Throwable $e) {
-                $this->fail('LLM unavailable (turn 3): ' . $e->getMessage());
-            }
-
-            if (($result2['response_type'] ?? '') !== 'execution_result') {
-                $this->fail('Expected execution_result by turn 3; got: ' . ($result2['response_type'] ?? '?'));
+                $this->fail('LLM unavailable (recovery turn): ' . $e->getMessage());
             }
         }
+
+        $this->assertSame(
+            'clarification',
+            $result2['response_type'],
+            'Final turn must return clarification after loop auto-execution; got: '
+                . ($result2['response_type'] ?? '?')
+        );
+
+        $this->assertNotEmpty(
+            $result2['results'] ?? [],
+            'result[results] must be populated via loop_results after diagnose auto-execution'
+        );
 
         $taskresult = $this->extract_task_result($result2, 'booking.diagnose_cancellation_issue');
-        if ($taskresult === null) {
-            $this->fail('No booking.diagnose_cancellation_issue result in turn-2 response.');
-        }
+        $this->assertNotNull(
+            $taskresult,
+            'booking.diagnose_cancellation_issue must appear in result[results] (loop_results)'
+        );
 
-        if (($taskresult['status'] ?? '') !== 'executed') {
-            try {
-                $result2 = $this->chat(
-                    'Diagnose cancellation issue for current user (me) on option id ' . (int)$option->id
-                    . '. Do not analyze other users.',
-                    $threadid,
-                    $store,
-                    $runtime
-                );
-            } catch (\Throwable $e) {
-                $this->fail('LLM unavailable (turn 4): ' . $e->getMessage());
-            }
-
-            if (($result2['response_type'] ?? '') !== 'execution_result') {
-                $this->fail('Expected execution_result by turn 4; got: ' . ($result2['response_type'] ?? '?'));
-            }
-
-            $taskresult = $this->extract_task_result($result2, 'booking.diagnose_cancellation_issue');
-            if ($taskresult === null) {
-                $this->fail('No booking.diagnose_cancellation_issue result in turn-4 response.');
-            }
-        }
-
-        $this->assertEquals(
+        $this->assertSame(
             'executed',
             (string)($taskresult['status'] ?? ''),
-            'Diagnose task did not execute successfully. Detail: ' . (string)($taskresult['detail'] ?? '')
+            'Diagnose task must have executed. Detail: ' . (string)($taskresult['detail'] ?? '')
         );
-        $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []), 'Diagnosis must contain reasons.');
+
+        $this->assertNotEmpty(
+            (array)($taskresult['diagnosis']['reasons'] ?? []),
+            'Diagnosis must contain reasons (at least one cancellation condition evaluated).'
+        );
     }
 }

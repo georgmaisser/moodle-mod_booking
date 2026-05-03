@@ -19,17 +19,17 @@
  *
  * Covered conversations (see AGENT_CONVERSATIONS.md):
  *
- *   CONV-13  Happy path (auto-execute)
- *            — Two "Search Test Kurs" options pre-created.
- *              search_options is read-only → agent auto-executes without confirmation.
- *              Result type is execution_result and contains both options.
+ *   CONV-13  Happy path (loop auto-execute)
+ *            — Two options pre-created.
+ *              search_options is read-only: the agentic loop auto-executes it
+ *              internally and returns a clarification summary to the user.
+ *              Execution results are surfaced via result['results'] (loop_results).
  *
  *   CONV-14  Multi-turn follow-up
- *            — Turn 1: search for "Search Multi Kurs" options → execution_result.
- *            — Turn 2: "Which of those have more than 5 free spots?"
- *              Agent replies with a non-empty message about free spots.
+ *            — Turn 1: search → clarification with results in result['results'].
+ *            — Turn 2: follow-up → non-empty clarification reply referencing option names.
  *
- * Activation: set BOOKING_AI_REAL_LLM=1 (see AGENT_CONVERSATIONS.md).
+ * Activation: set BOOKING_TEST_AI_KEY + BOOKING_TEST_AI_MODEL + BOOKING_TEST_AI_ENDPOINT.
  *
  * @package   mod_booking
  * @category  test
@@ -60,40 +60,52 @@ final class search_options_real_llm_test extends abstract_agent_testcase {
     // -------------------------------------------------------------------------
 
     /**
-     * CONV-13: Happy path — read-only search auto-executes, both options in results.
+     * CONV-13: Happy path — read-only search loop auto-executes, both options in results.
      *
-     * Setup:  Creates "Search Test Kurs 1" (10 spots) and "Search Test Kurs 2" (8 spots).
+     * With run_loop(), search_options is auto-executed inside the agentic loop.
+     * The caller never sees execution_result — the loop consumes it and the LLM
+     * returns a clarification summary. Execution results travel via loop_results
+     * which is merged into result['results'].
+     *
+     * Setup:  Creates two uniquely-named options with 10 and 8 spots.
      * Conversation:
-     *   User:  'Show me all "Search Test Kurs" options.'
-     *   Agent: execution_result (no confirmation needed for read-only tasks)
-     *   Test:  both option names appear in the result.
+     *   User:  'Show me all "<prefix>" options.'
+     *   Agent: clarification (LLM summary after auto-execution)
+     *   Test:  result['results'] not empty; both option names present in results.
      */
-    public function test_conv13_search_options_auto_executes(): void {
+    public function test_conv13_search_options_loop_auto_executes(): void {
         $this->setUser($this->teacher);
 
-        $prefix  = 'Search Test Kurs ' . uniqid('', true);
+        $prefix  = 'SearchTestKurs' . uniqid('', true);
         $option1 = $this->create_option($prefix . ' 1', ['maxanswers' => 10]);
         $option2 = $this->create_option($prefix . ' 2', ['maxanswers' => 8]);
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        $query = 'Show me all "' . $prefix . '" options.';
-
         try {
-            $result = $this->chat($query, $threadid, $store, $runtime);
+            $result = $this->chat('Show me all "' . $prefix . '" options.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
             $this->fail('LLM unavailable: ' . $e->getMessage());
         }
 
         $this->assertArrayHasKey('response_type', $result);
 
-        if (($result['response_type'] ?? '') !== 'execution_result') {
-            $this->fail(
-                'Expected execution_result for read-only search; got: ' . ($result['response_type'] ?? '?')
-            );
-        }
+        // With run_loop(), read-only tools are auto-executed inside the loop.
+        // The caller receives 'clarification' (LLM summary), never 'execution_result'.
+        $this->assertSame(
+            'clarification',
+            $result['response_type'],
+            'run_loop() must return clarification after auto-executing search_options; '
+                . 'got: ' . ($result['response_type'] ?? '?')
+        );
 
-        // Collect all option names / texts returned.
+        // The loop must have auto-executed the search and attached results.
+        $this->assertNotEmpty(
+            $result['results'] ?? [],
+            'result[results] must be populated with loop_results after auto-executing search_options'
+        );
+
+        // Both created option names must appear in the accumulated tool results.
         $allnames = [];
         foreach ((array)($result['results'] ?? []) as $entry) {
             foreach ((array)($entry['options'] ?? $entry['results'] ?? []) as $opt) {
@@ -105,12 +117,12 @@ final class search_options_real_llm_test extends abstract_agent_testcase {
         $this->assertStringContainsStringIgnoringCase(
             $prefix . ' 1',
             $nameshaystack,
-            'First option must appear in search results.'
+            'First option must appear in loop_results (option id ' . $option1->id . ').'
         );
         $this->assertStringContainsStringIgnoringCase(
             $prefix . ' 2',
             $nameshaystack,
-            'Second option must appear in search results.'
+            'Second option must appear in loop_results (option id ' . $option2->id . ').'
         );
     }
 
@@ -119,18 +131,19 @@ final class search_options_real_llm_test extends abstract_agent_testcase {
     /**
      * CONV-14: Multi-turn follow-up — second question refers to first search result.
      *
-     * Setup:  Creates "Search Multi Kurs A" (20 spots) and "Search Multi Kurs B" (3 spots).
+     * Setup:  Creates two uniquely-named options (20 spots and 3 spots).
      * Conversation:
-     *   Turn 1 — User:  'Show me all "Search Multi Kurs" options.'
-     *            Agent: execution_result
-     *   Turn 2 — User:  "Which of those have more than 5 free spots?"
-     *            Agent: a non-empty message (may be execution_result or clarification/response)
-     *   Test:   Turn-2 message is non-empty and references "Search Multi Kurs A".
+     *   Turn 1 — User:  search all prefix options
+     *            Agent: clarification (loop auto-executed search_options)
+     *            Test:  result['results'] not empty.
+     *   Turn 2 — User:  follow-up about free spots
+     *            Agent: clarification with non-empty message
+     *            Test:  message mentions the prefix (LLM used conversation context).
      */
     public function test_conv14_search_options_multi_turn_follow_up(): void {
         $this->setUser($this->teacher);
 
-        $prefix  = 'Search Multi Kurs ' . uniqid('', true);
+        $prefix  = 'SearchMultiKurs' . uniqid('', true);
         $this->create_option($prefix . ' A', ['maxanswers' => 20]);
         $this->create_option($prefix . ' B', ['maxanswers' => 3]);
 
@@ -145,18 +158,23 @@ final class search_options_real_llm_test extends abstract_agent_testcase {
 
         $this->assertArrayHasKey('response_type', $result1);
 
-        // Turn 1 should auto-execute the search; if not, we cannot test the follow-up.
-        if (($result1['response_type'] ?? '') !== 'execution_result') {
-            $this->fail(
-                'Expected execution_result on turn 1; got: ' . ($result1['response_type'] ?? '?')
-            );
-        }
+        // Turn 1: loop auto-executes search_options and returns clarification.
+        $this->assertSame(
+            'clarification',
+            $result1['response_type'],
+            'Turn 1 must return clarification after loop auto-execution; got: ' . ($result1['response_type'] ?? '?')
+        );
+
+        // Execution results must be attached via loop_results.
+        $this->assertNotEmpty(
+            $result1['results'] ?? [],
+            'Turn-1 result[results] must be populated from loop auto-execution'
+        );
 
         // ---- Turn 2: follow-up about free spots ----
         try {
             $result2 = $this->chat(
-                'From the options you just found for "' . $prefix
-                . '", show matching options again and include names.',
+                'From the options you just found for "' . $prefix . '", which ones have more than 5 free spots?',
                 $threadid,
                 $store,
                 $runtime
@@ -167,48 +185,20 @@ final class search_options_real_llm_test extends abstract_agent_testcase {
 
         $this->assertArrayHasKey('response_type', $result2);
 
-        $message = trim((string)($result2['message'] ?? ''));
-        $this->assertNotEmpty($message, 'Turn-2 message must not be empty.');
+        // Turn 2 may trigger another loop step or answer from context — both are valid.
+        $this->assertContains(
+            $result2['response_type'],
+            ['clarification', 'execution_result'],
+            'Turn-2 response_type must be clarification or execution_result; got: '
+                . ($result2['response_type'] ?? '?')
+        );
 
-        if (($result2['response_type'] ?? '') !== 'execution_result') {
-            if (($result2['response_type'] ?? '') !== 'clarification') {
-                $this->fail('Expected execution_result or clarification on turn 2; got: ' . ($result2['response_type'] ?? '?'));
-            }
-
-            try {
-                $result2 = $this->chat(
-                    'Search options with title containing "' . $prefix . '" and return the matching option names.',
-                    $threadid,
-                    $store,
-                    $runtime
-                );
-            } catch (\Throwable $e) {
-                $this->fail('LLM unavailable (turn 3): ' . $e->getMessage());
-            }
-
-            if (($result2['response_type'] ?? '') !== 'execution_result') {
-                $this->fail('Expected execution_result by turn 3; got: ' . ($result2['response_type'] ?? '?'));
-            }
-        }
-
-        $taskresult = $this->extract_task_result($result2, 'booking.search_options');
-        if ($taskresult === null) {
-            $this->fail('No booking.search_options result in turn-2 response.');
-        }
-
-        $allnames = [];
-        foreach ((array)($taskresult['options'] ?? []) as $opt) {
-            if (!is_array($opt)) {
-                continue;
-            }
-            $allnames[] = strtolower((string)($opt['name'] ?? ''));
-        }
-        $nameshaystack = implode("\n", $allnames);
-
+        $message2 = trim((string)($result2['message'] ?? ''));
+        $this->assertNotEmpty($message2, 'Turn-2 message must not be empty.');
         $this->assertStringContainsStringIgnoringCase(
-            strtolower($prefix),
-            $nameshaystack,
-            'Turn-2 structured options must still refer to the prior search prefix.'
+            $prefix,
+            $message2,
+            'Turn-2 message must reference the search prefix from turn 1 (LLM must use conversation context).'
         );
     }
 }

@@ -111,8 +111,11 @@ class get_current_user_task extends base_booking_task implements task_trigger_pr
                     'who am i', 'show my profile', 'wer bin ich', 'zeige mein profil', 'my account',
                 ],
                 'guidance' => [
-                    '- Use booking.get_current_user when the user asks about their own account.',
-                    '- Provide a short summary with userid, fullname and email.',
+                    '- Use booking.get_current_user as a FIRST STEP when the request refers to "me",',
+                    '  "myself", "mich", or "meine Buchung" and you do not yet know the current userid.',
+                    '- Execute this task and wait for the observation; then pass the resolved userid',
+                    '  to any follow-up task that needs it (e.g. booking.book_users for self-booking).',
+                    '- Only call this once per conversation turn unless the user explicitly asks again.',
                 ],
             ],
         ];

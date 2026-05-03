@@ -436,8 +436,9 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
     /**
      * run() (single-turn) still works and persists exactly one message.
      *
-     * run() must remain backward-compatible as the entry point used by
-     * ai_send_message.php for each user request.
+     * NOTE: Production entry point (ai_send_message::execute) now uses run_loop().
+     * This test verifies that run() remains a valid lower-level single-step primitive
+     * for focused unit tests and other non-loop scenarios.
      */
     public function test_run_single_turn_persists_exactly_one_message(): void {
         $this->setUser($this->teacher);

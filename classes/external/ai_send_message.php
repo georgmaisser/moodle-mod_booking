@@ -151,16 +151,18 @@ class ai_send_message extends external_api {
 
         // Progress-only status for polling UI; this must not trigger extra LLM calls.
         $store->clear_step_messages($threadid);
-        $store->add_step_message($threadid, 1, (string)get_string('ai_thinking', 'mod_booking'), 'runtime.single_call');
+        $store->add_step_message($threadid, 1, (string)get_string('ai_thinking', 'mod_booking'), 'runtime.loop');
 
         // Release the session lock before the blocking LLM call so that
         // concurrent step-polling requests (ai_poll_thread) can be served
         // without waiting for this long-running request to complete.
         \core\session\manager::write_close();
 
-        // Single-call runtime: one user turn should normally map to one LLM call.
+        // Agentic loop: read-only tool calls are executed internally (no user confirmation
+        // needed), observations are fed back to the LLM, and only the final user-visible
+        // response (clarification, confirmation_request, error) is persisted.
         $runtime = new agent_runtime($registry, $orchestrator, $store, $authz);
-        $result = $runtime->run($threadid, $cmid, (int)$USER->id);
+        $result = $runtime->run_loop($threadid, $cmid, (int)$USER->id);
 
         // Display-side privacy deanonymisation (presentation concern, stays here).
         $displaymessage = (string)($result['message'] ?? '');

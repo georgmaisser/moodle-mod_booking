@@ -47,6 +47,7 @@ final class agent_inventory_contract_test extends advanced_testcase {
             'agent_e2e_bulk_update_test.php',
             'ai_send_message_internal_test.php',
             'real_llm/agent_real_llm_test.php',
+            'real_llm/multi_step_loop_real_llm_test.php',
             'message_trigger_registry_test.php',
         ];
 

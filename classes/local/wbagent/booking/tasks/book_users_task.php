@@ -146,6 +146,8 @@ class book_users_task extends base_booking_task implements task_trigger_provider
                 ],
                 'guidance' => [
                     '- Use booking.book_users to book one or more users into an existing booking option.',
+                    '- If you know only the user\'s name (not their id), call booking.search_users FIRST,',
+                    '  wait for the observation with the resolved userid, then call booking.book_users.',
                     '- Pass bookusersquery as a comma-separated list of names, e-mails, or user ids.',
                     '- Pass optionquery with the option title when the option is named in the request.',
                     '- Do NOT use booking.update_option just to book users; use booking.book_users instead.',

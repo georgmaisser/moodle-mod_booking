@@ -787,6 +787,8 @@ class create_option_task extends base_booking_task implements task_trigger_provi
                 'triggers' => ['course', 'kurs', 'teacher', 'dozent', 'trainer', 'lehrer'],
                 'guidance' => [
                     '- Use coursequery to connect an option to a Moodle course.',
+                    '- If you know only the course name (not its id), call booking.search_courses FIRST,',
+                    '  wait for the observation with the resolved courseid, then proceed with create_option.',
                     '- Use teacherquery or teacheremail to assign responsible teacher.',
                     '- If the user says to assign themselves as teacher (e.g. "me as teacher", "mich als Lehrer"),'
                         . ' set teacherquery to the current user/self-reference instead of asking for an e-mail address.',

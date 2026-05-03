@@ -110,8 +110,11 @@ class search_users_task extends base_booking_task implements task_trigger_provid
                     'find users', 'search users', 'finde nutzer', 'user lookup',
                 ],
                 'guidance' => [
-                    '- Use booking.search_users for queries that look for people by name, email or id.',
-                    '- Return a short preview list of matching users, including userid and fullname.',
+                    '- Use booking.search_users as a FIRST STEP whenever you need to resolve a person by name,',
+                    '  email fragment, or partial id before calling a mutating task (e.g. booking.book_users).',
+                    '- Execute this task and wait for the observation before proceeding to the next step.',
+                    '- Return a short preview list of matching users including userid and fullname.',
+                    '- If more than one user matches, ask the user to clarify which one they mean.',
                 ],
             ],
         ];

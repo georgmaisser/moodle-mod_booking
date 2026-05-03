@@ -109,9 +109,11 @@ class search_courses_task extends base_booking_task implements task_trigger_prov
                     'suche kurs', 'suche kurse', 'finde kurs', 'kurs finden',
                 ],
                 'guidance' => [
-                    '- If the user asks to find courses, use booking.search_courses.',
-                    '- Use input.query for the course term and optionally input.limit for result size.',
-                    '- Return short course candidates suitable for follow-up selection.',
+                    '- Use booking.search_courses as a FIRST STEP when you need a courseid to pass to',
+                    '  booking.create_option or booking.update_option and only a course name is known.',
+                    '- Execute this task and wait for the observation; then use the resolved courseid.',
+                    '- Use input.query for the search term and optionally input.limit to cap results.',
+                    '- If multiple courses match, ask the user to clarify before continuing.',
                 ],
             ],
         ];
