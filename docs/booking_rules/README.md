@@ -3,6 +3,8 @@
 Booking rules let you automate actions inside the **mod_booking** plugin.
 A rule watches for a specific trigger (a date-based schedule or a Moodle event) and — when the trigger fires and the optional conditions are met — runs an action such as sending an email.
 
+For messaging in booking, this is the authoritative system: reminders, notification emails, and message automation are handled via booking rules.
+
 ---
 
 ## Table of Contents

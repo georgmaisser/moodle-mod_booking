@@ -24,6 +24,10 @@ This `docs/` directory is the central reference for administrators, teachers, an
 | Allow external links to bypass profile-field restrictions | [Override user field](override_user_field/README.md) |
 | Build or install a booking extension (subplugin) | [Booking extensions](booking_extensions/README.md) |
 
+Important distinction for AI/explain tasks:
+- Questions about messages, reminders, notification emails, or message automation belong to [Booking rules](booking_rules/README.md).
+- [Actions after booking](actions_after_booking/README.md) (bo_actions) are not the messaging system; they run immediate post-booking actions like cancel/book/profile/REST.
+
 ---
 
 ## Documentation sections

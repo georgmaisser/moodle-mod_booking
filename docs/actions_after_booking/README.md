@@ -2,6 +2,8 @@
 
 **Actions after booking** (also called *booking actions* or *bo_actions*) are automated actions that are triggered **immediately** when a specific booking event occurs for a user. They are distinct from [booking rules](../booking_rules/README.md), which are schedule-based or event-triggered notifications.
 
+> Important: If your question is about sending messages, reminders, or notification emails, use [Booking rules](../booking_rules/README.md) documentation, not Actions after booking.
+
 The key difference:
 
 | Feature | Booking rules | Actions after booking |
