@@ -331,7 +331,7 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
         $optionstats = $ba->return_all_booking_information($diagnosticuserid);
         $userstatus = (string)$ba->user_status_as_string($diagnosticuserid);
         $optionstats['userstatus'] = $userstatus;
-        $reasons = $this->build_reason_lines($issuetype, $optionstats, $conditionresults);
+        $reasons = $this->build_reason_lines($issuetype, $optionstats, $conditionresults, $settings);
 
         $usermessage = $this->localized_string(
             'agent_booking_diagnose_intro_checked_option',
@@ -581,10 +581,11 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
      *
      * @param string $issuetype
      * @param array $optionstats
-     * @param array $conditionresults
+    * @param array $conditionresults
+    * @param mixed $settings booking_option_settings instance from singleton_service.
      * @return array
      */
-    private function build_reason_lines(string $issuetype, array $optionstats, array $conditionresults): array {
+    private function build_reason_lines(string $issuetype, array $optionstats, array $conditionresults, $settings): array {
         $lang = '';
         $reasons = [];
         $userstatus = (string)($optionstats['userstatus'] ?? 'notbooked');
@@ -633,8 +634,8 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
                     $class = new $condition['classname']();
                 }
 
-                if (method_exists($class, 'get_description_string')) {
-                    $description = $class->get_description_string(false, true, $optionstats['settings']);
+                if (method_exists($class, 'get_description_string') && $settings !== null) {
+                    $description = $class->get_description_string(false, true, $settings);
                 } else {
                     $description = $condition["description"] ?? '';
                 }
