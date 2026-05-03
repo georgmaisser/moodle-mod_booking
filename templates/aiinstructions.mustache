@@ -99,8 +99,13 @@
                     </button>
                 </div>
             </div>
-            <div id="booking-ai-thinking" class="text-muted small mt-1 d-none">
-                {{#str}}ai_thinking, mod_booking{{/str}}
+            <div id="booking-ai-thinking" class="text-muted small mt-1 d-none booking-ai-thinking-bar">
+                <span class="booking-ai-thinking-spinner" aria-hidden="true"></span>
+                <span id="booking-ai-thinking-label">{{#str}}ai_thinking, mod_booking{{/str}}</span>
+                <button id="booking-ai-btn-stop" type="button"
+                        class="btn btn-link btn-sm p-0 ml-2 booking-ai-btn-stop d-none">
+                    {{#str}}ai_btn_stop, mod_booking{{/str}}
+                </button>
             </div>
         </div>
     </div>

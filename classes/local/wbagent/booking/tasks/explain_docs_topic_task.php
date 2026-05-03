@@ -146,6 +146,8 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        global $CFG;
+
         $question = trim((string)($input['question'] ?? ''));
         $outputlang = $this->get_output_language($input);
 
@@ -168,12 +170,27 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
         $firstdoc = $selecteddocs[0];
 
         $usermessage = $service->build_summary($firstdoc);
+        $doclinks = [];
+        foreach ($selecteddocs as $doc) {
+            $path = trim((string)($doc['path'] ?? ''));
+            if ($path === '') {
+                continue;
+            }
+            $doclinks[] = rtrim($CFG->wwwroot, '/') . '/mod/booking/docs/' . str_replace('%2F', '/', rawurlencode($path));
+        }
+        if (!empty($doclinks)) {
+            $usermessage .= "\n" . implode("\n", array_values(array_unique($doclinks)));
+        }
         $usermessage = $this->enforce_max_chars($usermessage, 500);
 
         $structureddocs = [];
         foreach ($selecteddocs as $doc) {
+            $path = (string)($doc['path'] ?? '');
             $structureddocs[] = [
-                'path' => (string)($doc['path'] ?? ''),
+                'path' => $path,
+                'url' => $path !== ''
+                    ? rtrim($CFG->wwwroot, '/') . '/mod/booking/docs/' . str_replace('%2F', '/', rawurlencode($path))
+                    : '',
                 'title' => (string)($doc['title'] ?? ''),
                 'excerpt' => (string)($doc['excerpt'] ?? ''),
                 'score' => (int)($doc['score'] ?? 0),

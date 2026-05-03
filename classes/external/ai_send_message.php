@@ -149,7 +149,16 @@ class ai_send_message extends external_api {
 
         $store->add_message($threadid, 'user', $message);
 
-        // Delegate the full agent loop to AgentRuntime.
+        // Progress-only status for polling UI; this must not trigger extra LLM calls.
+        $store->clear_step_messages($threadid);
+        $store->add_step_message($threadid, 1, (string)get_string('ai_thinking', 'mod_booking'), 'runtime.single_call');
+
+        // Release the session lock before the blocking LLM call so that
+        // concurrent step-polling requests (ai_poll_thread) can be served
+        // without waiting for this long-running request to complete.
+        \core\session\manager::write_close();
+
+        // Single-call runtime: one user turn should normally map to one LLM call.
         $runtime = new agent_runtime($registry, $orchestrator, $store, $authz);
         $result = $runtime->run($threadid, $cmid, (int)$USER->id);
 
@@ -181,6 +190,11 @@ class ai_send_message extends external_api {
         ];
     }
 
+    /**
+     * Returns external function result schema.
+     *
+     * @return external_single_structure
+     */
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
             'response_type' => new external_value(PARAM_TEXT, 'Response type from the AI.'),

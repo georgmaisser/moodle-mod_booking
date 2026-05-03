@@ -94,6 +94,10 @@ class execution_feedback_service {
                 'resultid' => isset($result['resultid']) ? (int)$result['resultid'] : null,
             ];
 
+            if (isset($result['task']) && is_string($result['task']) && trim($result['task']) !== '') {
+                $entry['task'] = trim($result['task']);
+            }
+
             // Only pass task-authored user text through directly when no explicit output language
             // was requested (legacy/internal paths). Otherwise, frontend should use the normalized
             // top-level completion message to preserve language consistency.
@@ -132,6 +136,22 @@ class execution_feedback_service {
 
             if (!empty($result['previewoptionids']) && is_array($result['previewoptionids'])) {
                 $entry['previewoptionids'] = array_values(array_map('intval', $result['previewoptionids']));
+            }
+
+            if (!empty($result['options']) && is_array($result['options'])) {
+                $entry['options'] = $result['options'];
+            }
+
+            if (!empty($result['users']) && is_array($result['users'])) {
+                $entry['users'] = $result['users'];
+            }
+
+            if (!empty($result['courses']) && is_array($result['courses'])) {
+                $entry['courses'] = $result['courses'];
+            }
+
+            if (!empty($result['diagnosis']) && is_array($result['diagnosis'])) {
+                $entry['diagnosis'] = $result['diagnosis'];
             }
 
             if (!empty($result['properties']) && is_array($result['properties'])) {

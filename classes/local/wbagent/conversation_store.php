@@ -154,6 +154,63 @@ class conversation_store implements agent_conversation_store {
     }
 
     /**
+     * Write an ephemeral step-progress label to the thread.
+     *
+     * These messages (role='step') are visible to the polling frontend during
+     * the agent loop and are filtered out of the normal conversation history.
+     *
+     * @param int    $threadid
+     * @param int    $stepnum   1-based step counter.
+     * @param string $label     Short human-readable label ("Step 1: booking.search_options").
+     * @param string $task      Raw task name for frontend icon selection.
+     * @return int New message id.
+     */
+    public function add_step_message(int $threadid, int $stepnum, string $label, string $task = ''): int {
+        return $this->add_message($threadid, 'step', $label, [
+            'stepnum' => $stepnum,
+            'label'   => $label,
+            'task'    => $task,
+        ]);
+    }
+
+    /**
+     * Delete all step messages for a thread.
+     *
+     * Called at the start of every turn so stale progress bubbles from prior
+     * requests cannot reappear.
+     *
+     * @param int $threadid
+     * @return void
+     */
+    public function clear_step_messages(int $threadid): void {
+        global $DB;
+        $DB->delete_records('booking_ai_messages', ['threadid' => $threadid, 'role' => 'step']);
+    }
+
+    /**
+     * Return step messages written after a given message id.
+     *
+     * Used by the frontend step-polling endpoint to fetch only new steps.
+     *
+     * @param int $threadid
+     * @param int $sinceid  Return only messages with id > $sinceid (0 = all).
+     * @return stdClass[]
+     */
+    public function get_step_messages_since(int $threadid, int $sinceid): array {
+        global $DB;
+        $sql = 'SELECT * FROM {booking_ai_messages}
+                 WHERE threadid = :threadid
+                   AND role     = :role
+                   AND id       > :sinceid
+                 ORDER BY id ASC';
+        return array_values($DB->get_records_sql($sql, [
+            'threadid' => $threadid,
+            'role'     => 'step',
+            'sinceid'  => $sinceid,
+        ]));
+    }
+
+    /**
      * Return all messages for a thread ordered by timecreated ASC.
      *
      * @param int $threadid
@@ -176,8 +233,12 @@ class conversation_store implements agent_conversation_store {
 
         $sql = 'SELECT * FROM {booking_ai_messages}
                 WHERE threadid = :threadid
+                  AND role <> :steprole
                 ORDER BY timecreated DESC, id DESC';
-        $records = $DB->get_records_sql($sql, ['threadid' => $threadid], 0, $limit);
+        $records = $DB->get_records_sql($sql, [
+            'threadid' => $threadid,
+            'steprole' => 'step',
+        ], 0, $limit);
         // Return in chronological order.
         return array_reverse(array_values($records));
     }

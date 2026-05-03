@@ -596,6 +596,8 @@ $string['ai_status_taskcall_entities_search'] = 'Searching matching entities.';
 $string['ai_status_taskcall_shopping_cart_items'] = 'Fetching shopping cart items.';
 $string['ai_status_taskcall_shopping_cart_totals'] = 'Fetching shopping cart totals.';
 $string['ai_thinking'] = 'AI is thinking…';
+$string['ai_btn_stop'] = 'Stop';
+$string['ai_agent_loop_continue_question'] = 'I have completed {$a->steps} research steps but need more to fully answer your question. Shall I continue?';
 $string['ai_trial_token_invalid_message'] = 'Your AI trial token is no longer valid. Please purchase a subscription to continue — your token will be renewed directly after purchase and you can continue immediately.';
 $string['ai_trial_token_invalid_subscription_message'] = 'Your AI trial token is no longer valid. To continue, purchase a subscription and your token will be renewed immediately so you can keep using the agent right away.
 

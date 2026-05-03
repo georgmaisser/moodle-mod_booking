@@ -847,3 +847,71 @@ div.checkbox:has(label[for^="id_bo_cond_allowedtobookininstance_capabilitynotnee
         max-height: 420px;
     }
 }
+
+/* ---- Step-progress bubbles ---- */
+
+#booking-ai-wrapper .booking-ai-messages .booking-ai-msg-step {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.35rem;
+    text-align: left;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+#booking-ai-wrapper .booking-ai-messages .booking-ai-msg-step.booking-ai-step-fade {
+    opacity: 0;
+}
+
+#booking-ai-wrapper .booking-ai-step-spinner {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border: 2px solid #adb5bd;
+    border-top-color: #6c757d;
+    border-radius: 50%;
+    animation: booking-ai-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+#booking-ai-wrapper .booking-ai-step-label {
+    font-size: 0.78rem;
+    color: #6c757d;
+    font-style: italic;
+}
+
+@keyframes booking-ai-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---- Thinking bar with Stop button ---- */
+
+#booking-ai-wrapper .booking-ai-thinking-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+#booking-ai-wrapper .booking-ai-thinking-spinner {
+    display: inline-block;
+    width: 0.65rem;
+    height: 0.65rem;
+    border: 2px solid #adb5bd;
+    border-top-color: #6c757d;
+    border-radius: 50%;
+    animation: booking-ai-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+#booking-ai-wrapper .booking-ai-btn-stop {
+    font-size: 0.75rem;
+    color: #dc3545;
+    text-decoration: none;
+    line-height: 1;
+}
+
+#booking-ai-wrapper .booking-ai-btn-stop:hover {
+    color: #a71d2a;
+    text-decoration: underline;
+}

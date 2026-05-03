@@ -54,7 +54,7 @@ use mod_booking\local\wbagent\agent_state;
  */
 class agent_runtime {
     /** Maximum agent loop steps before bailing out. */
-    public const MAX_LOOP_STEPS = 5;
+    public const MAX_LOOP_STEPS = 25;
 
     /** Issue codes indicating a duplicate-title confirmation context. */
     public const DUPLICATE_TITLE_ISSUE_CODES = [
@@ -187,7 +187,50 @@ class agent_runtime {
      */
     public function run_loop(int $threadid, int $cmid, int $userid, int $maxsteps = 0): array {
         $limit = ($maxsteps > 0) ? $maxsteps : self::MAX_LOOP_STEPS;
-        $state = agent_state::make($limit);
+
+        // Check whether the previous call hit the step limit and stored its observations
+        // for resumption.  If the resume payload is still fresh, pre-load those observations
+        // so the LLM receives full context from earlier steps without repeating tool calls.
+        $resumedata = $this->store->get_thread_metadata_value($threadid, '_loop_resume');
+        $resumeallowed = false;
+        $recentmessages = $this->store->get_recent_messages($threadid, 8);
+        for ($i = count($recentmessages) - 1; $i >= 0; $i--) {
+            if ((string)($recentmessages[$i]->role ?? '') !== 'assistant') {
+                continue;
+            }
+            $structured = json_decode((string)($recentmessages[$i]->structuredjson ?? ''), true);
+            if (!is_array($structured)) {
+                break;
+            }
+            $issuecodes = array_map(
+                static fn($code): string => trim(core_text::strtoupper((string)$code)),
+                (array)($structured['issue_codes'] ?? [])
+            );
+            $resumeallowed = in_array('LOOP_STEP_LIMIT', $issuecodes, true);
+            break;
+        }
+        $isresume   = (
+            $resumeallowed
+            &&
+            is_array($resumedata)
+            && !empty($resumedata['observations'])
+            && ((int)($resumedata['expiresat'] ?? 0)) > time()
+        );
+        if ($isresume) {
+            $state = agent_state::make_resumed($limit, (array)$resumedata['observations']);
+            $this->store->set_thread_metadata_value($threadid, '_loop_resume', null);
+        } else {
+            $state = agent_state::make($limit);
+            // Clean up an expired entry if present.
+            if (is_array($resumedata)) {
+                $this->store->set_thread_metadata_value($threadid, '_loop_resume', null);
+            }
+        }
+
+        // Remove step messages from previous turns before writing new ones,
+        // so the frontend (which resets lastSeenStepId=0 each send) never
+        // re-fetches stale Step 1 / Step 2 / … bubbles from earlier runs.
+        $this->store->clear_step_messages($threadid);
 
         for ($step = 0; $step < $limit; $step++) {
             $state->current_step = $step + 1;
@@ -210,6 +253,17 @@ class agent_runtime {
                     $result['results'] ?? [],
                     $observation
                 );
+
+                // Write an ephemeral step label for frontend polling.
+                $steptask = implode(', ', array_filter(
+                    array_map(
+                        static fn(array $cmd): string => trim((string)($cmd['task'] ?? '')),
+                        (array)($result['commands'] ?? [])
+                    )
+                ));
+                $steplabel = 'Step ' . ($step + 1) . ($steptask !== '' ? ': ' . $steptask : '');
+                $this->store->add_step_message($threadid, $step + 1, $steplabel, $steptask);
+
                 // Do NOT persist — continue to next internal step.
                 continue;
             }
@@ -221,7 +275,13 @@ class agent_runtime {
         }
 
         // Maximum steps reached without a user-interaction response.
-        $result = $this->max_steps_exceeded_result(current_language(), $limit);
+        // Store observations so the next call can resume where we left off,
+        // then ask the user whether to continue instead of returning an error.
+        $this->store->set_thread_metadata_value($threadid, '_loop_resume', [
+            'observations' => $state->get_observations(),
+            'expiresat'    => time() + 900,
+        ]);
+        $result = $this->loop_continue_result(current_language(), $limit);
         $this->persist_assistant_message($threadid, $result);
         return $result;
     }
@@ -316,28 +376,35 @@ class agent_runtime {
     }
 
     /**
-     * Build an error result when the agent loop exceeds the step limit.
+     * Build a clarification result asking the user whether to continue after hitting the step limit.
+     *
+     * Observations are stored in thread metadata (_loop_resume) by the caller before
+     * this method is invoked so the next turn can resume seamlessly.
      *
      * @param  string $lang
      * @param  int    $maxsteps
      * @return array
      */
-    private function max_steps_exceeded_result(string $lang, int $maxsteps): array {
-        $message = $this->localized_string('ai_agent_max_steps_exceeded', 'mod_booking', null, $lang);
-        if ($message === 'ai_agent_max_steps_exceeded') {
-            $message = 'The agent reached the maximum number of steps ('
-                . $maxsteps
-                . '). Please try again with a more specific request.';
+    private function loop_continue_result(string $lang, int $maxsteps): array {
+        $message = $this->localized_string(
+            'ai_agent_loop_continue_question',
+            'mod_booking',
+            (object)['steps' => $maxsteps],
+            $lang
+        );
+        if ($message === 'ai_agent_loop_continue_question') {
+            $message = 'I have completed ' . $maxsteps . ' research steps but need more to fully'
+                . ' answer your question. Shall I continue?';
         }
         return [
-            'response_type'            => 'error',
+            'response_type'            => 'clarification',
             'message'                  => $message,
             'commands'                 => [],
             'ambiguities'              => [],
             'ambiguity_options'        => [],
-            'errors'                   => ['max_steps_exceeded'],
+            'errors'                   => [],
             'attempted_tasks'          => [],
-            'issue_codes'              => ['MAX_STEPS_EXCEEDED'],
+            'issue_codes'              => ['LOOP_STEP_LIMIT'],
             'pending_confirmation_code' => '',
             'used_triggers'            => [],
             'runid'                    => 0,

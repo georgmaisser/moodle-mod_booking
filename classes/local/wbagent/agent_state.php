@@ -89,6 +89,27 @@ final class agent_state {
     }
 
     /**
+     * Create an agent state pre-loaded with observations from a previous run.
+     *
+     * Used when resuming a loop that previously hit the step limit and stored
+     * its observations in thread metadata (_loop_resume).
+     *
+     * @param  int      $max_steps     Maximum loop steps.
+     * @param  string[] $observations  Observation strings from the previous loop.
+     * @return self
+     */
+    public static function make_resumed(int $max_steps, array $observations): self {
+        $instance = new self(max(1, $max_steps));
+        foreach ($observations as $obs) {
+            $trimmed = trim((string)$obs);
+            if ($trimmed !== '') {
+                $instance->observations[] = $trimmed;
+            }
+        }
+        return $instance;
+    }
+
+    /**
      * Record a completed tool-execution step together with its observation.
      *
      * Called once per loop iteration where read-only tools were executed and

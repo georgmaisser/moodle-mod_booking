@@ -124,6 +124,28 @@ final class task_registry_test extends advanced_testcase {
             }
 
             /**
+             * Structural input check.
+             *
+             * @param array $input
+             * @return array
+             */
+            public function check_structure(array $input): array {
+                return ['valid' => true, 'errors' => []];
+            }
+
+            /**
+             * Preflight check (no-op for this test double).
+             *
+             * @param array $input
+             * @param int $cmid
+             * @param int $userid
+             * @return \mod_booking\local\wbagent\task_preflight_result
+             */
+            public function preflight(array $input, int $cmid, int $userid): \mod_booking\local\wbagent\task_preflight_result {
+                return \mod_booking\local\wbagent\task_preflight_result::ok($input);
+            }
+
+            /**
              * Validate task input.
              *
              * @param array $input

@@ -37,6 +37,14 @@ let defaultThinkingLabel = '';
 let forceNewThreadOnFirstMessage = true;
 let trialTokenInvalidMessageLabel = '';
 
+/** Step-progress polling: interval handle, last-seen message id, active step bubble elements. */
+let stepPollInterval = null;
+let lastSeenStepId = 0;
+/** @type {Array<HTMLElement>} */
+let activeStepBubbles = [];
+/** Set to true when the user clicks Stop to discard the pending LLM response. */
+let sendAborted = false;
+
 /** @type {Array<string>} */
 const TRIAL_TOKEN_ISSUE_CODES = [
     'TRIAL_TOKEN_INVALID',
@@ -612,6 +620,37 @@ const renderTextWithLinks = (text) => {
 };
 
 /**
+ * Extract the first absolute URL from text.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+const extractFirstUrl = (text) => {
+    const input = String(text || '');
+    const match = input.match(/https?:\/\/[^\s)]+/);
+    return match ? String(match[0]) : '';
+};
+
+/**
+ * Load a URL into the side preview pane using an iframe.
+ *
+ * @param {string} url
+ */
+const loadUrlInSidePreview = (url) => {
+    const safeUrl = String(url || '').trim();
+    if (safeUrl === '') {
+        return;
+    }
+
+    setSidePreviewHtml(
+        '<iframe class="booking-ai-side-preview-frame"'
+        + ` src="${escapeHtml(safeUrl)}"`
+        + ' loading="lazy" referrerpolicy="no-referrer"'
+        + ' style="width:100%;min-height:420px;border:0;" title="Documentation preview"></iframe>'
+    );
+};
+
+/**
  * Detect generic status placeholders that are not user-friendly final answers.
  *
  * @param {string} message
@@ -757,6 +796,11 @@ const appendFriendlyAssistantMessage = (content) => {
         return;
     }
     appendMessageHtml('assistant', `<span>${renderTextWithLinks(text)}</span>`);
+
+    const firstUrl = extractFirstUrl(text);
+    if (firstUrl !== '') {
+        loadUrlInSidePreview(firstUrl);
+    }
 };
 
 /**
@@ -1095,6 +1139,92 @@ const pollRunStatus = (runid, cmid) => {
 };
 
 /**
+ * Append an ephemeral step-progress bubble to the message list.
+ *
+ * These bubbles are shown during the agentic loop and removed (with a short
+ * fade transition) as soon as the final answer arrives.
+ *
+ * @param {string} label  Human-readable step label (e.g. "Step 1: booking.search_options").
+ * @param {number} msgId  DB id of the step message — used to deduplicate.
+ */
+const appendStepBubble = (label, msgId) => {
+    const list = document.getElementById('booking-ai-messages');
+    if (!list) {
+        return;
+    }
+
+    const div = document.createElement('div');
+    div.classList.add('booking-ai-msg', 'booking-ai-msg-step');
+    div.dataset.stepMsgId = String(msgId);
+    div.innerHTML = '<span class="booking-ai-step-spinner" aria-hidden="true"></span>'
+        + `<span class="booking-ai-step-label">${escapeHtml(label)}</span>`;
+    list.appendChild(div);
+    list.scrollTop = list.scrollHeight;
+    activeStepBubbles.push(div);
+};
+
+/**
+ * Fade out and remove all active step bubbles.
+ */
+const clearStepBubbles = () => {
+    activeStepBubbles.forEach((el) => {
+        el.classList.add('booking-ai-step-fade');
+        setTimeout(() => {
+            if (el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+        }, 350);
+    });
+    activeStepBubbles = [];
+};
+
+/**
+ * Start polling the thread for new step-progress messages.
+ *
+ * Runs every 1.5 s and shows each new step as an ephemeral bubble.
+ * Call stopStepPolling() to cancel.
+ *
+ * @param {number} threadid
+ * @param {number} cmid
+ */
+const startStepPolling = (threadid, cmid) => {
+    stopStepPolling();
+    lastSeenStepId = 0;
+    stepPollInterval = setInterval(() => {
+        Ajax.call([{
+            methodname: 'mod_booking_ai_poll_thread',
+            args: {cmid, threadid},
+        }])[0].then((resp) => {
+            const messages = Array.isArray(resp.messages) ? resp.messages : [];
+            messages.forEach((msg) => {
+                if (String(msg.role || '') !== 'step') {
+                    return;
+                }
+                const msgId = Number(msg.id || 0);
+                if (msgId <= lastSeenStepId) {
+                    return;
+                }
+                lastSeenStepId = msgId;
+                appendStepBubble(String(msg.content || ''), msgId);
+            });
+            return resp;
+        }).catch(() => {
+            // Polling errors are silently ignored — the main request surfaces real errors.
+        });
+    }, 1500);
+};
+
+/**
+ * Stop the step-progress polling interval.
+ */
+const stopStepPolling = () => {
+    if (stepPollInterval !== null) {
+        clearInterval(stepPollInterval);
+        stepPollInterval = null;
+    }
+};
+
+/**
  * Send a message to the AI agent.
  *
  * @param {string} message
@@ -1104,6 +1234,8 @@ const sendMessage = (message) => {
         return;
     }
 
+    sendAborted = false;
+
     appendMessage('user', message, {
         source: 'chat_input',
         time: (new Date()).toISOString(),
@@ -1111,9 +1243,13 @@ const sendMessage = (message) => {
 
     const thinking = document.getElementById('booking-ai-thinking');
     const sendBtn  = document.getElementById('booking-ai-send');
+    const stopBtn  = document.getElementById('booking-ai-btn-stop');
     if (thinking) {
         thinking.textContent = privacyCheckRunningLabel;
         thinking.classList.remove('d-none');
+    }
+    if (stopBtn) {
+        stopBtn.classList.remove('d-none');
     }
     if (sendBtn) {
         sendBtn.disabled = true;
@@ -1150,6 +1286,9 @@ const sendMessage = (message) => {
                 thinking.classList.add('d-none');
                 thinking.textContent = defaultThinkingLabel;
             }
+            if (stopBtn) {
+                stopBtn.classList.add('d-none');
+            }
             if (sendBtn) {
                 sendBtn.disabled = false;
             }
@@ -1161,13 +1300,39 @@ const sendMessage = (message) => {
             thinking.textContent = defaultThinkingLabel;
         }
 
+        // Start polling for intermediate step updates while the LLM is processing.
+        startStepPolling(currentThreadId, currentCmid);
+
         return Ajax.call([{
         methodname: 'mod_booking_ai_send_message',
         args: {cmid: currentCmid, message: sanitizedMessage},
     }])[0].then((resp) => {
+        // Stop step polling and remove ephemeral step bubbles before showing final answer.
+        stopStepPolling();
+        clearStepBubbles();
+
+        // If the user clicked Stop while waiting, discard the response silently.
+        if (sendAborted) {
+            sendAborted = false;
+            if (thinking) {
+                thinking.classList.add('d-none');
+                thinking.textContent = defaultThinkingLabel;
+            }
+            if (stopBtn) {
+                stopBtn.classList.add('d-none');
+            }
+            if (sendBtn) {
+                sendBtn.disabled = false;
+            }
+            return resp;
+        }
+
         if (thinking) {
             thinking.classList.add('d-none');
             thinking.textContent = defaultThinkingLabel;
+        }
+        if (stopBtn) {
+            stopBtn.classList.add('d-none');
         }
         if (sendBtn) {
             sendBtn.disabled = false;
@@ -1310,9 +1475,14 @@ const sendMessage = (message) => {
         return resp;
     });
     }).catch((err) => {
+        stopStepPolling();
+        clearStepBubbles();
         if (thinking) {
             thinking.classList.add('d-none');
             thinking.textContent = defaultThinkingLabel;
+        }
+        if (stopBtn) {
+            stopBtn.classList.add('d-none');
         }
         if (sendBtn) {
             sendBtn.disabled = false;
@@ -1595,6 +1765,16 @@ export const init = (config = null) => {
                 return;
             }
 
+            const anchor = target.closest('a');
+            if (anchor instanceof HTMLAnchorElement) {
+                const href = String(anchor.getAttribute('href') || '').trim();
+                if (/^https?:\/\//i.test(href)) {
+                    event.preventDefault();
+                    loadUrlInSidePreview(href);
+                    return;
+                }
+            }
+
             const button = target.closest('.booking-ai-ambiguity-option');
             if (!(button instanceof HTMLElement)) {
                 return;
@@ -1616,6 +1796,25 @@ export const init = (config = null) => {
 
     if (cancelBtn) {
         cancelBtn.addEventListener('click', hideConfirmPanel);
+    }
+
+    const stopBtn = document.getElementById('booking-ai-btn-stop');
+    if (stopBtn) {
+        stopBtn.addEventListener('click', () => {
+            sendAborted = true;
+            stopStepPolling();
+            clearStepBubbles();
+            const thinkingEl = document.getElementById('booking-ai-thinking');
+            if (thinkingEl) {
+                thinkingEl.classList.add('d-none');
+                thinkingEl.textContent = defaultThinkingLabel;
+            }
+            stopBtn.classList.add('d-none');
+            const sendBtnEl = document.getElementById('booking-ai-send');
+            if (sendBtnEl) {
+                sendBtnEl.disabled = false;
+            }
+        });
     }
 
 };

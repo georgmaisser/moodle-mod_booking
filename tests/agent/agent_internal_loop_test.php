@@ -56,7 +56,6 @@ use mod_booking\local\wbagent\task_registry;
  * @covers \mod_booking\local\wbagent\agent_state
  */
 final class agent_internal_loop_test extends abstract_agent_testcase {
-
     // -------------------------------------------------------------------------
     // agent_state unit tests.
 
@@ -220,7 +219,12 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
                     int $cmid,
                     int $userid,
                     array $observations = []
-                ) use (&$callcount, &$capturedobservations, $step1, $step2): array {
+                ) use (
+                    &$callcount,
+                    &$capturedobservations,
+                    $step1,
+                    $step2
+                ): array {
                     $callcount++;
                     $capturedobservations[$callcount] = $observations;
                     return $callcount === 1 ? $step1 : $step2;
@@ -551,7 +555,12 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
                     int $cmid,
                     int $userid,
                     array $observations = []
-                ) use (&$callcount, &$capturedobservations, $step1, $step2): array {
+                ) use (
+                    &$callcount,
+                    &$capturedobservations,
+                    $step1,
+                    $step2
+                ): array {
                     $callcount++;
                     $capturedobservations[$callcount] = $observations;
                     return $callcount === 1 ? $step1 : $step2;

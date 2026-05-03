@@ -125,6 +125,9 @@ class executor implements agent_executor {
             }
 
             $result = $task->execute($input, $cmid, $userid);
+            if (is_array($result) && !isset($result['task'])) {
+                $result['task'] = $taskname;
+            }
             if (!empty($result['previewoptionids']) && is_array($result['previewoptionids'])) {
                 booking_task_support::remember_last_preview_options_for_user_for_execute(
                     $userid,
