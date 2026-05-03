@@ -39,7 +39,7 @@ namespace mod_booking;
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once(__DIR__ . '/abstract_agent_testcase.php');
+require_once(__DIR__ . '/../abstract_agent_testcase.php');
 
 /**
  * CONV-01 / CONV-02: booking.create_option real-LLM tests.
