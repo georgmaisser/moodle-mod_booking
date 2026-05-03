@@ -143,6 +143,8 @@ $string['agent_booking_diagnose_other_user_permission_denied'] =
     'Sie duerfen keine Buchungsdiagnose fuer andere Nutzer:innen ausfuehren.';
 $string['agent_booking_diagnose_cancel_reason_activity_completed'] =
     'Stornieren ist nicht moeglich, weil diese Buchungsaktivitaet fuer Sie bereits abgeschlossen ist.';
+$string['agent_booking_diagnose_cancel_reason_activity_completed_other'] =
+    'Stornieren ist nicht moeglich, weil diese Buchungsaktivitaet fuer die ausgewaehlte Person bereits abgeschlossen ist.';
 $string['agent_booking_diagnose_cancel_reason_blocked_by_higher_condition'] =
     'Der Stornieren-Button erscheint nur, wenn cancelmyself (id=105) die hoechste blockierende Condition ist. Aktuell blockiert eine hoehere Condition.';
 $string['agent_booking_diagnose_cancel_reason_cancel_button_available'] =
@@ -153,30 +155,50 @@ $string['agent_booking_diagnose_cancel_reason_effective_canceluntil_passed'] =
     'Die wirksame Stornofrist ist abgelaufen (bis {$a}).';
 $string['agent_booking_diagnose_cancel_reason_elective_reservation'] =
     'Sie haben aktuell nur eine Reservierung im Wahlkontext; in diesem Zustand ist Selbststorno nicht moeglich.';
+$string['agent_booking_diagnose_cancel_reason_elective_reservation_other'] =
+    'Die ausgewaehlte Person hat aktuell nur eine Reservierung im Wahlkontext; in diesem Zustand ist Selbststorno nicht moeglich.';
 $string['agent_booking_diagnose_cancel_reason_highest_blocking_condition'] =
     'Hoechste blockierende Condition: id={$a->id}, Klasse={$a->classname}, Beschreibung="{$a->description}".';
 $string['agent_booking_diagnose_cancel_reason_instance_cancancelbook_disabled'] =
     'Selbststorno ist in dieser Buchungsinstanz deaktiviert (cancancelbook ist nicht aktiv).';
 $string['agent_booking_diagnose_cancel_reason_instance_disablecancel'] =
     'Stornieren ist fuer die gesamte Buchungsinstanz deaktiviert.';
+$string['agent_booking_diagnose_cancel_reason_concrete_instance_disablecancel'] =
+    'Konkrete Einstellung: booking.json.disablecancel = 1 (instanzweite Stornosperre). Admin-Aktion: In der Buchungsinstanz "Stornierung fuer die gesamte Buchungsinstanz deaktivieren" ausschalten.';
 $string['agent_booking_diagnose_cancel_reason_none'] =
     'Aus dem aktuellen Zustand konnte kein konkreter Storno-Blocker abgeleitet werden.';
 $string['agent_booking_diagnose_cancel_reason_not_booked'] =
     'Sie sind fuer diese Option aktuell nicht gebucht.';
+$string['agent_booking_diagnose_cancel_reason_not_booked_other'] =
+    'Die ausgewaehlte Person ist fuer diese Option aktuell nicht gebucht.';
+$string['agent_booking_diagnose_cancel_reason_concrete_notbooked_state'] =
+    'Konkreter Zustand: bookinginformation.notbooked ist gesetzt. Ohne aktive Buchung ist Selbststorno nicht verfuegbar.';
 $string['agent_booking_diagnose_cancel_reason_option_canceluntil_passed'] =
     'Diese Option hat eine eigene Stornofrist, und diese ist bereits abgelaufen (bis {$a}).';
+$string['agent_booking_diagnose_cancel_reason_concrete_option_canceluntil_passed'] =
+    'Konkrete Einstellung: booking_option.json.canceluntil = {$a->timestamp} ({$a->date}) liegt in der Vergangenheit. Admin-Aktion: canceluntil auf einen zukuenftigen Zeitpunkt setzen oder diese Restriktion entfernen.';
 $string['agent_booking_diagnose_cancel_reason_option_disablecancel'] =
     'Stornieren ist direkt in dieser Buchungsoption deaktiviert.';
+$string['agent_booking_diagnose_cancel_reason_concrete_option_disablecancel'] =
+    'Konkrete Einstellung: booking_option.json.disablecancel = 1 (nur diese Option). Admin-Aktion: In den erweiterten Optionseinstellungen "Stornierung dieser Buchungsoption deaktivieren" ausschalten.';
 $string['agent_booking_diagnose_cancel_reason_price_without_shopping_cart'] =
     'Diese Option verwendet Preise, aber local_shopping_cart ist nicht verfuegbar; dadurch ist Stornieren deaktiviert.';
 $string['agent_booking_diagnose_cancel_reason_reserved_state'] =
     'Sie haben derzeit nur einen Reservierungsstatus; dieser Stornoablauf ist damit nicht verfuegbar.';
+$string['agent_booking_diagnose_cancel_reason_reserved_state_other'] =
+    'Die ausgewaehlte Person hat derzeit nur einen Reservierungsstatus; dieser Stornoablauf ist damit nicht verfuegbar.';
 $string['agent_booking_diagnose_cancel_reason_shopping_cart_denies_cancel'] =
     'Shopping-Cart-Regeln blockieren die Stornierung fuer diese Option.';
 $string['agent_booking_diagnose_cancel_reason_waitinglist_confirmation_pending'] =
     'Sie stehen auf der Warteliste mit bestaetigungsbezogenem Wartelistenstatus; dadurch ist Stornieren blockiert.';
 $string['agent_booking_diagnose_cancel_reason_waitinglist_no_confirmation_flow'] =
     'Sie stehen auf der Warteliste ohne Bestaetigungsablauf und die Option ist nicht voll; dadurch ist diese Stornoaktion blockiert.';
+$string['agent_booking_diagnose_cancel_reason_concrete_instance_cancancelbook_disabled'] =
+    'Konkrete Einstellung: booking.cancancelbook != 1. Admin-Aktion: In der Buchungsinstanz "Nutzern erlauben, ihre Buchung selbst zu stornieren" aktivieren.';
+$string['agent_booking_diagnose_cancel_reason_concrete_effective_canceluntil_passed'] =
+    'Konkrete Einstellung: Die wirksame Stornofrist (aus den Instanzeinstellungen berechnet) ist abgelaufen: {$a->timestamp} ({$a->date}). Admin-Aktion: allowupdatedays/allowupdatetimestamp oder die relative Stornoregel anpassen.';
+$string['agent_booking_diagnose_cancel_reason_concrete_coolingoff_active'] =
+    'Konkrete Einstellung: booking/coolingoffperiod = {$a} Sekunden. Admin-Aktion: Cooling-off-Phase verkuerzen oder auf 0 setzen.';
 $string['agent_booking_diagnose_cancel_required_question'] =
     'Das Feld "question" ist fuer diagnose_cancellation_issue erforderlich.';
 $string['agent_booking_diagnose_error_last_preview_none'] =
@@ -189,12 +211,16 @@ $string['agent_booking_diagnose_intro_cannot_book'] =
     'Darum kann die Buchung aktuell fehlschlagen:';
 $string['agent_booking_diagnose_intro_checked_option'] =
     'Ich habe Ihre Buchungssituation fuer "{$a}" geprueft.';
+$string['agent_booking_diagnose_intro_checked_option_other'] =
+    'Ich habe die Buchungssituation der ausgewaehlten Person fuer "{$a}" geprueft.';
 $string['agent_booking_diagnose_intro_missing_email'] =
     'Das kann ich zur E-Mail-Frage bestaetigen:';
 $string['agent_booking_diagnose_intro_status'] =
     'Ihr aktueller Status ist {$a}.';
 $string['agent_booking_diagnose_reason_cannot_book_already_booked'] =
     'Sie sind bereits gebucht, daher ist eine weitere normale Buchung nicht verfuegbar.';
+$string['agent_booking_diagnose_reason_cannot_book_already_booked_other'] =
+    'Die ausgewaehlte Person ist bereits gebucht, daher ist eine weitere normale Buchung nicht verfuegbar.';
 $string['agent_booking_diagnose_reason_cannot_book_fully_booked'] =
     'Die Option ist derzeit voll belegt.';
 $string['agent_booking_diagnose_reason_cannot_book_no_waitinglist'] =
@@ -205,26 +231,42 @@ $string['agent_booking_diagnose_reason_cannot_book_waitinglist_full'] =
     'Die Warteliste ist ebenfalls voll.';
 $string['agent_booking_diagnose_reason_missing_email_booked'] =
     'Sie sind fuer diese Option gebucht; eine fehlende Buchung erklaert die fehlende E-Mail daher nicht.';
+$string['agent_booking_diagnose_reason_missing_email_booked_other'] =
+    'Die ausgewaehlte Person ist fuer diese Option gebucht; eine fehlende Buchung erklaert die fehlende E-Mail daher nicht.';
 $string['agent_booking_diagnose_reason_missing_email_limitations'] =
     'Diese Selbstpruefung kann nicht nachweisen, ob eine E-Mail tatsaechlich gesendet oder zugestellt wurde.';
 $string['agent_booking_diagnose_reason_missing_email_manager_check'] =
     'Bei Bedarf kann eine verantwortliche Person Mailvorlagen, Regeln und die geplante Mail-Warteschlange pruefen.';
 $string['agent_booking_diagnose_reason_missing_email_not_booked'] =
     'Sie sind fuer diese Option derzeit nicht gebucht.';
+$string['agent_booking_diagnose_reason_missing_email_not_booked_other'] =
+    'Die ausgewaehlte Person ist fuer diese Option derzeit nicht gebucht.';
 $string['agent_booking_diagnose_reason_missing_email_waitinglist'] =
     'Sie stehen auf der Warteliste, wodurch andere Benachrichtigungen als bei einer bestaetigten Buchung moeglich sind.';
+$string['agent_booking_diagnose_reason_missing_email_waitinglist_other'] =
+    'Die ausgewaehlte Person steht auf der Warteliste, wodurch andere Benachrichtigungen als bei einer bestaetigten Buchung moeglich sind.';
 $string['agent_booking_diagnose_reason_none'] =
     'Aus dem aktuellen Buchungsstatus konnte kein konkreter Blockierungsgrund abgeleitet werden.';
 $string['agent_booking_diagnose_reason_status_booked'] =
     'Sie haben fuer diese Option bereits eine bestaetigte Buchung.';
+$string['agent_booking_diagnose_reason_status_booked_other'] =
+    'Die ausgewaehlte Person hat fuer diese Option bereits eine bestaetigte Buchung.';
 $string['agent_booking_diagnose_reason_status_notbooked'] =
     'Fuer Sie existiert derzeit kein Buchungseintrag fuer diese Option.';
+$string['agent_booking_diagnose_reason_status_notbooked_other'] =
+    'Fuer die ausgewaehlte Person existiert derzeit kein Buchungseintrag fuer diese Option.';
 $string['agent_booking_diagnose_reason_status_notifylist'] =
     'Sie stehen auf der Benachrichtigungsliste, sind aber nicht gebucht.';
+$string['agent_booking_diagnose_reason_status_notifylist_other'] =
+    'Die ausgewaehlte Person steht auf der Benachrichtigungsliste, ist aber nicht gebucht.';
 $string['agent_booking_diagnose_reason_status_reserved'] =
     'Sie haben derzeit nur eine Reservierung, aber keine bestaetigte Buchung.';
+$string['agent_booking_diagnose_reason_status_reserved_other'] =
+    'Die ausgewaehlte Person hat derzeit nur eine Reservierung, aber keine bestaetigte Buchung.';
 $string['agent_booking_diagnose_reason_status_waitinglist'] =
     'Sie stehen fuer diese Option aktuell auf der Warteliste.';
+$string['agent_booking_diagnose_reason_status_waitinglist_other'] =
+    'Die ausgewaehlte Person steht fuer diese Option aktuell auf der Warteliste.';
 $string['agent_booking_diagnose_required_question'] =
     'Das Feld "question" ist fuer diagnose_booking_issue erforderlich.';
 $string['agent_booking_diagnose_status_booked'] = 'gebucht';
@@ -264,6 +306,8 @@ $string['agent_booking_update_option_invalid_optionid_question'] =
     'Die Options-ID {$a} ist nicht gueltig. Bitte geben Sie eine andere Options-ID oder einen Optionstitel an.';
 $string['agent_booking_update_option_missing_target'] =
     'Bitte geben Sie an, welche Buchungsoption aktualisiert werden soll.';
+$string['agent_booking_update_option_resolution_failed_question'] =
+    'Ich konnte diese Buchungsoption nicht aufloesen. Bitte geben Sie einen spezifischeren Optionstitel oder eine Options-ID an.';
 $string['agent_booking_update_option_which_option_question'] =
     'Welche Buchungsoption soll ich aktualisieren? Bitte geben Sie Optionstitel oder Options-ID an.';
 $string['agent_booking_update_permission_check_failed'] =
@@ -552,6 +596,24 @@ $string['ai_property_userprofilecustom'] = 'Bedingung benutzerdefiniertes Profil
 $string['ai_property_userprofilestandard'] = 'Bedingung Standard-Profilfeld';
 $string['ai_repair_no_solution_message'] = 'Für diesen Ausführungsfehler konnte ich keinen sicheren automatischen Reparaturplan erstellen. Bitte präzisieren Sie die Angaben und versuchen Sie es erneut.';
 $string['ai_repair_proposal_message'] = 'Die vorherige Ausführung ist fehlgeschlagen, weil benötigte Daten nicht aufgelöst werden konnten. Ich habe einen aktualisierten Plan vorbereitet, der zuerst die fehlende Voraussetzung behebt und danach Ihre ursprüngliche Aktion erneut ausführt. Bitte prüfen und bestätigen Sie die aktualisierte Befehlsliste.';
+$string['ai_result_detail_action_executed'] = 'Die Aktion wurde ausgefuehrt.';
+$string['ai_result_detail_courses_found'] = '{$a} passende(r) Kurs(e) gefunden.';
+$string['ai_result_detail_courses_none'] = 'Keine passenden Kurse gefunden.';
+$string['ai_result_detail_current_user'] = 'Aktueller Nutzer wurde identifiziert.';
+$string['ai_result_detail_diagnosis_generic'] = 'Ich habe die Buchungssituation analysiert.';
+$string['ai_result_detail_diagnosis_with_option'] = 'Ich habe die Situation fuer die Buchungsoption "{$a}" analysiert.';
+$string['ai_result_detail_options_found'] = '{$a} Buchungsoption(en) gefunden.';
+$string['ai_result_detail_options_none'] = 'Keine passende Buchungsoption gefunden.';
+$string['ai_result_detail_users_found'] = '{$a} passende(r) Nutzer gefunden.';
+$string['ai_result_detail_users_none'] = 'Keine passenden Nutzer gefunden.';
+$string['ai_result_feedback_complete'] = 'Die Aktion ist abgeschlossen.';
+$string['ai_result_feedback_courses_found'] = 'Ich habe {$a} passende Kurse gefunden.';
+$string['ai_result_feedback_courses_none'] = 'Ich konnte keine passenden Kurse finden.';
+$string['ai_result_feedback_current_user'] = 'Ich habe Ihr Nutzerkonto identifiziert.';
+$string['ai_result_feedback_options_found'] = 'Ich habe {$a} passende Buchungsoption(en) gefunden.';
+$string['ai_result_feedback_options_none'] = 'Ich konnte keine passende Buchungsoption finden.';
+$string['ai_result_feedback_users_found'] = 'Ich habe {$a} passende Nutzer gefunden.';
+$string['ai_result_feedback_users_none'] = 'Ich konnte keine passenden Nutzer finden.';
 $string['ai_status_confirm_booking_bulk_update_options'] = 'Ich werde mehrere Buchungsoptionen auf einmal aktualisieren. Soll ich fortfahren?';
 $string['ai_status_confirm_booking_create_option'] = 'Ich werde eine neue Buchungsoption erstellen.';
 $string['ai_status_confirm_booking_search_options'] = 'Ich werde die Buchungsoptionen auflisten.';
@@ -569,6 +631,9 @@ $string['ai_status_taskcall_entities_list_all'] = 'Lade Liste aller Entities.';
 $string['ai_status_taskcall_entities_search'] = 'Suche passende Entities.';
 $string['ai_status_taskcall_shopping_cart_items'] = 'Lade Warenkorbpositionen.';
 $string['ai_status_taskcall_shopping_cart_totals'] = 'Lade Warenkorbsummen.';
+$string['ai_agent_loop_repeat_message'] = 'Ich habe {$a->steps} wiederholte Nachschlage-Schritte abgeschlossen und das neueste Ergebnis zurückgegeben.';
+$string['ai_agent_malformed_taskcall_clarification'] =
+    'Ich konnte den letzten Schritt nicht zuverlaessig verarbeiten. Bitte stellen Sie Ihre Frage noch einmal in einem kurzen Satz.';
 $string['ai_trial_token_invalid_message'] = 'Ihr AI-Trial-Token ist nicht mehr gueltig. Bitte kaufen Sie ein Abonnement, um fortzufahren — Ihr Token wird direkt nach dem Kauf erneuert und Sie koennen sofort weitermachen.';
 $string['ai_trial_token_invalid_subscription_message'] = 'Ihr AI-Trial-Token ist nicht mehr gueltig. Um fortzufahren, kaufen Sie ein Abonnement. Ihr Token wird direkt nach dem Kauf erneuert und Sie koennen den Agenten sofort weiter nutzen.
 

@@ -54,7 +54,7 @@ use mod_booking\local\wbagent\agent_state;
  */
 class agent_runtime {
     /** Maximum agent loop steps before bailing out. */
-    public const MAX_LOOP_STEPS = 25;
+    public const MAX_LOOP_STEPS = 6;
 
     /** Issue codes indicating a duplicate-title confirmation context. */
     public const DUPLICATE_TITLE_ISSUE_CODES = [
@@ -187,6 +187,7 @@ class agent_runtime {
      */
     public function run_loop(int $threadid, int $cmid, int $userid, int $maxsteps = 0): array {
         $limit = ($maxsteps > 0) ? $maxsteps : self::MAX_LOOP_STEPS;
+        $missingcommandsretryused = false;
 
         // Check whether the previous call hit the step limit and stored its observations
         // for resumption.  If the resume payload is still fresh, pre-load those observations
@@ -248,27 +249,56 @@ class agent_runtime {
                     $result['results'] ?? [],
                     $step + 1
                 );
+                $commands = (array)($result['commands'] ?? []);
                 $state->record_step(
-                    $result['commands'] ?? [],
+                    $commands,
                     $result['results'] ?? [],
                     $observation
                 );
 
                 // Write an ephemeral step label for frontend polling.
-                $steptask = implode(', ', array_filter(
-                    array_map(
-                        static fn(array $cmd): string => trim((string)($cmd['task'] ?? '')),
-                        (array)($result['commands'] ?? [])
-                    )
-                ));
-                $steplabel = 'Step ' . ($step + 1) . ($steptask !== '' ? ': ' . $steptask : '');
+                $steptask = implode(', ', $this->extract_step_task_names($commands, (array)($result['results'] ?? [])));
+                $steplabel = $this->build_step_label($step + 1, $commands, $result['results'] ?? []);
                 $this->store->add_step_message($threadid, $step + 1, $steplabel, $steptask);
+
+                // If the LLM keeps issuing the same readonly tasks, stop the loop early
+                // and return the latest useful result instead of burning the full step budget.
+                if ($this->is_repeated_readonly_step($state, $commands, (array)($result['results'] ?? []))) {
+                    $final = $this->loop_repeat_narration_result(
+                        $threadid,
+                        $cmid,
+                        $userid,
+                        $state,
+                        trim((string)($result['lang'] ?? '')) ?: current_language(),
+                        trim((string)($result['message'] ?? ''))
+                    );
+                    $final = $this->attach_loop_results($final, $state);
+                    $this->persist_assistant_message($threadid, $final);
+                    return $final;
+                }
 
                 // Do NOT persist — continue to next internal step.
                 continue;
             }
 
             // Any other response type requires user interaction or signals completion.
+            if ($this->should_recover_from_missing_commands_error($result, $state)) {
+                // Self-healing retry: if the model returned a command-bearing response type
+                // without commands, give it one corrective retry with explicit guidance.
+                if (!$missingcommandsretryused) {
+                    $missingcommandsretryused = true;
+                    $state->record_step(
+                        [],
+                        [],
+                        'System note: Previous assistant response had a command-bearing response_type '
+                        . 'but no commands. Return valid commands for task_call/confirmation_request, '
+                        . 'or switch to clarification with plain text only.'
+                    );
+                    continue;
+                }
+                $result = $this->recover_missing_commands_error_result($result, $state);
+            }
+
             // Persist the SINGLE final assistant message and return.
             $result = $this->attach_loop_results($result, $state);
             $this->persist_assistant_message($threadid, $result);
@@ -308,20 +338,543 @@ class agent_runtime {
             return $result;
         }
         $accumulated = [];
+        $accumulatedtasks = [];
+        $accumulatederrors = [];
         foreach ($state->get_steps() as $step) {
+            foreach (
+                $this->extract_step_task_names(
+                    (array)($step['tool_calls'] ?? []),
+                    (array)($step['results'] ?? [])
+                ) as $taskname
+            ) {
+                if ($taskname !== '') {
+                    $accumulatedtasks[] = $taskname;
+                }
+            }
             foreach ((array)($step['results'] ?? []) as $r) {
                 $accumulated[] = $r;
+                if (!is_array($r)) {
+                    continue;
+                }
+                if (trim((string)($r['status'] ?? '')) !== 'error') {
+                    continue;
+                }
+                $detail = trim((string)($r['detail'] ?? $r['usermessage'] ?? ''));
+                if ($detail !== '') {
+                    $accumulatederrors[] = $detail;
+                }
             }
         }
         if (empty($accumulated)) {
             return $result;
         }
+
+        if ($this->has_issue_code($result, 'LOOP_REPEAT_DETECTED')) {
+            $accumulated = $this->deduplicate_loop_results($accumulated);
+        }
+
         $result['loop_results'] = $accumulated;
         // Populate 'results' when the final response has none of its own.
         if (empty($result['results'])) {
             $result['results'] = $accumulated;
         }
+
+        if (empty($result['attempted_tasks']) && !empty($accumulatedtasks)) {
+            $result['attempted_tasks'] = array_values(array_unique($accumulatedtasks));
+        }
+
+        if (empty($result['errors']) && !empty($accumulatederrors)) {
+            $result['errors'] = array_values(array_unique($accumulatederrors));
+        }
+
+        if ($this->has_issue_code($result, 'LOOP_REPEAT_DETECTED')) {
+            // Prefer an informative summary for repeat stops so diagnosis reasons
+            // are visible even when the loop ends before an additional LLM narration step.
+            $current = trim((string)($result['message'] ?? ''));
+            $summary = $this->build_loop_repeat_summary($accumulated, $current);
+            $result['message'] = $this->is_low_information_message($current) ? $summary : ($summary !== '' ? $summary : $current);
+        } else {
+            // Even without a repeat, enrich a generic LLM message with actual option names
+            // so callers and follow-up turns can refer to them by name.
+            $result['message'] = $this->maybe_enrich_message_from_results(
+                (string)($result['message'] ?? ''),
+                $accumulated
+            );
+        }
+
         return $result;
+    }
+
+    /**
+     * Deduplicate repeated loop results while preserving order.
+     *
+     * @param array $results
+     * @return array
+     */
+    private function deduplicate_loop_results(array $results): array {
+        $indexesbykey = [];
+        $unique = [];
+
+        foreach ($results as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $task = trim((string)($entry['task'] ?? ''));
+            $resultid = (int)($entry['resultid'] ?? 0);
+            $diagnosisuserid = (int)($entry['diagnosis']['userid'] ?? 0);
+            $diagnosisoptionid = (int)($entry['diagnosis']['optionid'] ?? 0);
+
+            $dedupkey = implode('|', [
+                $task,
+                (string)$resultid,
+                (string)$diagnosisuserid,
+                (string)$diagnosisoptionid,
+            ]);
+
+            if (!array_key_exists($dedupkey, $indexesbykey)) {
+                $indexesbykey[$dedupkey] = count($unique);
+                $unique[] = $entry;
+                continue;
+            }
+
+            $existingindex = (int)$indexesbykey[$dedupkey];
+            $existing = $unique[$existingindex] ?? [];
+            if ($this->score_loop_result_entry($entry) > $this->score_loop_result_entry((array)$existing)) {
+                $unique[$existingindex] = $entry;
+            }
+        }
+
+        return array_values($unique);
+    }
+
+    /**
+     * Heuristic score to keep the most informative repeated loop result.
+     *
+     * @param array $entry
+     * @return int
+     */
+    private function score_loop_result_entry(array $entry): int {
+        $score = 0;
+
+        if (trim((string)($entry['status'] ?? '')) === 'executed') {
+            $score += 10;
+        }
+
+        $issue = trim(core_text::strtolower((string)($entry['diagnosis']['issue'] ?? '')));
+        if ($issue === 'cannot_book') {
+            $score += 30;
+        } else if ($issue === 'missing_email') {
+            $score += 20;
+        } else if ($issue === 'booking_status') {
+            $score += 10;
+        }
+
+        $reasons = array_values(array_filter(array_map(
+            static fn($reason): string => trim((string)$reason),
+            (array)($entry['diagnosis']['reasons'] ?? [])
+        )));
+        $score += min(count($reasons), 10);
+
+        $message = trim((string)($entry['usermessage'] ?? $entry['detail'] ?? ''));
+        $score += min((int)floor(strlen($message) / 80), 5);
+
+        return $score;
+    }
+
+    /**
+     * Check whether a normalized issue code exists on the result.
+     *
+     * @param array $result
+     * @param string $needle
+     * @return bool
+     */
+    private function has_issue_code(array $result, string $needle): bool {
+        $needle = trim(core_text::strtoupper($needle));
+        if ($needle === '') {
+            return false;
+        }
+        foreach ((array)($result['issue_codes'] ?? []) as $code) {
+            if (trim(core_text::strtoupper((string)$code)) === $needle) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Build a user-visible summary for repeated readonly loops.
+     *
+     * @param array $results
+     * @param string $currentmessage
+     * @return string
+     */
+    private function build_loop_repeat_summary(array $results, string $currentmessage): string {
+        $currentmessage = trim($currentmessage);
+        $bestfallback = '';
+        $resultsummary = '';
+
+        for ($i = count($results) - 1; $i >= 0; $i--) {
+            $entry = $results[$i] ?? null;
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $candidate = trim((string)($entry['usermessage'] ?? $entry['detail'] ?? $entry['summary'] ?? ''));
+            if ($candidate !== '' && $bestfallback === '' && !$this->is_low_information_message($candidate)) {
+                $bestfallback = $candidate;
+            }
+            // Prefer localized task-authored text for user-facing summaries.
+            if ($resultsummary === '') {
+                if ($candidate !== '') {
+                    $resultsummary = $candidate;
+                } else {
+                    $resultsummary = result_payload_summarizer::describe_entry($entry);
+                }
+            }
+
+            $diagnosis = $entry['diagnosis'] ?? null;
+            if (!is_array($diagnosis)) {
+                continue;
+            }
+
+            $intro = trim((string)($entry['usermessage'] ?? $entry['detail'] ?? $currentmessage));
+            if ($intro === '' || $this->is_low_information_message($intro)) {
+                $intro = $bestfallback;
+            }
+
+            $reasons = [];
+            foreach ((array)($diagnosis['reasons'] ?? []) as $reason) {
+                $text = trim((string)$reason);
+                if ($text !== '') {
+                    $reasons[] = '- ' . $text;
+                }
+            }
+
+            if (!empty($reasons)) {
+                $lines = array_slice(array_values(array_unique($reasons)), 0, 5);
+                if ($intro !== '') {
+                    return $intro . "\n\n" . implode("\n", $lines);
+                }
+                return implode("\n", $lines);
+            }
+        }
+
+        // If any result type provided a meaningful summary, return a localized fallback.
+        if ($resultsummary !== '') {
+            $base = $this->is_low_information_message($currentmessage) ? $bestfallback : $currentmessage;
+            if ($this->is_low_information_message($base)) {
+                $base = '';
+            }
+            return $base !== '' ? $base : $resultsummary;
+        }
+
+        if (!$this->is_low_information_message($currentmessage)) {
+            return $currentmessage;
+        }
+        if ($bestfallback !== '') {
+            return $bestfallback;
+        }
+        return $currentmessage;
+    }
+
+    /**
+     * Enrich a generic LLM message with a result summary extracted from loop results.
+     *
+     * When the LLM returns a short, non-specific message after a loop step, the
+     * framework appends a deterministic summary built by result_payload_summarizer.
+     * This is generic: it works for any task type (options, users, courses, etc.).
+     *
+     * @param  string $message   Current LLM message.
+     * @param  array  $results   Accumulated loop step results.
+     * @return string            Enriched message (unchanged when already informative).
+     */
+    private function maybe_enrich_message_from_results(string $message, array $results): string {
+        $message = trim($message);
+        // Only enrich when the message looks generic (short, no newlines).
+        if ($message !== '' && (strlen($message) > 200 || str_contains($message, "\n"))) {
+            return $message;
+        }
+
+        // Find the first result entry that yields a non-empty localized summary.
+        $summary = '';
+        foreach ($results as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $candidate = trim((string)($entry['usermessage'] ?? $entry['detail'] ?? $entry['summary'] ?? ''));
+            if ($candidate === '') {
+                $candidate = result_payload_summarizer::describe_entry($entry);
+            }
+            if ($candidate !== '') {
+                $summary = $candidate;
+                break;
+            }
+        }
+
+        if ($summary === '') {
+            return $message;
+        }
+
+        // Skip enrichment when the summary content already appears in the message.
+        $messagelower = core_text::strtolower($message);
+        $summarylower = core_text::strtolower($summary);
+        // Use a short representative token (first 20 chars) to avoid false negatives.
+        $token = core_text::substr($summarylower, 0, 20);
+        if ($token !== '' && strpos($messagelower, $token) !== false) {
+            return $message;
+        }
+
+        return $message !== '' ? $message . ' ' . $summary : $summary;
+    }
+
+    /**
+     * Decide whether a loop step error should be downgraded to a user-facing clarification.
+     *
+     * @param array $result
+     * @param agent_state $state
+     * @return bool
+     */
+    private function should_recover_from_missing_commands_error(array $result, agent_state $state): bool {
+        if ((string)($result['response_type'] ?? '') !== 'error') {
+            return false;
+        }
+
+        $needle = 'response type requires at least one command but none were provided';
+        $message = core_text::strtolower(trim((string)($result['message'] ?? '')));
+        if (str_contains($message, $needle)) {
+            return true;
+        }
+
+        foreach ((array)($result['errors'] ?? []) as $error) {
+            $candidate = core_text::strtolower(trim((string)$error));
+            if (str_contains($candidate, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Build a clarification result from prior loop observations when the current step failed structurally.
+     *
+     * @param array $result
+     * @param agent_state $state
+     * @return array
+     */
+    private function recover_missing_commands_error_result(array $result, agent_state $state): array {
+        $accumulated = [];
+        foreach ($state->get_steps() as $step) {
+            foreach ((array)($step['results'] ?? []) as $entry) {
+                if (is_array($entry)) {
+                    $accumulated[] = $entry;
+                }
+            }
+        }
+
+        $summary = $this->build_loop_repeat_summary($accumulated, '');
+        if ($summary === '') {
+            $summary = trim((string)($result['message'] ?? ''));
+        }
+
+        $technicalneedle = 'response type requires at least one command but none were provided';
+        if ($summary === '' || str_contains(core_text::strtolower($summary), $technicalneedle)) {
+            $lang = trim((string)($result['lang'] ?? ''));
+            $summary = $this->localized_string(
+                'ai_agent_malformed_taskcall_clarification',
+                'mod_booking',
+                null,
+                $lang
+            );
+            if ($summary === 'ai_agent_malformed_taskcall_clarification') {
+                $summary = 'I could not reliably parse the last step. Please ask your question again in one short sentence.';
+            }
+        }
+
+        return [
+            'response_type'             => 'clarification',
+            'message'                   => $summary,
+            'commands'                  => [],
+            'ambiguities'               => [],
+            'ambiguity_options'         => [],
+            'errors'                    => [],
+            'attempted_tasks'           => (array)($result['attempted_tasks'] ?? []),
+            'issue_codes'               => array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                ['LOOP_MALFORMED_TASKCALL_RECOVERED']
+            ))),
+            'pending_confirmation_code' => '',
+            'used_triggers'             => (array)($result['used_triggers'] ?? []),
+            'runid'                     => 0,
+            'results'                   => [],
+            'lang'                      => (string)($result['lang'] ?? ''),
+        ];
+    }
+
+    /**
+     * Detect generic low-information status messages.
+     *
+     * @param string $message
+     * @return bool
+     */
+    private function is_low_information_message(string $message): bool {
+        $trimmed = trim($message);
+        if ($trimmed === '') {
+            return true;
+        }
+        if (strlen($trimmed) > 180 || str_contains($trimmed, "\n")) {
+            return false;
+        }
+
+        $normalized = core_text::strtolower($trimmed);
+        $markers = [
+            'i have checked',
+            'i checked',
+            'checked your booking situation',
+            'checked the situation',
+        ];
+        foreach ($markers as $marker) {
+            if (strpos($normalized, $marker) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Build a human-readable label for an internal loop step.
+     *
+     * @param int   $stepnum
+     * @param array $commands
+     * @param array $results
+     * @return string
+     */
+    private function build_step_label(int $stepnum, array $commands, array $results): string {
+        $descriptions = [];
+        foreach ($this->extract_step_task_names($commands, $results) as $taskname) {
+            if ($taskname === '') {
+                continue;
+            }
+
+            $task = $this->registry->get_task($taskname);
+            $schema = $task ? $task->get_schema() : [];
+            $description = trim((string)($schema['description'] ?? ''));
+            if ($description !== '') {
+                $description = preg_replace('/\s+via\s+.+$/i', '', $description) ?? $description;
+                $description = rtrim($description, ". \t\n\r\0\x0B");
+            }
+            if ($description === '') {
+                $description = $this->humanize_task_name($taskname);
+            }
+            $descriptions[] = $description;
+        }
+
+        $descriptions = array_values(array_unique(array_filter($descriptions)));
+        if (!empty($descriptions)) {
+            return 'Step ' . $stepnum . ': ' . implode(' + ', $descriptions);
+        }
+
+        if (!empty($results)) {
+            return 'Step ' . $stepnum . ': Processing tool results';
+        }
+
+        return 'Step ' . $stepnum . ': Processing';
+    }
+
+    /**
+     * Extract task names for a completed loop step.
+     *
+     * execution_result payloads often clear `commands`, so labels and cycle detection
+     * need to fall back to the task names embedded in `results`.
+     *
+     * @param array $commands
+     * @param array $results
+     * @return string[]
+     */
+    private function extract_step_task_names(array $commands, array $results): array {
+        $tasknames = [];
+        foreach ($commands as $command) {
+            if (!is_array($command)) {
+                continue;
+            }
+            $taskname = trim((string)($command['task'] ?? ''));
+            if ($taskname !== '') {
+                $tasknames[] = $taskname;
+            }
+        }
+
+        if (!empty($tasknames)) {
+            return array_values(array_unique($tasknames));
+        }
+
+        foreach ($results as $result) {
+            if (!is_array($result)) {
+                continue;
+            }
+            $taskname = trim((string)($result['task'] ?? ''));
+            if ($taskname !== '') {
+                $tasknames[] = $taskname;
+            }
+        }
+
+        return array_values(array_unique($tasknames));
+    }
+
+    /**
+     * Convert a technical task name into a readable fallback label.
+     *
+     * @param string $taskname
+     * @return string
+     */
+    private function humanize_task_name(string $taskname): string {
+        $taskname = trim($taskname);
+        if ($taskname === '') {
+            return 'Processing';
+        }
+
+        $tail = $taskname;
+        if (str_contains($taskname, '.')) {
+            $parts = explode('.', $taskname);
+            $tail = (string)end($parts);
+        }
+
+        $tail = str_replace('_', ' ', $tail);
+        return ucfirst($tail);
+    }
+
+    /**
+     * Detect whether the current readonly step repeats the same task set as the previous step.
+     *
+     * @param agent_state $state
+     * @param array $commands
+     * @return bool
+     */
+    private function is_repeated_readonly_step(agent_state $state, array $commands, array $results): bool {
+        if ($state->step_count() < 2) {
+            return false;
+        }
+
+        $steps = $state->get_steps();
+        $currenttasks = $this->extract_step_task_names(
+            (array)($steps[count($steps) - 1]['tool_calls'] ?? []),
+            (array)($steps[count($steps) - 1]['results'] ?? [])
+        );
+        $previoustasks = $this->extract_step_task_names(
+            (array)($steps[count($steps) - 2]['tool_calls'] ?? []),
+            (array)($steps[count($steps) - 2]['results'] ?? [])
+        );
+
+        // Keep a safety check against malformed current step payload.
+        if (empty($currenttasks) || empty($this->extract_step_task_names($commands, $results))) {
+            return false;
+        }
+
+        sort($currenttasks);
+        sort($previoustasks);
+
+        return $currenttasks === $previoustasks;
     }
 
     // -------------------------------------------------------------------------
@@ -348,10 +901,7 @@ class agent_runtime {
         // Plan: call the LLM once, passing any accumulated observations.
         $result = $this->orchestrator->process($threadid, $cmid, $userid, $observations);
 
-        $outputlang = trim((string)($result['lang'] ?? ''));
-        if ($outputlang === '') {
-            $outputlang = current_language();
-        }
+        $outputlang = $this->resolve_output_language($threadid, $result);
         $this->store->set_thread_metadata_value($threadid, 'last_output_lang', $outputlang);
         $result['used_triggers'] = $triggerregistry->normalize_used_triggers($result['used_triggers'] ?? []);
 
@@ -368,6 +918,7 @@ class agent_runtime {
 
         // Decide: route through the confirmation / trigger / execution decision tree.
         $result = $this->decisionsvc->process($result, $threadid, $cmid, $userid, $outputlang, $previewoptionid);
+        $result['lang'] = $outputlang;
 
         // Override message for token/subscription issues.
         $issuecodes = array_map(
@@ -390,6 +941,37 @@ class agent_runtime {
     }
 
     /**
+     * Resolve output language with server-side priority on user message language.
+     *
+     * @param int $threadid
+     * @param array $result
+     * @return string
+     */
+    private function resolve_output_language(int $threadid, array $result): string {
+        $userlang = trim(core_text::strtolower((string)($result['user_lang'] ?? '')));
+        if ($userlang !== '' && preg_match('/^[a-z]{2}$/', $userlang)) {
+            return $userlang;
+        }
+
+        $modellang = trim(core_text::strtolower((string)($result['lang'] ?? '')));
+        if ($modellang !== '' && preg_match('/^[a-z]{2}$/', $modellang)) {
+            return $modellang;
+        }
+
+        $threadlang = trim(core_text::strtolower((string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang')));
+        if ($threadlang !== '' && preg_match('/^[a-z]{2}$/', $threadlang)) {
+            return $threadlang;
+        }
+
+        $uilang = trim(core_text::strtolower((string)current_language()));
+        if ($uilang !== '' && preg_match('/^[a-z]{2}$/', $uilang)) {
+            return $uilang;
+        }
+
+        return current_language();
+    }
+
+    /**
      * Persist the final assistant message to the conversation store.
      *
      * Called exactly ONCE per user-visible turn — either by run() directly
@@ -402,6 +984,7 @@ class agent_runtime {
     private function persist_assistant_message(int $threadid, array $result): void {
         $this->store->add_message($threadid, 'assistant', $result['message'] ?? '', [
             'response_type'            => $result['response_type'],
+            'runid'                    => $result['runid'] ?? 0,
             'used_triggers'            => $result['used_triggers'] ?? [],
             'commands'                 => $result['commands'] ?? [],
             'ambiguities'              => $result['ambiguities'] ?? [],
@@ -410,6 +993,11 @@ class agent_runtime {
             'attempted_tasks'          => $result['attempted_tasks'] ?? [],
             'issue_codes'              => $result['issue_codes'] ?? [],
             'pending_confirmation_code' => $result['pending_confirmation_code'] ?? '',
+            'results'                  => $result['results'] ?? [],
+            'loop_results'             => $result['loop_results'] ?? [],
+            'loop_step'                => $result['loop_step'] ?? 0,
+            'loop_max_steps'           => $result['loop_max_steps'] ?? 0,
+            'lang'                     => $result['lang'] ?? '',
         ]);
     }
 
@@ -448,6 +1036,104 @@ class agent_runtime {
             'runid'                    => 0,
             'results'                  => [],
             'lang'                     => $lang,
+        ];
+    }
+
+    /**
+     * Build final loop-repeat response by attempting one narration-only LLM step.
+     *
+     * The model gets a strict instruction to summarize findings without new tool calls.
+     * If it fails to provide a usable clarification, falls back to loop_repeat_result().
+     *
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @param agent_state $state
+     * @param string $lang
+     * @param string $latestmessage
+     * @return array
+     */
+    private function loop_repeat_narration_result(
+        int $threadid,
+        int $cmid,
+        int $userid,
+        agent_state $state,
+        string $lang,
+        string $latestmessage = ''
+    ): array {
+        $observations = $state->get_observations();
+        $observations[] = 'System note: Repeated readonly tool step detected. '
+            . 'Do NOT call tools again. Return response_type=clarification, commands=[], '
+            . 'and summarize the latest findings for the user in plain language.';
+
+        $narration = $this->orchestrator->process($threadid, $cmid, $userid, $observations);
+        $narrationlang = $this->resolve_output_language($threadid, $narration);
+        $message = trim((string)($narration['message'] ?? ''));
+
+        if (
+            (string)($narration['response_type'] ?? '') === 'clarification'
+            && empty((array)($narration['commands'] ?? []))
+            && $message !== ''
+        ) {
+            return [
+                'response_type'             => 'clarification',
+                'message'                   => $message,
+                'commands'                  => [],
+                'ambiguities'               => [],
+                'ambiguity_options'         => [],
+                'errors'                    => [],
+                'attempted_tasks'           => [],
+                'issue_codes'               => ['LOOP_REPEAT_DETECTED'],
+                'pending_confirmation_code' => '',
+                'used_triggers'             => (array)($narration['used_triggers'] ?? []),
+                'runid'                     => (int)($narration['runid'] ?? 0),
+                'results'                   => [],
+                'lang'                      => $narrationlang,
+                'loop_step'                 => $state->step_count(),
+                'loop_max_steps'            => self::MAX_LOOP_STEPS,
+            ];
+        }
+
+        return $this->loop_repeat_result($lang, $state->step_count(), $latestmessage);
+    }
+
+    /**
+     * Build a clarification result for repeated readonly loop steps.
+     *
+     * @param string $lang
+     * @param int $stepcount
+     * @param string $latestmessage
+     * @return array
+     */
+    private function loop_repeat_result(string $lang, int $stepcount, string $latestmessage = ''): array {
+        $message = trim($latestmessage);
+        if ($message === '') {
+            $message = $this->localized_string(
+                'ai_agent_loop_repeat_message',
+                'mod_booking',
+                (object)['steps' => $stepcount],
+                $lang
+            );
+            if ($message === 'ai_agent_loop_repeat_message') {
+                $message = 'I completed repeated lookup steps and returned the latest result.';
+            }
+        }
+        return [
+            'response_type'             => 'clarification',
+            'message'                   => $message,
+            'commands'                  => [],
+            'ambiguities'               => [],
+            'ambiguity_options'         => [],
+            'errors'                    => [],
+            'attempted_tasks'           => [],
+            'issue_codes'               => ['LOOP_REPEAT_DETECTED'],
+            'pending_confirmation_code' => '',
+            'used_triggers'             => [],
+            'runid'                     => 0,
+            'results'                   => [],
+            'lang'                      => $lang,
+            'loop_step'                 => $stepcount,
+            'loop_max_steps'            => self::MAX_LOOP_STEPS,
         ];
     }
 

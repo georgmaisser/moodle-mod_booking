@@ -113,6 +113,9 @@ const renderMessageDebugMeta = (meta) => {
         'threadid',
         'runid',
         'commands_count',
+        'results_count',
+        'loop_step',
+        'loop_max_steps',
         'llm_commands_json',
         'attempted_tasks',
         'issue_codes',
@@ -1351,6 +1354,12 @@ const sendMessage = (message) => {
             const attemptedTasks = parseJsonList(resp.attemptedtasksjson);
             const errors = parseJsonList(resp.errorsjson);
             const issueCodes = parseJsonList(resp.issuecodesjson);
+            let results = [];
+            try {
+                results = JSON.parse(resp.resultsjson || '[]');
+            } catch (e) {
+                // Keep empty results on parse errors.
+            }
             if (isTrialTokenInvalidError(resp, errors, issueCodes)) {
                 maybeShowTrialTokenInvalidAlert(resp, errors, issueCodes);
                 return resp;
@@ -1369,12 +1378,28 @@ const sendMessage = (message) => {
                         runid: Number(resp.runid || 0),
                         attempted_tasks: attemptedTasks.join(', '),
                         issue_codes: issueCodes.join(', '),
+                        results_count: Array.isArray(results) ? results.length : 0,
                         pending_confirmation_code: String(resp.pendingconfirmationcode || ''),
                         errors: errors.join(' || '),
                         source: 'ai_send_message',
                         time: (new Date()).toISOString(),
                     }
                 );
+
+                const debugHtml = buildDebugRunHtml('completed', messageText, results);
+                if (debugHtml) {
+                    appendMessageHtml('assistant', debugHtml, {
+                        response_type: 'execution_debug',
+                        status: 'completed',
+                        source: 'ai_send_message',
+                        time: (new Date()).toISOString(),
+                    });
+                }
+
+                const optionIds = extractPreviewOptionIds(results);
+                if (optionIds.length > 0) {
+                    renderOptionPreviewsInline(currentCmid, optionIds);
+                }
                 return resp;
             }
 
@@ -1386,6 +1411,7 @@ const sendMessage = (message) => {
                 runid: Number(resp.runid || 0),
                 attempted_tasks: attemptedTasks.join(', '),
                 issue_codes: issueCodes.join(', '),
+                results_count: Array.isArray(results) ? results.length : 0,
                 pending_confirmation_code: String(resp.pendingconfirmationcode || ''),
                 errors: errors.join(' || '),
                 source: 'ai_send_message',
@@ -1404,6 +1430,25 @@ const sendMessage = (message) => {
                 enforceErrorBubbleStyleFallback(bubble);
             } else {
                 appendMessage('assistant', resp.displaymessage || resp.message, meta);
+            }
+
+            const debugHtml = buildDebugRunHtml(
+                isError ? 'failed' : 'completed',
+                String(resp.displaymessage || resp.message || ''),
+                results
+            );
+            if (debugHtml) {
+                appendMessageHtml('assistant', debugHtml, {
+                    response_type: 'execution_debug',
+                    status: isError ? 'failed' : 'completed',
+                    source: 'ai_send_message',
+                    time: (new Date()).toISOString(),
+                });
+            }
+
+            const optionIds = extractPreviewOptionIds(results);
+            if (optionIds.length > 0) {
+                renderOptionPreviewsInline(currentCmid, optionIds);
             }
         } else if (resp.response_type === 'execution_result') {
             appendAssistantPrivacyNote(resp, 'ai_send_message');

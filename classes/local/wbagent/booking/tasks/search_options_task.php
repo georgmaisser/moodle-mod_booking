@@ -115,11 +115,14 @@ class search_options_task extends base_booking_task implements task_trigger_prov
                 'triggers' => [
                     'search', 'find options', 'show options', 'which options',
                     'suche', 'optionen', 'zeige optionen', 'wo finde', 'finde option',
+                    'preview', 'vorschau', 'show preview', 'zeige vorschau',
                 ],
                 'guidance' => [
                     '- If the user asks to find booking options, use booking.search_options.',
                     '- Prefer exact title matches when the user mentions a quoted title or the word "title"/"titel".',
                     '- Return a short structured list with id, name and link for preview.',
+                    '- If observations already contain exactly one resolved option and the user asks for preview/details,
+                      do not call booking.search_options again; answer directly from that resolved option context.',
                 ],
             ],
         ];

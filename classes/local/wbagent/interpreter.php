@@ -96,6 +96,10 @@ class interpreter implements agent_interpreter {
         }
 
         $lang = $this->safe_string($parsed['lang'] ?? '');
+        $userlang = $this->safe_string($parsed['user_lang'] ?? $parsed['userlang'] ?? '');
+        if ($userlang !== '') {
+            $userlang = strtolower(substr($userlang, 0, 2));
+        }
         $usedtriggers = $this->extract_used_triggers($parsed);
 
         // Passthrough for clarification, error, and confirm_pending types.
@@ -103,6 +107,7 @@ class interpreter implements agent_interpreter {
             return [
                 'response_type' => 'clarification',
                 'lang'          => $lang,
+                'user_lang'     => $userlang,
                 'message'       => $this->strip_command_prefix($this->safe_string($parsed['message'] ?? '')),
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -117,6 +122,7 @@ class interpreter implements agent_interpreter {
             return [
                 'response_type' => 'error',
                 'lang'          => $lang,
+                'user_lang'     => $userlang,
                 'message'       => $errormessage,
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -130,6 +136,7 @@ class interpreter implements agent_interpreter {
             return [
                 'response_type' => 'confirm_pending',
                 'lang'          => $lang,
+                'user_lang'     => $userlang,
                 'message'       => '',
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -158,6 +165,7 @@ class interpreter implements agent_interpreter {
                 return [
                     'response_type' => 'confirmation_request',
                     'lang'          => $lang,
+                    'user_lang'     => $userlang,
                     'message'       => $validationmessage,
                     'used_triggers' => $usedtriggers,
                     'commands'      => $confirmablecommands,
@@ -171,6 +179,7 @@ class interpreter implements agent_interpreter {
             return [
                 'response_type' => $recoverableinputerror ? 'clarification' : 'error',
                 'lang'          => $lang,
+                'user_lang'     => $userlang,
                 'message'       => $validationmessage,
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -187,6 +196,7 @@ class interpreter implements agent_interpreter {
                 return [
                     'response_type' => 'confirmation_request',
                     'lang'          => $lang,
+                    'user_lang'     => $userlang,
                     // For backend-driven confirmable issues, prefer task-validator wording
                     // over generic LLM confirmation text so the user sees the real reason.
                     'message'       => $this->confirmation_message_from_ambiguities($ambiguities),
@@ -203,6 +213,7 @@ class interpreter implements agent_interpreter {
             return [
                 'response_type' => 'clarification',
                 'lang'          => $lang,
+                'user_lang'     => $userlang,
                 'message'       => $this->clarification_message($parsed, $ambiguities),
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -217,6 +228,7 @@ class interpreter implements agent_interpreter {
         return [
             'response_type' => $responsetype,
             'lang'          => $lang,
+            'user_lang'     => $userlang,
             'message'       => $this->safe_string($parsed['message'] ?? ''),
             'used_triggers' => $usedtriggers,
             'commands'      => $validatedcommands,

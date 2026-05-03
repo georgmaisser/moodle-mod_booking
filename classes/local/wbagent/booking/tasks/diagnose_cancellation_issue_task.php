@@ -190,9 +190,11 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
         $outputlang = $this->get_output_language($input);
         $resolveduser = $this->resolve_diagnostic_user($input, $userid, $outputlang);
         if (($resolveduser['status'] ?? '') !== 'ok') {
+            $resolveusermessage = (string)($resolveduser['message']
+                ?? get_string('agent_booking_diagnose_cancellation_user_resolve_failed', 'mod_booking'));
             return [
                 'status' => 'error',
-                'detail' => (string)($resolveduser['message'] ?? get_string('agent_booking_diagnose_cancellation_user_resolve_failed', 'mod_booking')),
+                'detail' => $resolveusermessage,
                 'resultid' => null,
                 'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $input, ['Status: error']),
             ];
@@ -262,6 +264,7 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
             $reasoncontext,
             $settings,
             $diagnosticuserid,
+            $userid,
             $outputlang
         );
 
@@ -339,7 +342,8 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
      * @param array $bookinginformation
      * @param array $reasoncontext
      * @param object $settings
-     * @param int $userid
+     * @param int $diagnosticuserid
+     * @param int $currentuserid
      * @param string $lang
      * @return array
      */
@@ -349,24 +353,32 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
         array $bookinginformation,
         array $reasoncontext,
         object $settings,
-        int $userid,
+        int $diagnosticuserid,
+        int $currentuserid,
         string $lang = ''
     ): array {
         $reasons = [];
         $now = time();
+        $isselfdiagnosis = ($diagnosticuserid === $currentuserid);
 
         $highestid = (int)($highestblocker['id'] ?? 0);
 
         if (!empty($reasoncontext['instancedisablecancel'])) {
             $reasons[] = $this->localized_string('agent_booking_diagnose_cancel_reason_instance_disablecancel', null, $lang);
-            $reasons[] = 'Concrete setting: booking.json.disablecancel = 1 (instance-wide cancellation block). '
-                . 'Admin action: In the booking instance, disable "Disable cancellation for the whole booking instance".';
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_cancel_reason_concrete_instance_disablecancel',
+                null,
+                $lang
+            );
         }
 
         if (!empty($reasoncontext['optiondisablecancel'])) {
             $reasons[] = $this->localized_string('agent_booking_diagnose_cancel_reason_option_disablecancel', null, $lang);
-            $reasons[] = 'Concrete setting: booking_option.json.disablecancel = 1 (this option only). '
-                . 'Admin action: In option advanced settings, disable "Disable cancellation of this booking option".';
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_cancel_reason_concrete_option_disablecancel',
+                null,
+                $lang
+            );
         }
 
         $optioncanceluntil = (int)($reasoncontext['optioncanceluntil'] ?? 0);
@@ -376,9 +388,14 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
                 userdate($optioncanceluntil),
                 $lang
             );
-            $reasons[] = 'Concrete setting: booking_option.json.canceluntil = ' . $optioncanceluntil
-                . ' (' . userdate($optioncanceluntil) . ') is in the past. '
-                . 'Admin action: set canceluntil to a future timestamp or remove that restriction.';
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_cancel_reason_concrete_option_canceluntil_passed',
+                (object)[
+                    'timestamp' => $optioncanceluntil,
+                    'date' => userdate($optioncanceluntil),
+                ],
+                $lang
+            );
         }
 
         if (!empty($reasoncontext['hasprice']) && empty($reasoncontext['shoppingcartexists'])) {
@@ -387,22 +404,49 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
 
         $bookinganswer = singleton_service::get_instance_of_booking_answers($settings);
 
-        if ($bookinganswer->is_activity_completed($userid)) {
-            $reasons[] = $this->localized_string('agent_booking_diagnose_cancel_reason_activity_completed', null, $lang);
+        if ($bookinganswer->is_activity_completed($diagnosticuserid)) {
+            $reasons[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_cancel_reason_activity_completed'
+                    : 'agent_booking_diagnose_cancel_reason_activity_completed_other',
+                null,
+                $lang
+            );
         }
 
         if (isset($bookinginformation['notbooked'])) {
-            $reasons[] = $this->localized_string('agent_booking_diagnose_cancel_reason_not_booked', null, $lang);
-            $reasons[] = 'Concrete state: bookinginformation.notbooked is set. '
-                . 'Without an active booking, self-cancel is not available.';
+            $reasons[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_cancel_reason_not_booked'
+                    : 'agent_booking_diagnose_cancel_reason_not_booked_other',
+                null,
+                $lang
+            );
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_cancel_reason_concrete_notbooked_state',
+                null,
+                $lang
+            );
         }
 
         if (isset($bookinginformation['iamreserved'])) {
             $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($settings->cmid);
             if (!empty($bookingsettings->iselective)) {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_cancel_reason_elective_reservation', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_cancel_reason_elective_reservation'
+                        : 'agent_booking_diagnose_cancel_reason_elective_reservation_other',
+                    null,
+                    $lang
+                );
             } else {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_cancel_reason_reserved_state', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_cancel_reason_reserved_state'
+                        : 'agent_booking_diagnose_cancel_reason_reserved_state_other',
+                    null,
+                    $lang
+                );
             }
         }
 
@@ -412,8 +456,11 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
                 null,
                 $lang
             );
-            $reasons[] = 'Concrete setting: booking.cancancelbook != 1. '
-                . 'Admin action: In the booking instance, enable "Allow users to cancel their booking themselves".';
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_cancel_reason_concrete_instance_cancancelbook_disabled',
+                null,
+                $lang
+            );
         }
 
         if (isset($bookinginformation['onwaitinglist']) || isset($bookinginformation['iambooked'])) {
@@ -424,9 +471,14 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
                     userdate($effectivecanceluntil),
                     $lang
                 );
-                $reasons[] = 'Concrete setting: Effective cancellation deadline (computed from instance settings) '
-                    . 'has passed: ' . $effectivecanceluntil . ' (' . userdate($effectivecanceluntil) . '). '
-                    . 'Admin action: adjust allowupdatedays/allowupdatetimestamp or relative cancellation rule.';
+                $reasons[] = $this->localized_string(
+                    'agent_booking_diagnose_cancel_reason_concrete_effective_canceluntil_passed',
+                    (object)[
+                        'timestamp' => $effectivecanceluntil,
+                        'date' => userdate($effectivecanceluntil),
+                    ],
+                    $lang
+                );
             }
 
             if (!empty($reasoncontext['hasprice']) && !empty($reasoncontext['shoppingcartexists'])) {
@@ -453,7 +505,7 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
                         );
                     } else {
                         $usersonwaitinglist = $bookinganswer->get_usersonwaitinglist();
-                        $ba = $usersonwaitinglist[$userid] ?? null;
+                        $ba = $usersonwaitinglist[$diagnosticuserid] ?? null;
                         if (!empty($ba->json)) {
                             $jsonobject = json_decode($ba->json);
                             if (!empty($jsonobject->confirmwaitinglist)) {
@@ -474,9 +526,11 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
                     (int)($reasoncontext['coolingoffseconds'] ?? 0),
                     $lang
                 );
-                $reasons[] = 'Concrete setting: booking/coolingoffperiod = '
-                    . (int)($reasoncontext['coolingoffseconds'] ?? 0)
-                    . ' seconds. Admin action: reduce cooling-off period or set it to 0.';
+                $reasons[] = $this->localized_string(
+                    'agent_booking_diagnose_cancel_reason_concrete_coolingoff_active',
+                    (int)($reasoncontext['coolingoffseconds'] ?? 0),
+                    $lang
+                );
             }
         }
 
@@ -669,5 +723,4 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
 
         return booking_task_support::resolve_single_option($cmid, $optionquery, '');
     }
-
 }

@@ -146,6 +146,8 @@ $string['agent_booking_diagnose_other_user_permission_denied'] =
     'You are not allowed to run booking diagnostics for other users.';
 $string['agent_booking_diagnose_cancel_reason_activity_completed'] =
     'Cancellation is disabled because this booking activity is already completed for you.';
+$string['agent_booking_diagnose_cancel_reason_activity_completed_other'] =
+    'Cancellation is disabled because this booking activity is already completed for the selected user.';
 $string['agent_booking_diagnose_cancel_reason_blocked_by_higher_condition'] =
     'The cancel button can only appear when cancelmyself (id=105) is the highest blocking condition. A higher blocking condition currently takes precedence.';
 $string['agent_booking_diagnose_cancel_reason_cancel_button_available'] =
@@ -156,30 +158,50 @@ $string['agent_booking_diagnose_cancel_reason_effective_canceluntil_passed'] =
     'The effective cancellation deadline has passed (until {$a}).';
 $string['agent_booking_diagnose_cancel_reason_elective_reservation'] =
     'You currently only have a reservation in an elective context, and this state does not allow self-cancellation.';
+$string['agent_booking_diagnose_cancel_reason_elective_reservation_other'] =
+    'The selected user currently only has a reservation in an elective context, and this state does not allow self-cancellation.';
 $string['agent_booking_diagnose_cancel_reason_highest_blocking_condition'] =
     'Highest blocking condition: id={$a->id}, class={$a->classname}, description="{$a->description}".';
 $string['agent_booking_diagnose_cancel_reason_instance_cancancelbook_disabled'] =
     'Self-cancellation is disabled in this booking instance (cancancelbook is not enabled).';
 $string['agent_booking_diagnose_cancel_reason_instance_disablecancel'] =
     'Cancellation is disabled for the whole booking instance.';
+$string['agent_booking_diagnose_cancel_reason_concrete_instance_disablecancel'] =
+    'Concrete setting: booking.json.disablecancel = 1 (instance-wide cancellation block). Admin action: In the booking instance, disable "Disable cancellation for the whole booking instance".';
 $string['agent_booking_diagnose_cancel_reason_none'] =
     'No specific cancellation blocker could be derived from the current state.';
 $string['agent_booking_diagnose_cancel_reason_not_booked'] =
     'You are currently not booked for this option.';
+$string['agent_booking_diagnose_cancel_reason_not_booked_other'] =
+    'The selected user is currently not booked for this option.';
+$string['agent_booking_diagnose_cancel_reason_concrete_notbooked_state'] =
+    'Concrete state: bookinginformation.notbooked is set. Without an active booking, self-cancel is not available.';
 $string['agent_booking_diagnose_cancel_reason_option_canceluntil_passed'] =
     'This option has its own cancellation deadline, and it has already passed (until {$a}).';
+$string['agent_booking_diagnose_cancel_reason_concrete_option_canceluntil_passed'] =
+    'Concrete setting: booking_option.json.canceluntil = {$a->timestamp} ({$a->date}) is in the past. Admin action: set canceluntil to a future timestamp or remove that restriction.';
 $string['agent_booking_diagnose_cancel_reason_option_disablecancel'] =
     'Cancellation is disabled directly on this booking option.';
+$string['agent_booking_diagnose_cancel_reason_concrete_option_disablecancel'] =
+    'Concrete setting: booking_option.json.disablecancel = 1 (this option only). Admin action: In option advanced settings, disable "Disable cancellation of this booking option".';
 $string['agent_booking_diagnose_cancel_reason_price_without_shopping_cart'] =
     'This option uses pricing, but local_shopping_cart is not available, so cancellation is disabled.';
 $string['agent_booking_diagnose_cancel_reason_reserved_state'] =
     'You currently only have a reservation state, which does not allow this cancellation flow.';
+$string['agent_booking_diagnose_cancel_reason_reserved_state_other'] =
+    'The selected user currently only has a reservation state, which does not allow this cancellation flow.';
 $string['agent_booking_diagnose_cancel_reason_shopping_cart_denies_cancel'] =
     'Shopping cart rules currently block cancellation for this option.';
 $string['agent_booking_diagnose_cancel_reason_waitinglist_confirmation_pending'] =
     'You are on the waiting list with a pending/confirmed waiting-list confirmation state that blocks cancellation.';
 $string['agent_booking_diagnose_cancel_reason_waitinglist_no_confirmation_flow'] =
     'You are on the waiting list without confirmation flow and the option is not fully booked, so this cancellation action is blocked.';
+$string['agent_booking_diagnose_cancel_reason_concrete_instance_cancancelbook_disabled'] =
+    'Concrete setting: booking.cancancelbook != 1. Admin action: In the booking instance, enable "Allow users to cancel their booking themselves".';
+$string['agent_booking_diagnose_cancel_reason_concrete_effective_canceluntil_passed'] =
+    'Concrete setting: Effective cancellation deadline (computed from instance settings) has passed: {$a->timestamp} ({$a->date}). Admin action: adjust allowupdatedays/allowupdatetimestamp or relative cancellation rule.';
+$string['agent_booking_diagnose_cancel_reason_concrete_coolingoff_active'] =
+    'Concrete setting: booking/coolingoffperiod = {$a} seconds. Admin action: reduce cooling-off period or set it to 0.';
 $string['agent_booking_diagnose_cancel_required_question'] =
     'Field "question" is required for diagnose_cancellation_issue.';
 $string['agent_booking_book_users_required_bookusersquery'] =
@@ -193,10 +215,14 @@ $string['agent_booking_diagnose_error_option_not_in_instance'] =
 $string['agent_booking_diagnose_error_option_resolve'] = 'Could not resolve booking option.';
 $string['agent_booking_diagnose_intro_cannot_book'] = 'Here is why booking may currently fail:';
 $string['agent_booking_diagnose_intro_checked_option'] = 'I checked your booking situation for "{$a}".';
+$string['agent_booking_diagnose_intro_checked_option_other'] =
+    'I checked the booking situation for the selected user on "{$a}".';
 $string['agent_booking_diagnose_intro_missing_email'] = 'Here is what I can confirm about the email question:';
 $string['agent_booking_diagnose_intro_status'] = 'Your current status is {$a}.';
 $string['agent_booking_diagnose_reason_cannot_book_already_booked'] =
     'You are already booked, so another normal booking is not available.';
+$string['agent_booking_diagnose_reason_cannot_book_already_booked_other'] =
+    'The selected user is already booked, so another normal booking is not available.';
 $string['agent_booking_diagnose_reason_cannot_book_fully_booked'] = 'The option is currently fully booked.';
 $string['agent_booking_diagnose_reason_cannot_book_no_waitinglist'] =
     'This option does not offer a waiting list.';
@@ -205,25 +231,41 @@ $string['agent_booking_diagnose_reason_cannot_book_waitinglist_available'] =
 $string['agent_booking_diagnose_reason_cannot_book_waitinglist_full'] = 'The waiting list is also full.';
 $string['agent_booking_diagnose_reason_missing_email_booked'] =
     'You are booked for this option, so the missing email is not explained by a missing booking record.';
+$string['agent_booking_diagnose_reason_missing_email_booked_other'] =
+    'The selected user is booked for this option, so the missing email is not explained by a missing booking record.';
 $string['agent_booking_diagnose_reason_missing_email_limitations'] =
     'This self-service check cannot prove whether an email was actually sent or delivered.';
 $string['agent_booking_diagnose_reason_missing_email_manager_check'] =
     'If needed, a manager can inspect booking mail templates, rules, and the scheduled mail queue.';
 $string['agent_booking_diagnose_reason_missing_email_not_booked'] = 'You are not currently booked for this option.';
+$string['agent_booking_diagnose_reason_missing_email_not_booked_other'] =
+    'The selected user is not currently booked for this option.';
 $string['agent_booking_diagnose_reason_missing_email_waitinglist'] =
     'You are on the waiting list, which may trigger different notifications than a confirmed booking.';
+$string['agent_booking_diagnose_reason_missing_email_waitinglist_other'] =
+    'The selected user is on the waiting list, which may trigger different notifications than a confirmed booking.';
 $string['agent_booking_diagnose_reason_none'] =
     'No specific blocking reason could be derived from the current booking state.';
 $string['agent_booking_diagnose_reason_status_booked'] =
     'You already have a confirmed booking for this option.';
+$string['agent_booking_diagnose_reason_status_booked_other'] =
+    'The selected user already has a confirmed booking for this option.';
 $string['agent_booking_diagnose_reason_status_notbooked'] =
     'There is no booking record for you on this option right now.';
+$string['agent_booking_diagnose_reason_status_notbooked_other'] =
+    'There is no booking record for the selected user on this option right now.';
 $string['agent_booking_diagnose_reason_status_notifylist'] =
     'You are on the notify-me list, but not booked for this option.';
+$string['agent_booking_diagnose_reason_status_notifylist_other'] =
+    'The selected user is on the notify-me list, but not booked for this option.';
 $string['agent_booking_diagnose_reason_status_reserved'] =
     'You currently have only a reservation, not a confirmed booking.';
+$string['agent_booking_diagnose_reason_status_reserved_other'] =
+    'The selected user currently has only a reservation, not a confirmed booking.';
 $string['agent_booking_diagnose_reason_status_waitinglist'] =
     'You are currently on the waiting list for this option.';
+$string['agent_booking_diagnose_reason_status_waitinglist_other'] =
+    'The selected user is currently on the waiting list for this option.';
 $string['agent_booking_diagnose_required_question'] = 'Field "question" is required for diagnose_booking_issue.';
 $string['agent_booking_diagnose_status_booked'] = 'booked';
 $string['agent_booking_diagnose_status_notbooked'] = 'not booked';
@@ -260,6 +302,8 @@ $string['agent_booking_update_option_invalid_optionid_question'] =
     'The option id {$a} is not valid. Please provide a different option id or an option title.';
 $string['agent_booking_update_option_missing_target'] =
     'Please specify which booking option should be updated.';
+$string['agent_booking_update_option_resolution_failed_question'] =
+    'I could not resolve that booking option. Please provide a more specific option title or an option id.';
 $string['agent_booking_update_option_which_option_question'] =
     'Which booking option should I update? Please provide option title or option id.';
 $string['agent_booking_update_permission_check_failed'] =
@@ -598,6 +642,9 @@ $string['ai_status_taskcall_shopping_cart_totals'] = 'Fetching shopping cart tot
 $string['ai_thinking'] = 'AI is thinking…';
 $string['ai_btn_stop'] = 'Stop';
 $string['ai_agent_loop_continue_question'] = 'I have completed {$a->steps} research steps but need more to fully answer your question. Shall I continue?';
+$string['ai_agent_loop_repeat_message'] = 'I completed {$a->steps} repeated lookup steps and returned the latest result.';
+$string['ai_agent_malformed_taskcall_clarification'] =
+    'I could not reliably parse the last step. Please ask your question again in one short sentence.';
 $string['ai_trial_token_invalid_message'] = 'Your AI trial token is no longer valid. Please purchase a subscription to continue — your token will be renewed directly after purchase and you can continue immediately.';
 $string['ai_trial_token_invalid_subscription_message'] = 'Your AI trial token is no longer valid. To continue, purchase a subscription and your token will be renewed immediately so you can keep using the agent right away.
 

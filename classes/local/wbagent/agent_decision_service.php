@@ -27,6 +27,7 @@ declare(strict_types=1);
 namespace mod_booking\local\wbagent;
 
 use core_text;
+use mod_booking\local\wbagent\booking\booking_task_support;
 
 /**
  * Routing and decision layer for the agent runtime.
@@ -182,6 +183,19 @@ class agent_decision_service {
             ];
         }
 
+        // 5b. Generic clarification recovery:
+        // If the model returned a dead-end clarification, attempt a task-agnostic
+        // trigger/schema-based readonly recovery BEFORE command routing so it can
+        // execute in-process and does not leak as task_call to the frontend contract.
+        $usermessage = $this->get_last_user_message($threadid);
+        $result = $this->promote_clarification_with_generic_task_recovery(
+            $result,
+            $usermessage,
+            $outputlang,
+            $threadid,
+            $cmid
+        );
+
         // 6. Harden: if the LLM incorrectly used task_call for a mutating command, promote.
         if ($this->has_mutating_commands($result) && ($result['response_type'] ?? '') === 'task_call') {
             $result['response_type'] = 'confirmation_request';
@@ -203,8 +217,11 @@ class agent_decision_service {
         }
 
         // 9. Augment teacher autocreate when user allows it.
-        $usermessage = $this->get_last_user_message($threadid);
         $result = $this->augment_missing_teacher_autocreate_confirmation($result, $usermessage, $outputlang);
+
+        // 9c. Final boundary guard: a readonly-only task_call must never leave
+        // this service as task_call; execute it here and return execution_result.
+        $result = $this->enforce_task_boundary_invariants($result, $threadid, $cmid, $userid, $outputlang);
 
         // 10. Ensure message is never empty before storing pending intent.
         $message = trim((string)($result['message'] ?? ''));
@@ -224,6 +241,35 @@ class agent_decision_service {
         }
 
         return $result;
+    }
+
+    /**
+     * Enforce framework-level task routing invariants at process() exit.
+     *
+     * @param array $result
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @param string $outputlang
+     * @return array
+     */
+    private function enforce_task_boundary_invariants(
+        array $result,
+        int $threadid,
+        int $cmid,
+        int $userid,
+        string $outputlang
+    ): array {
+        if ((string)($result['response_type'] ?? '') !== 'task_call') {
+            return $result;
+        }
+
+        $commands = (array)($result['commands'] ?? []);
+        if (empty($commands) || $this->has_mutating_commands(['commands' => $commands])) {
+            return $result;
+        }
+
+        return $this->handle_command_routing($result, $threadid, $cmid, $userid, $outputlang);
     }
 
     /**
@@ -381,9 +427,33 @@ class agent_decision_service {
         int $userid,
         string $outputlang
     ): array {
-        $commands = $result['commands'] ?? [];
+        $commands = $this->inject_output_language_into_commands((array)($result['commands'] ?? []), $outputlang);
+        $commands = $this->enrich_option_anchor_inputs($commands);
         if (!is_array($commands) || empty($commands)) {
             return $result;
+        }
+
+        // Generic safety guard: do not execute readonly task calls that require an
+        // option anchor (optionquery/optionid schema) when none was provided.
+        $missingoptionanchortask = $this->find_missing_option_anchor_readonly_task($commands);
+        if ($missingoptionanchortask !== '') {
+            return [
+                'response_type'   => 'clarification',
+                'message'         => $this->localized_string(
+                    'agent_booking_diagnose_ambiguity_option_title_or_id',
+                    'mod_booking',
+                    null,
+                    $outputlang
+                ),
+                'commands'        => [],
+                'ambiguities'     => array_values(array_unique((array)($result['ambiguities'] ?? []))),
+                'errors'          => array_values(array_unique((array)($result['errors'] ?? []))),
+                'attempted_tasks' => [$missingoptionanchortask],
+                'issue_codes'     => array_values(array_unique(array_merge(
+                    (array)($result['issue_codes'] ?? []),
+                    ['MISSING_OPTION_REFERENCE_RECOVERY']
+                ))),
+            ];
         }
 
         $split = $this->split_commands_by_mutability($commands);
@@ -446,6 +516,116 @@ class agent_decision_service {
         }
 
         return $result;
+    }
+
+    /**
+     * Find the first readonly task command that requires option anchoring but has none.
+     *
+     * A task is considered option-anchored when its schema declares optionquery or optionid.
+     *
+     * @param array $commands
+     * @return string Task name, or empty string when all commands are sufficiently anchored.
+     */
+    private function find_missing_option_anchor_readonly_task(array $commands): string {
+        foreach ($commands as $command) {
+            if (!is_array($command)) {
+                continue;
+            }
+
+            $taskname = trim((string)($command['task'] ?? ''));
+            if ($taskname === '' || !$this->registry->is_read_only_task($taskname)) {
+                continue;
+            }
+
+            $task = $this->registry->get_task($taskname);
+            if ($task === null) {
+                continue;
+            }
+
+            $schema = $task->get_schema();
+            $properties = (array)($schema['properties'] ?? []);
+            $requiresoptionanchor = isset($properties['optionquery']) || isset($properties['optionid']);
+            if (!$requiresoptionanchor) {
+                continue;
+            }
+
+            $input = (array)($command['input'] ?? []);
+            $hasoptionid = (int)($input['optionid'] ?? 0) > 0;
+            $hasoptionquery = trim((string)($input['optionquery'] ?? '')) !== '';
+            if (!$hasoptionid && !$hasoptionquery) {
+                return $taskname;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Enrich command inputs with derived option anchors when possible.
+     *
+     * This is task-agnostic and schema-driven: if a task exposes optionid/optionquery,
+     * we derive missing anchors from free-form input fields.
+     *
+     * @param array $commands
+     * @return array
+     */
+    private function enrich_option_anchor_inputs(array $commands): array {
+        foreach ($commands as &$command) {
+            if (!is_array($command)) {
+                continue;
+            }
+
+            $taskname = trim((string)($command['task'] ?? ''));
+            if ($taskname === '') {
+                continue;
+            }
+
+            $task = $this->registry->get_task($taskname);
+            if ($task === null) {
+                continue;
+            }
+
+            $schema = $task->get_schema();
+            $properties = (array)($schema['properties'] ?? []);
+            if (empty($properties)) {
+                continue;
+            }
+
+            $input = is_array($command['input'] ?? null) ? (array)$command['input'] : [];
+
+            if (isset($properties['optionquery']) && is_array($properties['optionquery'])) {
+                $optionquery = trim((string)($input['optionquery'] ?? ''));
+                if ($optionquery !== '') {
+                    $input['optionquery'] = trim($optionquery, " \t\n\r\0\x0B\"'“”„`.,;:!?()[]{}");
+                }
+            }
+
+            if (isset($properties['optionid']) && is_array($properties['optionid'])) {
+                $optionid = (int)($input['optionid'] ?? 0);
+                if ($optionid <= 0) {
+                    $candidates = [
+                        trim((string)($input['question'] ?? '')),
+                        trim((string)($input['query'] ?? '')),
+                        trim((string)($input['optionquery'] ?? '')),
+                    ];
+                    foreach ($candidates as $candidate) {
+                        if ($candidate === '') {
+                            continue;
+                        }
+                        $derivedid = $this->extract_option_id_from_message($candidate);
+                        if ($derivedid > 0) {
+                            $input['optionid'] = $derivedid;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            $command['input'] = $input;
+        }
+        unset($command);
+
+        return $commands;
     }
 
     /**
@@ -689,25 +869,50 @@ class agent_decision_service {
         int $userid,
         string $outputlang
     ): array {
+        // Read-only auto-execution must use deanonymized inputs, otherwise person names
+        // replaced during privacy precheck can degrade exact option/user lookups.
+        $preparedcommands = $this->inject_output_language_into_commands($commands, $outputlang);
+        if ($threadid > 0 && $userid > 0) {
+            $anonymizer = new privacy_anonymizer($this->store);
+            foreach ($preparedcommands as &$command) {
+                if (!is_array($command)) {
+                    continue;
+                }
+                $input = is_array($command['input'] ?? null) ? (array)$command['input'] : [];
+                $command['input'] = $anonymizer->deanonymize_command_input_for_active_user($cmid, $userid, $input);
+            }
+            unset($command);
+        }
+
         $idempotencykey = hash(
             'sha256',
-            $userid . ':' . $cmid . ':' . $threadid . ':' . json_encode($commands) . ':' . microtime(true)
+            $userid . ':' . $cmid . ':' . $threadid . ':' . json_encode($preparedcommands) . ':' . microtime(true)
         );
-        $runid = $this->store->create_run($threadid, $userid, $cmid, $idempotencykey, $commands);
+        $runid = $this->store->create_run($threadid, $userid, $cmid, $idempotencykey, $preparedcommands);
 
         try {
             $this->store->update_run_status($runid, 'running');
-            $exec = new executor($this->registry, $this->store, $this->authz);
-            $rawresults = $exec->execute_commands($commands, $cmid, $userid, $idempotencykey, $runid);
-            $feedbackservice = new execution_feedback_service($this->store);
-            $feedback = $feedbackservice->build_completion_feedback(
-                $threadid,
+            $feedback = $this->with_output_language($outputlang, function () use (
+                $preparedcommands,
                 $cmid,
                 $userid,
-                $commands,
-                $rawresults,
+                $idempotencykey,
+                $runid,
+                $threadid,
                 $outputlang
-            );
+            ): array {
+                $exec = new executor($this->registry, $this->store, $this->authz);
+                $rawresults = $exec->execute_commands($preparedcommands, $cmid, $userid, $idempotencykey, $runid);
+                $feedbackservice = new execution_feedback_service($this->store);
+                return $feedbackservice->build_completion_feedback(
+                    $threadid,
+                    $cmid,
+                    $userid,
+                    $preparedcommands,
+                    $rawresults,
+                    $outputlang
+                );
+            });
             $results = $feedback['results'];
             $this->store->update_run_status($runid, 'completed', $results);
             $message = trim((string)($feedback['message'] ?? ''));
@@ -718,7 +923,7 @@ class agent_decision_service {
             return [
                 'response_type' => 'execution_result',
                 'message'       => $message,
-                'commands'      => [],
+                'commands'      => $preparedcommands,
                 'ambiguities'   => [],
                 'errors'        => [],
                 'runid'         => (int)$runid,
@@ -735,7 +940,7 @@ class agent_decision_service {
             return [
                 'response_type' => 'error',
                 'message'       => $this->localized_string('ai_provider_error', 'mod_booking', null, $outputlang),
-                'commands'      => [],
+                'commands'      => $preparedcommands,
                 'ambiguities'   => [],
                 'errors'        => [$e->getMessage()],
                 'runid'         => (int)$runid,
@@ -744,7 +949,63 @@ class agent_decision_service {
         }
     }
 
-    // -------------------------------------------------------------------------
+    /**
+     * Inject a canonical output language into each command input.
+     *
+     * This is framework-wide and avoids per-task language plumbing.
+     * Tasks may still override outputlang explicitly.
+     *
+     * @param array $commands
+     * @param string $outputlang
+     * @return array
+     */
+    private function inject_output_language_into_commands(array $commands, string $outputlang): array {
+        $lang = trim($outputlang);
+        if ($lang === '') {
+            return $commands;
+        }
+
+        foreach ($commands as &$command) {
+            if (!is_array($command)) {
+                continue;
+            }
+            $input = is_array($command['input'] ?? null) ? (array)$command['input'] : [];
+            $input['outputlang'] = $lang;
+            $command['input'] = $input;
+        }
+        unset($command);
+
+        return $commands;
+    }
+
+    /**
+     * Run a callback while forcing the current language when requested.
+     *
+     * @param string $outputlang
+     * @param callable $callback
+     * @return mixed
+     */
+    private function with_output_language(string $outputlang, callable $callback) {
+        $targetlang = trim($outputlang);
+        if ($targetlang === '') {
+            return $callback();
+        }
+
+        $currentlang = current_language();
+        $switched = $targetlang !== $currentlang;
+        if ($switched) {
+            force_current_language($targetlang);
+        }
+
+        try {
+            return $callback();
+        } finally {
+            if ($switched) {
+                force_current_language($currentlang);
+            }
+        }
+    }
+
     // Private: preflight helpers.
 
     /**
@@ -825,7 +1086,6 @@ class agent_decision_service {
                     $normalizederror = core_text::strtolower(trim((string)$error));
                     if (
                         str_contains($normalizederror, 'no user matched user query')
-                        || str_contains($normalizederror, 'keine nutzerin/kein nutzer passt zur nutzerabfrage')
                     ) {
                         $issuecodes[] = 'TEACHER_USER_NOT_FOUND';
                     }
@@ -1155,7 +1415,6 @@ class agent_decision_service {
                 $error !== ''
                 && (
                     str_contains($error, 'no user matched user query')
-                    || str_contains($error, 'keine nutzerin/kein nutzer passt zur nutzerabfrage')
                 )
             ) {
                 $hasteachernotfounderror = true;
@@ -1243,6 +1502,625 @@ class agent_decision_service {
                 return (string)($messages[$i]->content ?? '');
             }
         }
+        return '';
+    }
+
+    /**
+     * Promote a dead-end clarification into a readonly task call using generic recovery.
+     *
+     * Recovery strategy:
+     *  1) Map used_triggers -> task names via registry trigger map.
+     *  2) Keep only registered read-only tasks.
+     *  3) Build task input schema-driven from user message/context.
+     *  4) If no trigger-mapped candidate exists, attempt generic lookup recovery for
+     *     read-only tasks that expose a "query" property.
+     *
+     * @param array $result
+     * @param string $usermessage
+     * @param string $outputlang
+     * @param int $threadid
+     * @param int $cmid
+     * @return array
+     */
+    private function promote_clarification_with_generic_task_recovery(
+        array $result,
+        string $usermessage,
+        string $outputlang,
+        int $threadid,
+        int $cmid
+    ): array {
+        if ((string)($result['response_type'] ?? '') !== 'clarification') {
+            return $result;
+        }
+        if (!empty((array)($result['commands'] ?? [])) || !empty((array)($result['results'] ?? []))) {
+            return $result;
+        }
+
+        $usedtriggers = (array)($result['used_triggers'] ?? []);
+        $candidatetasks = [];
+        $triggertotask = $this->registry->get_trigger_id_to_task_name_map();
+
+        foreach ($usedtriggers as $triggerid) {
+            $triggerid = trim((string)$triggerid);
+            if ($triggerid === '' || !isset($triggertotask[$triggerid])) {
+                continue;
+            }
+            $taskname = trim((string)$triggertotask[$triggerid]);
+            if ($taskname === '' || !$this->registry->is_read_only_task($taskname)) {
+                continue;
+            }
+            $candidatetasks[$taskname] = true;
+        }
+
+        // Generic diagnostic fallback: when wording indicates a diagnosis question,
+        // prefer readonly tasks that accept a full question and an option anchor.
+        if (empty($candidatetasks) && $this->looks_like_diagnostic_intent($usermessage)) {
+            foreach ($this->registry->get_task_names() as $taskname) {
+                if (!$this->registry->is_read_only_task($taskname)) {
+                    continue;
+                }
+                $task = $this->registry->get_task($taskname);
+                if ($task === null) {
+                    continue;
+                }
+                $schema = $task->get_schema();
+                $properties = (array)($schema['properties'] ?? []);
+                if (
+                    isset($properties['question']) && is_array($properties['question'])
+                    && (isset($properties['optionquery']) || isset($properties['optionid']))
+                ) {
+                    $candidatetasks[(string)$taskname] = true;
+                }
+            }
+        }
+
+        // Generic lookup fallback: choose read-only search-like tasks with a query property.
+        if (empty($candidatetasks) && $this->result_has_trigger($result, 'core.is_lookup_request')) {
+            foreach ($this->registry->get_task_names() as $taskname) {
+                if (!$this->registry->is_read_only_task($taskname)) {
+                    continue;
+                }
+                $task = $this->registry->get_task($taskname);
+                if ($task === null) {
+                    continue;
+                }
+                $schema = $task->get_schema();
+                $properties = (array)($schema['properties'] ?? []);
+                if (!isset($properties['query']) || !is_array($properties['query'])) {
+                    continue;
+                }
+                $candidatetasks[(string)$taskname] = true;
+            }
+        }
+
+        // Generic context fallback: when prior thread context already resolved an option-like
+        // query, prefer read-only query tasks that are semantically option-related.
+        if (empty($candidatetasks)) {
+            $contextquery = $this->extract_option_context_query_from_thread($threadid);
+            if ($contextquery !== '') {
+                $scored = [];
+                foreach ($this->registry->get_task_names() as $taskname) {
+                    if (!$this->registry->is_read_only_task($taskname)) {
+                        continue;
+                    }
+                    $task = $this->registry->get_task($taskname);
+                    if ($task === null) {
+                        continue;
+                    }
+                    $schema = $task->get_schema();
+                    $properties = (array)($schema['properties'] ?? []);
+                    if (!isset($properties['query']) || !is_array($properties['query'])) {
+                        continue;
+                    }
+
+                    $score = 0;
+                    $description = core_text::strtolower(trim((string)($schema['description'] ?? '')));
+                    $tasknamelower = core_text::strtolower((string)$taskname);
+                    if (str_contains($description, 'option')) {
+                        $score += 3;
+                    }
+                    if (str_contains($tasknamelower, 'option')) {
+                        $score += 2;
+                    }
+                    if (str_contains($tasknamelower, 'search')) {
+                        $score += 1;
+                    }
+                    $scored[] = ['task' => (string)$taskname, 'score' => $score];
+                }
+
+                usort($scored, static function (array $a, array $b): int {
+                    return (int)($b['score'] ?? 0) <=> (int)($a['score'] ?? 0);
+                });
+                foreach ($scored as $entry) {
+                    $taskname = trim((string)($entry['task'] ?? ''));
+                    if ($taskname !== '') {
+                        $candidatetasks[$taskname] = true;
+                    }
+                }
+            }
+        }
+
+        if (empty($candidatetasks)) {
+            return $result;
+        }
+
+        $tasknames = array_keys($candidatetasks);
+        usort($tasknames, function (string $a, string $b) use ($usermessage): int {
+            return $this->score_generic_recovery_task($b, $usermessage)
+                <=> $this->score_generic_recovery_task($a, $usermessage);
+        });
+
+        foreach ($tasknames as $taskname) {
+            $input = $this->build_recovery_input_for_task($taskname, $usermessage, $outputlang, $threadid, $cmid);
+            if ($input === null) {
+                continue;
+            }
+
+            return [
+                'response_type'   => 'task_call',
+                'message'         => $this->localized_string('ai_status_taskcall_default', 'mod_booking', null, $outputlang),
+                'commands'        => [[
+                    'task' => $taskname,
+                    'version' => 1,
+                    'input' => $input,
+                ]],
+                'ambiguities'     => [],
+                'errors'          => [],
+                'attempted_tasks' => [$taskname],
+                'issue_codes'     => array_values(array_unique(array_merge(
+                    (array)($result['issue_codes'] ?? []),
+                    ['AUTO_GENERIC_TASK_RECOVERY']
+                ))),
+                'used_triggers'   => $usedtriggers,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Score a recovery candidate task by schema fit to the user message.
+     *
+     * @param string $taskname
+     * @param string $usermessage
+     * @return int
+     */
+    private function score_generic_recovery_task(string $taskname, string $usermessage): int {
+        $task = $this->registry->get_task($taskname);
+        if ($task === null) {
+            return -1000;
+        }
+
+        $schema = $task->get_schema();
+        $properties = (array)($schema['properties'] ?? []);
+        $score = 0;
+
+        $hasquestion = isset($properties['question']) && is_array($properties['question']);
+        $hasquery = isset($properties['query']) && is_array($properties['query']);
+        $hasoptionanchor = isset($properties['optionquery']) || isset($properties['optionid']);
+        $hasuserquery = isset($properties['userquery']) && is_array($properties['userquery']);
+
+        if ($this->looks_like_diagnostic_intent($usermessage)) {
+            if ($hasquestion) {
+                $score += 6;
+            }
+            if ($hasoptionanchor) {
+                $score += 4;
+            }
+            if ($hasuserquery) {
+                $score += 2;
+            }
+            if ($hasquery && !$hasquestion) {
+                $score -= 2;
+            }
+        } else if ($hasquery) {
+            $score += 3;
+        }
+
+        return $score;
+    }
+
+    /**
+     * Heuristic detector for generic diagnostic intent in user text.
+     *
+     * @param string $message
+     * @return bool
+     */
+    private function looks_like_diagnostic_intent(string $message): bool {
+        $normalized = core_text::strtolower(trim((string)preg_replace('/\s+/', ' ', $message)));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool)preg_match(
+            '/(\?|\bwhy\b|\bwarum\b|\bwieso\b|\bcannot\b|can\s+not|kann\s+.*\snicht|\bnicht\s+buchen\b|\bnot\s+booked\b|\bcancel\b|\bstorno\b|\bstornieren\b|\bdiagnose\b|\büberprüfe\b|\bpruefe\b)/u',
+            $normalized
+        );
+    }
+
+    /**
+     * Build schema-driven recovery input for a given task.
+     *
+     * @param string $taskname
+     * @param string $usermessage
+     * @param string $outputlang
+     * @param int $threadid
+     * @param int $cmid
+     * @return array|null
+     */
+    private function build_recovery_input_for_task(
+        string $taskname,
+        string $usermessage,
+        string $outputlang,
+        int $threadid,
+        int $cmid
+    ): ?array {
+        $task = $this->registry->get_task($taskname);
+        if ($task === null || !$task->is_read_only()) {
+            return null;
+        }
+
+        $schema = $task->get_schema();
+        $properties = (array)($schema['properties'] ?? []);
+        if (empty($properties)) {
+            return null;
+        }
+
+        $question = trim($usermessage);
+        $optionquery = $this->extract_option_search_query($usermessage);
+        $optionid = $this->extract_option_id_from_message($usermessage);
+        if ($optionquery === '') {
+            $optionquery = $this->infer_exact_option_query_from_message($usermessage, $cmid);
+        }
+        if ($optionquery === '' && $this->message_refers_to_context_option($usermessage)) {
+            $optionquery = $this->extract_option_context_query_from_thread($threadid);
+        }
+        $userquery = $this->infer_user_query_from_message($usermessage);
+
+        $hasoptionanchor = isset($properties['optionquery']) || isset($properties['optionid']);
+        if ($hasoptionanchor && $optionquery === '' && $optionid <= 0) {
+            return null;
+        }
+
+        $input = [];
+        if (isset($properties['outputlang']) && is_array($properties['outputlang']) && $outputlang !== '') {
+            $input['outputlang'] = $outputlang;
+        }
+        if (isset($properties['question']) && is_array($properties['question']) && $question !== '') {
+            $input['question'] = $question;
+        }
+        if (isset($properties['optionquery']) && is_array($properties['optionquery']) && $optionquery !== '') {
+            $input['optionquery'] = $optionquery;
+        }
+        if (isset($properties['optionid']) && is_array($properties['optionid']) && $optionid > 0) {
+            $input['optionid'] = $optionid;
+        }
+        if (isset($properties['query']) && is_array($properties['query']) && $optionquery !== '') {
+            $input['query'] = $optionquery;
+        }
+        if (isset($properties['userquery']) && is_array($properties['userquery']) && $userquery !== '') {
+            $input['userquery'] = $userquery;
+        }
+
+        // Ensure all required properties are present.
+        foreach ($properties as $name => $def) {
+            if (!is_array($def) || empty($def['required'])) {
+                continue;
+            }
+            if (!array_key_exists((string)$name, $input)) {
+                return null;
+            }
+        }
+
+        return $input;
+    }
+
+    /**
+     * Infer a resolvable option query from a free-form user sentence.
+     *
+     * @param string $message
+     * @param int $cmid
+     * @return string
+     */
+    private function infer_option_query_from_message(string $message, int $cmid): string {
+        $message = trim((string)preg_replace('/\s+/', ' ', $message));
+        if ($message === '') {
+            return '';
+        }
+
+        $tokens = preg_split('/\s+/u', $message) ?: [];
+        if (empty($tokens)) {
+            return '';
+        }
+
+        $attempts = 0;
+        $maxtokens = min(6, count($tokens));
+        for ($len = $maxtokens; $len >= 1; $len--) {
+            for ($start = 0; $start + $len <= count($tokens); $start++) {
+                $phrase = trim(implode(' ', array_slice($tokens, $start, $len)));
+                if (core_text::strlen($phrase) < 3) {
+                    continue;
+                }
+
+                $resolved = booking_task_support::resolve_single_option($cmid, $phrase, '');
+                if (($resolved['status'] ?? '') === 'ok') {
+                    return $phrase;
+                }
+
+                $attempts++;
+                if ($attempts >= 30) {
+                    return '';
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Infer a high-confidence option query from free-form text via exact-title resolution.
+     *
+     * Unlike infer_option_query_from_message(), this method does NOT use fuzzy option
+     * search and therefore avoids accidental matches for generic words like "cancel".
+     *
+     * @param string $message
+     * @param int $cmid
+     * @return string
+     */
+    private function infer_exact_option_query_from_message(string $message, int $cmid): string {
+        $message = trim((string)preg_replace('/\s+/', ' ', $message));
+        if ($message === '') {
+            return '';
+        }
+
+        $tokens = preg_split('/\s+/u', $message) ?: [];
+        if (empty($tokens)) {
+            return '';
+        }
+
+        $attempts = 0;
+        $maxtokens = min(6, count($tokens));
+        for ($len = $maxtokens; $len >= 1; $len--) {
+            for ($start = 0; $start + $len <= count($tokens); $start++) {
+                $phrase = trim(implode(' ', array_slice($tokens, $start, $len)));
+                $phrase = trim($phrase, " \t\n\r\0\x0B\"'“”„`.,;:!?()[]{}");
+                if (core_text::strlen($phrase) < 3) {
+                    continue;
+                }
+
+                $exact = booking_task_support::find_existing_options_by_exact_title($cmid, $phrase);
+                if (($exact['status'] ?? '') === 'single') {
+                    return $phrase;
+                }
+
+                $attempts++;
+                if ($attempts >= 30) {
+                    return '';
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Extract an explicit option id from a free-form user sentence.
+     *
+     * @param string $message
+     * @return int
+     */
+    private function extract_option_id_from_message(string $message): int {
+        $message = trim($message);
+        if ($message === '') {
+            return 0;
+        }
+
+        $patterns = [
+            '/\boption\s*id\s*[:#-]?\s*(\d{1,10})\b/iu',
+            '/\boptionid\s*[:#-]?\s*(\d{1,10})\b/iu',
+            '/\bbooking\s*option\s*id\s*[:#-]?\s*(\d{1,10})\b/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $message, $matches)) {
+                $id = (int)($matches[1] ?? 0);
+                if ($id > 0) {
+                    return $id;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Infer a resolvable user query from a free-form user sentence.
+     *
+     * @param string $message
+     * @return string
+     */
+    private function infer_user_query_from_message(string $message): string {
+        $message = trim((string)preg_replace('/\s+/', ' ', $message));
+        if ($message === '') {
+            return '';
+        }
+
+        $direct = booking_task_support::resolve_single_user($message);
+        if (($direct['status'] ?? '') === 'ok') {
+            return $message;
+        }
+
+        $tokens = preg_split('/\s+/u', $message) ?: [];
+        if (empty($tokens)) {
+            return '';
+        }
+
+        $hits = [];
+        $attempts = 0;
+        $maxtokens = min(3, count($tokens));
+        for ($len = $maxtokens; $len >= 1; $len--) {
+            for ($start = 0; $start + $len <= count($tokens); $start++) {
+                $phrase = trim(implode(' ', array_slice($tokens, $start, $len)));
+                if (core_text::strlen($phrase) < 3) {
+                    continue;
+                }
+
+                $resolved = booking_task_support::resolve_single_user($phrase);
+                if (($resolved['status'] ?? '') === 'ok') {
+                    $userid = (int)($resolved['userid'] ?? 0);
+                    if ($userid > 0) {
+                        $score = ($len * 100) + core_text::strlen($phrase);
+                        if (!isset($hits[$userid]) || $score > (int)($hits[$userid]['score'] ?? 0)) {
+                            $hits[$userid] = [
+                                'phrase' => $phrase,
+                                'score' => $score,
+                            ];
+                        }
+                    }
+                }
+
+                $attempts++;
+                if ($attempts >= 30) {
+                    break 2;
+                }
+            }
+        }
+
+        if (empty($hits)) {
+            return '';
+        }
+
+        uasort($hits, static function (array $a, array $b): int {
+            return (int)($b['score'] ?? 0) <=> (int)($a['score'] ?? 0);
+        });
+
+        $best = (array)reset($hits);
+        return trim((string)($best['phrase'] ?? ''));
+    }
+
+    /**
+     * Extract a quoted phrase from user text as a high-confidence search query.
+     *
+     * @param string $message
+     * @return string
+     */
+    private function extract_quoted_query(string $message): string {
+        $message = trim($message);
+        if ($message === '') {
+            return '';
+        }
+
+        if (preg_match('/["“”„\']([^"“”„\']{3,160})["“”„\']/', $message, $matches)) {
+            return trim((string)($matches[1] ?? ''));
+        }
+
+        return '';
+    }
+
+    /**
+     * Extract a useful option search query from user text.
+     *
+     * @param string $message
+     * @return string
+     */
+    private function extract_option_search_query(string $message): string {
+        $quoted = $this->extract_quoted_query($message);
+        if ($quoted !== '') {
+            return $quoted;
+        }
+
+        return '';
+    }
+
+    /**
+     * Check whether user wording explicitly refers to previously discussed option context.
+     *
+     * @param string $message
+     * @return bool
+     */
+    private function message_refers_to_context_option(string $message): bool {
+        $normalized = core_text::strtolower(trim((string)preg_replace('/\s+/', ' ', $message)));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool)preg_match(
+            '/\b(last\s+option|previous\s+option|this\s+option|that\s+option|letzte\s+option|vorherige\s+option|diese\s+option|jene\s+option|die\s+option|dieser\s+kurs|diese\s+buchungsoption|oben\s+genannte\s+option)\b/u',
+            $normalized
+        );
+    }
+
+    /**
+     * Extract option query from recent structured thread context.
+     *
+     * @param int $threadid
+     * @return string
+     */
+    private function extract_option_context_query_from_thread(int $threadid): string {
+        $messages = $this->store->get_recent_messages($threadid, 12);
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            if ((string)($messages[$i]->role ?? '') !== 'assistant') {
+                continue;
+            }
+
+            $structured = json_decode((string)($messages[$i]->structuredjson ?? ''), true);
+            if (!is_array($structured)) {
+                continue;
+            }
+
+            $contextquery = $this->extract_option_query_from_structured_payload($structured);
+            if ($contextquery !== '') {
+                return $contextquery;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Extract option query candidate from a structured assistant payload.
+     *
+     * @param array $structured
+     * @return string
+     */
+    private function extract_option_query_from_structured_payload(array $structured): string {
+        $resultsets = [];
+        foreach (['results', 'loop_results'] as $field) {
+            foreach ((array)($structured[$field] ?? []) as $entry) {
+                if (is_array($entry)) {
+                    $resultsets[] = $entry;
+                }
+            }
+        }
+
+        for ($i = count($resultsets) - 1; $i >= 0; $i--) {
+            $entry = (array)$resultsets[$i];
+            $diagnosisname = trim((string)($entry['diagnosis']['optionname'] ?? ''));
+            if ($diagnosisname !== '') {
+                return $diagnosisname;
+            }
+
+            $options = (array)($entry['options'] ?? []);
+            if (!empty($options)) {
+                $first = (array)$options[0];
+                $name = trim((string)($first['name'] ?? $first['text'] ?? ''));
+                if ($name !== '') {
+                    return $name;
+                }
+            }
+        }
+
+        foreach ((array)($structured['commands'] ?? []) as $command) {
+            if (!is_array($command)) {
+                continue;
+            }
+            $input = (array)($command['input'] ?? []);
+            $optionquery = trim((string)($input['optionquery'] ?? ''));
+            if ($optionquery !== '') {
+                return $optionquery;
+            }
+        }
+
         return '';
     }
 

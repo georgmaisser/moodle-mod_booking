@@ -282,5 +282,9 @@ final class diagnose_booking_issue_task_test extends abstract_agent_testcase {
         $this->assertSame('executed', $result['status']);
         $this->assertSame((int)$target->id, (int)($result['diagnosis']['userid'] ?? 0));
         $this->assertSame((int)$option->id, (int)$result['resultid']);
+        $this->assertFalse((bool)($result['diagnosis']['isselfdiagnosis'] ?? true));
+        $allreasons = implode("\n", (array)($result['diagnosis']['reasons'] ?? []));
+        $this->assertStringContainsString('selected user', $allreasons);
+        $this->assertStringNotContainsString('for you', $allreasons);
     }
 }

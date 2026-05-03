@@ -57,7 +57,7 @@ use mod_booking\local\wbagent\task_registry;
  */
 final class agent_internal_loop_test extends abstract_agent_testcase {
     // -------------------------------------------------------------------------
-    // agent_state unit tests.
+    // Agent_state unit tests.
 
     /**
      * agent_state::make() creates a fresh state with correct max_steps.
@@ -137,7 +137,7 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
     }
 
     // -------------------------------------------------------------------------
-    // run_loop() internal loop tests — mock orchestrator.
+    // Run_loop() internal loop tests — mock orchestrator.
 
     /**
      * run_loop() calls the orchestrator twice and accumulates observations.
@@ -279,9 +279,311 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
         // Final result is the clarification from step 2.
         $this->assertSame('clarification', $result['response_type']);
 
-        // loop_step reflects the terminating step number.
+        // Loop_step reflects the terminating step number.
         $this->assertArrayHasKey('loop_step', $result);
         $this->assertSame(2, (int)$result['loop_step']);
+    }
+
+    /**
+     * Step messages should use human-readable labels instead of raw task names.
+     */
+    public function test_run_loop_writes_human_readable_step_label(): void {
+        $this->setUser($this->teacher);
+
+        $this->exec_command('booking.create_option', [
+            'text'            => 'Readable Step Label Test',
+            'maxanswers'      => 10,
+            'coursestarttime' => '2045-06-01T09:00:00',
+            'duration'        => 60,
+            'teacherquery'    => 'current',
+        ]);
+
+        $store = new conversation_store();
+        $registry = task_registry::make_default();
+        $authz = new authorization_service();
+
+        $step1 = [
+            'response_type'     => 'task_call',
+            'lang'              => 'en',
+            'message'           => 'Searching options.',
+            'used_triggers'     => [],
+            'commands'          => [[
+                'task'    => 'booking.search_options',
+                'version' => 1,
+                'input'   => ['query' => 'Readable'],
+            ]],
+            'ambiguities'       => [],
+            'ambiguity_options' => [],
+            'errors'            => [],
+            'attempted_tasks'   => [],
+            'issue_codes'       => [],
+        ];
+
+        $step2 = [
+            'response_type'     => 'clarification',
+            'lang'              => 'en',
+            'message'           => 'Done.',
+            'used_triggers'     => [],
+            'commands'          => [],
+            'ambiguities'       => [],
+            'ambiguity_options' => [],
+            'errors'            => [],
+            'attempted_tasks'   => [],
+            'issue_codes'       => [],
+        ];
+
+        $mockorchestrator = $this->getMockBuilder(orchestrator::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $mockorchestrator->method('process')->willReturnOnConsecutiveCalls($step1, $step2);
+
+        $runtime = new agent_runtime($registry, $mockorchestrator, $store, $authz);
+        $thread = $store->get_or_create_thread(
+            (int)$this->teacher->id,
+            (int)$this->booking->cmid,
+            (int)$this->booking->id
+        );
+        $threadid = (int)$thread->id;
+        $store->add_message($threadid, 'user', 'Find options');
+
+        $runtime->run_loop($threadid, (int)$this->booking->cmid, (int)$this->teacher->id);
+
+        $steps = $store->get_step_messages_since($threadid, 0);
+        $this->assertCount(1, $steps);
+
+        $label = (string)($steps[0]->content ?? '');
+        $this->assertStringContainsString('Step 1: Search booking options', $label);
+        $this->assertStringNotContainsString('booking.search_options', $label);
+    }
+
+    /**
+     * Repeated identical readonly steps should stop early instead of burning the whole loop budget.
+     */
+    public function test_run_loop_stops_on_repeated_readonly_step(): void {
+        $this->setUser($this->teacher);
+
+        $this->exec_command('booking.create_option', [
+            'text'            => 'Repeat Loop Guard Test',
+            'maxanswers'      => 10,
+            'coursestarttime' => '2045-06-01T09:00:00',
+            'duration'        => 60,
+            'teacherquery'    => 'current',
+        ]);
+
+        $store = new conversation_store();
+        $registry = task_registry::make_default();
+        $authz = new authorization_service();
+
+        $repeatedstep = [
+            'response_type'     => 'task_call',
+            'lang'              => 'en',
+            'message'           => 'Searching options again.',
+            'used_triggers'     => [],
+            'commands'          => [[
+                'task'    => 'booking.search_options',
+                'version' => 1,
+                'input'   => ['query' => 'Repeat'],
+            ]],
+            'ambiguities'       => [],
+            'ambiguity_options' => [],
+            'errors'            => [],
+            'attempted_tasks'   => [],
+            'issue_codes'       => [],
+        ];
+
+        $callcount = 0;
+        $mockorchestrator = $this->getMockBuilder(orchestrator::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $mockorchestrator->method('process')->willReturnCallback(
+            static function () use (&$callcount, $repeatedstep): array {
+                $callcount++;
+                return $repeatedstep;
+            }
+        );
+
+        $runtime = new agent_runtime($registry, $mockorchestrator, $store, $authz);
+        $thread = $store->get_or_create_thread(
+            (int)$this->teacher->id,
+            (int)$this->booking->cmid,
+            (int)$this->booking->id
+        );
+        $threadid = (int)$thread->id;
+        $store->add_message($threadid, 'user', 'Repeat search');
+
+        $result = $runtime->run_loop($threadid, (int)$this->booking->cmid, (int)$this->teacher->id);
+
+        $this->assertSame('clarification', (string)($result['response_type'] ?? ''));
+        $this->assertContains('LOOP_REPEAT_DETECTED', $result['issue_codes'] ?? []);
+        $this->assertSame(
+            3,
+            $callcount,
+            'Loop should stop after the second identical readonly step and one final narration-only pass.'
+        );
+        $this->assertCount(
+            1,
+            (array)($result['results'] ?? []),
+            'Loop repeat response deduplicates identical readonly results to the most informative entry.'
+        );
+        $this->assertContains(
+            'booking.search_options',
+            (array)($result['attempted_tasks'] ?? []),
+            'Final loop-repeat clarification must preserve attempted readonly tasks for debug/context.'
+        );
+    }
+
+    /**
+     * A malformed second-step task_call without commands must not overwrite a successful readonly result.
+     */
+    public function test_run_loop_recovers_from_missing_commands_error_after_readonly_success(): void {
+        $this->setUser($this->teacher);
+
+        $this->exec_command('booking.create_option', [
+            'text'            => 'Malformed Recovery Test Option',
+            'maxanswers'      => 8,
+            'coursestarttime' => '2045-06-02T09:00:00',
+            'duration'        => 45,
+            'teacherquery'    => 'current',
+        ]);
+
+        $store = new conversation_store();
+        $registry = task_registry::make_default();
+        $authz = new authorization_service();
+
+        $step1 = [
+            'response_type'     => 'task_call',
+            'lang'              => 'de',
+            'message'           => 'Suche passende Option.',
+            'used_triggers'     => [],
+            'commands'          => [[
+                'task'    => 'booking.search_options',
+                'version' => 1,
+                'input'   => ['query' => 'Malformed Recovery Test Option'],
+            ]],
+            'ambiguities'       => [],
+            'ambiguity_options' => [],
+            'errors'            => [],
+            'attempted_tasks'   => [],
+            'issue_codes'       => [],
+        ];
+
+        $step2 = [
+            'response_type'     => 'error',
+            'lang'              => 'de',
+            'message'           => 'Response type requires at least one command but none were provided.',
+            'used_triggers'     => [],
+            'commands'          => [],
+            'ambiguities'       => [],
+            'ambiguity_options' => [],
+            'errors'            => ['Response type requires at least one command but none were provided.'],
+            'attempted_tasks'   => [],
+            'issue_codes'       => [],
+        ];
+
+        $callcount = 0;
+        $mockorchestrator = $this->getMockBuilder(orchestrator::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $mockorchestrator->method('process')->willReturnCallback(
+            static function () use (&$callcount, $step1, $step2): array {
+                $callcount++;
+                return $callcount === 1 ? $step1 : $step2;
+            }
+        );
+
+        $runtime = new agent_runtime($registry, $mockorchestrator, $store, $authz);
+        $thread = $store->get_or_create_thread(
+            (int)$this->teacher->id,
+            (int)$this->booking->cmid,
+            (int)$this->booking->id
+        );
+        $threadid = (int)$thread->id;
+        $store->add_message($threadid, 'user', 'Kann Maxima Lesung mit Georg buchen?');
+
+        $result = $runtime->run_loop($threadid, (int)$this->booking->cmid, (int)$this->teacher->id);
+
+        $this->assertSame('clarification', (string)($result['response_type'] ?? ''));
+        $this->assertContains('LOOP_MALFORMED_TASKCALL_RECOVERED', (array)($result['issue_codes'] ?? []));
+        $this->assertNotEmpty(trim((string)($result['message'] ?? '')));
+        $this->assertCount(1, (array)($result['results'] ?? []));
+        // Final narration may not preserve attempted_tasks; validate through attached loop results instead.
+        $this->assertNotEmpty((array)($result['results'] ?? []));
+        $this->assertSame([], (array)($result['errors'] ?? []));
+    }
+
+    /**
+     * Clarification fallback must be executed inside the loop and never leak as task_call.
+     */
+    public function test_run_loop_executes_clarification_option_fallback_internally(): void {
+        $this->setUser($this->teacher);
+
+        $this->exec_command('booking.create_option', [
+            'text'            => 'Lesung mit Georg',
+            'maxanswers'      => 6,
+            'coursestarttime' => '2045-06-03T09:00:00',
+            'duration'        => 30,
+            'teacherquery'    => 'current',
+        ]);
+
+        $store = new conversation_store();
+        $registry = task_registry::make_default();
+        $authz = new authorization_service();
+
+        $step1 = [
+            'response_type'     => 'clarification',
+            'lang'              => 'en',
+            'message'           => 'Please provide exact option id.',
+            'used_triggers'     => ['core.is_lookup_request'],
+            'commands'          => [],
+            'ambiguities'       => [],
+            'ambiguity_options' => [],
+            'errors'            => [],
+            'attempted_tasks'   => [],
+            'issue_codes'       => [],
+        ];
+
+        $step2 = [
+            'response_type'     => 'clarification',
+            'lang'              => 'en',
+            'message'           => 'Diagnose complete.',
+            'used_triggers'     => [],
+            'commands'          => [],
+            'ambiguities'       => [],
+            'ambiguity_options' => [],
+            'errors'            => [],
+            'attempted_tasks'   => [],
+            'issue_codes'       => [],
+        ];
+
+        $callcount = 0;
+        $mockorchestrator = $this->getMockBuilder(orchestrator::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $mockorchestrator->method('process')->willReturnCallback(
+            static function () use (&$callcount, $step1, $step2): array {
+                $callcount++;
+                return $callcount === 1 ? $step1 : $step2;
+            }
+        );
+
+        $runtime = new agent_runtime($registry, $mockorchestrator, $store, $authz);
+        $thread = $store->get_or_create_thread(
+            (int)$this->teacher->id,
+            (int)$this->booking->cmid,
+            (int)$this->booking->id
+        );
+        $threadid = (int)$thread->id;
+        $store->add_message($threadid, 'user', 'kann billy "Lesung mit Georg" stornieren?');
+
+        $result = $runtime->run_loop($threadid, (int)$this->booking->cmid, (int)$this->teacher->id);
+
+        // Step 1: clarification->fallback readonly execution.
+        // Step 2: repeated readonly execution triggers repeat stop.
+        // Step 3: narration-only clarification pass.
+        $this->assertSame(3, $callcount);
+        $this->assertSame('clarification', (string)($result['response_type'] ?? ''));
+        $this->assertNotSame('task_call', (string)($result['response_type'] ?? ''));
+        $this->assertNotEmpty((array)($result['results'] ?? []));
     }
 
     /**
@@ -379,29 +681,35 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
         $authz    = new authorization_service();
 
         // Always returns a read-only task_call — loop would never stop naturally.
-        $readonlycall = [
-            'response_type'     => 'task_call',
-            'lang'              => 'en',
-            'message'           => 'Searching.',
-            'used_triggers'     => [],
-            'commands'          => [[
-                'task'    => 'booking.search_options',
-                'version' => 1,
-                'input'   => ['query' => 'MaxSteps'],
-            ]],
-            'ambiguities'       => [],
-            'ambiguity_options' => [],
-            'errors'            => [],
-            'attempted_tasks'   => [],
-            'issue_codes'       => [],
-        ];
-
         $mockorchestrator = $this->getMockBuilder(orchestrator::class)
             ->disableOriginalConstructor()
             ->getMock();
 
+        $callcount = 0;
         $mockorchestrator->method('process')
-            ->willReturn($readonlycall);
+            ->willReturnCallback(static function () use (&$callcount): array {
+                $callcount++;
+                $task = ($callcount % 2 === 1) ? 'booking.search_options' : 'booking.list_actions';
+                $input = ($task === 'booking.search_options')
+                    ? ['query' => 'MaxSteps ' . $callcount]
+                    : ['question' => 'List available actions'];
+                return [
+                    'response_type'     => 'task_call',
+                    'lang'              => 'en',
+                    'message'           => 'Searching.',
+                    'used_triggers'     => [],
+                    'commands'          => [[
+                        'task'    => $task,
+                        'version' => 1,
+                        'input'   => $input,
+                    ]],
+                    'ambiguities'       => [],
+                    'ambiguity_options' => [],
+                    'errors'            => [],
+                    'attempted_tasks'   => [],
+                    'issue_codes'       => [],
+                ];
+            });
 
         $runtime = new agent_runtime($registry, $mockorchestrator, $store, $authz);
 

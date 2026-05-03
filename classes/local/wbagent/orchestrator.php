@@ -30,6 +30,7 @@ use core_ai\aiactions\generate_text;
 use core\di;
 use core_text;
 use mod_booking\local\wbagent\interfaces\agent_interpreter;
+use mod_booking\local\wbagent\result_payload_summarizer;
 
 /**
  * Orchestrates LLM interaction via core_ai.
@@ -256,7 +257,8 @@ class orchestrator {
         $prompt .= "\n\nNON-OPTIONAL LANGUAGE POLICY:\n"
             . "- Use the same language as the latest user message for all user-facing text in JSON fields (especially 'message').\n"
             . "- Do not switch language unless the user switches language.\n"
-            . "- Return a valid ISO 639-1 value in 'lang' and ensure all user-facing text strictly matches that language.\n"
+            . "- Detect the latest user-message language and return it in 'user_lang' as valid ISO 639-1.\n"
+            . "- Return a valid ISO 639-1 value in 'lang' and keep it identical to 'user_lang'.\n"
             . "- If lang='cs', answer in Czech; if lang='de', answer in German; if lang='en', answer in English; etc.\n";
 
         $prompt .= "\n\nNON-OPTIONAL TRIGGER POLICY:\n"
@@ -292,12 +294,28 @@ class orchestrator {
             $systemprompt .= "\n\nCONTEXT-SPECIFIC GUIDANCE:\n" . $contextualguidance;
         }
 
+        $assistantstateblocks = $this->build_assistant_state_blocks($messages);
+        if (!empty($assistantstateblocks)) {
+            $systemprompt .= "\n\nFOLLOW-UP STATE POLICY:\n"
+                . "- Use ASSISTANT_STATE blocks as factual memory for follow-up questions.\n"
+                . "- Prefer structured state facts over generic restatements.\n"
+                . "- If ASSISTANT_STATE already contains diagnosis/results, "
+                . "answer directly from it before proposing new tool calls.\n"
+                . "- If ASSISTANT_STATE contains a 'found_results' line, those items were already found "
+                . "in a previous turn — include their names/details in your response.\n";
+        }
+
         $parts = ["[SYSTEM]\n{$systemprompt}"];
 
         foreach ($messages as $msg) {
             $role    = strtoupper($msg->role ?? 'user');
             $content = $msg->content ?? '';
             $parts[] = "[{$role}]\n{$content}";
+        }
+
+        foreach ($assistantstateblocks as $idx => $block) {
+            $num = $idx + 1;
+            $parts[] = "[ASSISTANT_STATE {$num}]\n{$block}";
         }
 
         // Inject tool observations from prior internal loop steps.
@@ -309,6 +327,144 @@ class orchestrator {
 
         $parts[] = '[ASSISTANT]';
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * Build compact structured state blocks from recent assistant messages.
+     *
+     * @param array $messages
+     * @return string[]
+     */
+    private function build_assistant_state_blocks(array $messages): array {
+        $states = [];
+
+        foreach ($messages as $msg) {
+            if ((string)($msg->role ?? '') !== 'assistant') {
+                continue;
+            }
+
+            $structured = json_decode((string)($msg->structuredjson ?? ''), true);
+            if (!is_array($structured) || empty($structured)) {
+                continue;
+            }
+
+            $summary = $this->summarize_structured_state($structured);
+            if ($summary !== '') {
+                $states[] = $summary;
+            }
+        }
+
+        if (count($states) > 6) {
+            $states = array_slice($states, -6);
+        }
+
+        return $states;
+    }
+
+    /**
+     * Summarize one structured assistant payload into a deterministic state line block.
+     *
+     * @param array $structured
+     * @return string
+     */
+    private function summarize_structured_state(array $structured): string {
+        $lines = [];
+
+        $responsetype = trim((string)($structured['response_type'] ?? ''));
+        if ($responsetype !== '') {
+            $lines[] = 'response_type=' . $responsetype;
+        }
+
+        $lang = trim((string)($structured['lang'] ?? ''));
+        if ($lang !== '') {
+            $lines[] = 'lang=' . $lang;
+        }
+
+        $issuecodes = array_values(array_filter(array_map(
+            static fn($code): string => trim((string)$code),
+            (array)($structured['issue_codes'] ?? [])
+        )));
+        if (!empty($issuecodes)) {
+            $lines[] = 'issue_codes=' . implode(',', array_slice($issuecodes, 0, 8));
+        }
+
+        $attemptedtasks = array_values(array_filter(array_map(
+            static fn($task): string => trim((string)$task),
+            (array)($structured['attempted_tasks'] ?? [])
+        )));
+        if (!empty($attemptedtasks)) {
+            $lines[] = 'attempted_tasks=' . implode(',', array_slice($attemptedtasks, 0, 8));
+        }
+
+        $results = (array)($structured['results'] ?? []);
+        if (empty($results)) {
+            $results = (array)($structured['loop_results'] ?? []);
+        }
+        foreach ($this->extract_result_facts($results) as $fact) {
+            $lines[] = $fact;
+        }
+
+        return implode("\n", array_slice($lines, 0, 12));
+    }
+
+    /**
+     * Extract compact factual lines from structured task results.
+     *
+     * @param array $results
+     * @return string[]
+     */
+    private function extract_result_facts(array $results): array {
+        $facts = [];
+        if (empty($results)) {
+            return $facts;
+        }
+
+        for ($i = count($results) - 1; $i >= 0; $i--) {
+            $entry = $results[$i] ?? null;
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $task = trim((string)($entry['task'] ?? ''));
+            $status = trim((string)($entry['status'] ?? ''));
+            if ($task !== '' || $status !== '') {
+                $facts[] = trim('result=' . $task . ' status=' . $status);
+            }
+
+            $diagnosis = $entry['diagnosis'] ?? null;
+            if (is_array($diagnosis)) {
+                $option = trim((string)($diagnosis['optionname'] ?? ''));
+                $userstatus = trim((string)($diagnosis['userstatus'] ?? ''));
+                $facts[] = trim('diagnosis option=' . $option . ' user_status=' . $userstatus);
+
+                $reasons = array_values(array_filter(array_map(
+                    static fn($reason): string => trim((string)$reason),
+                    (array)($diagnosis['reasons'] ?? [])
+                )));
+                if (!empty($reasons)) {
+                    $facts[] = 'diagnosis_reasons=' . implode(' | ', array_slice($reasons, 0, 3));
+                }
+            }
+
+            // Generic: summarize result content via the shared summarizer so any task type
+            // (options, users, courses, diagnosis, docs, …) is represented in the state.
+            $resultsummary = result_payload_summarizer::describe_result_for_state($entry);
+            if ($resultsummary !== '') {
+                $facts[] = 'found_results=' . $resultsummary;
+            }
+
+            $usermessage = trim((string)($entry['usermessage'] ?? $entry['detail'] ?? ''));
+            if ($usermessage !== '') {
+                $usermessage = trim(preg_replace('/\s+/', ' ', $usermessage) ?? $usermessage);
+                $facts[] = 'result_message=' . core_text::substr($usermessage, 0, 220);
+            }
+
+            if (count($facts) >= 12) {
+                break;
+            }
+        }
+
+        return array_slice(array_values(array_unique(array_filter($facts))), 0, 12);
     }
 
     /**

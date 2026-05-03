@@ -26,9 +26,12 @@
 namespace mod_booking;
 
 use advanced_testcase;
+use mod_booking\local\wbagent\agent_runtime;
+use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\interpreter;
 use mod_booking\local\wbagent\message_trigger_registry;
+use mod_booking\local\wbagent\orchestrator;
 use mod_booking\local\wbagent\task_registry;
 
 /**
@@ -147,5 +150,102 @@ final class agent_architecture_contract_test extends advanced_testcase {
 
         $store->clear_pending_intent($threadid);
         $this->assertNull($store->get_pending_intent($threadid));
+    }
+
+    /**
+     * Every task schema readonly flag must match the task capability declaration.
+     */
+    public function test_task_schema_readonly_matches_capability_contract(): void {
+        $registry = task_registry::make_default();
+        foreach ($registry->get_tasks() as $taskname => $task) {
+            $schema = (array)$task->get_schema();
+            $this->assertArrayHasKey('readonly', $schema, 'Task schema must expose readonly: ' . $taskname);
+            $this->assertSame(
+                (bool)$task->is_read_only(),
+                (bool)($schema['readonly'] ?? false),
+                'Task readonly mismatch between schema and capability: ' . $taskname
+            );
+        }
+    }
+
+    /**
+     * Readonly task_call must be executed inside run_loop and not leak as final response_type.
+     */
+    public function test_run_loop_contains_readonly_taskcalls_contract(): void {
+        global $USER;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course();
+        $booking = $this->getDataGenerator()->create_module('booking', [
+            'course' => $course->id,
+            'name' => 'Readonly Contract Booking',
+        ]);
+
+        // Create at least one option so booking.search_options can execute successfully.
+        $this->getDataGenerator()->get_plugin_generator('mod_booking')->create_option([
+            'bookingid' => (int)$booking->id,
+            'text' => 'Readonly Contract Option',
+            'status' => 0,
+            'maxanswers' => 5,
+            'coursestarttime' => time() + 86400,
+            'courseendtime' => time() + 90000,
+        ]);
+
+        $registry = task_registry::make_default();
+        $store = new conversation_store();
+        $authz = new authorization_service();
+
+        $step1 = [
+            'response_type' => 'task_call',
+            'lang' => 'en',
+            'message' => 'Searching options.',
+            'used_triggers' => [],
+            'commands' => [[
+                'task' => 'booking.search_options',
+                'version' => 1,
+                'input' => ['query' => 'Readonly Contract Option'],
+            ]],
+            'ambiguities' => [],
+            'ambiguity_options' => [],
+            'errors' => [],
+            'attempted_tasks' => [],
+            'issue_codes' => [],
+        ];
+        $step2 = [
+            'response_type' => 'clarification',
+            'lang' => 'en',
+            'message' => 'Completed.',
+            'used_triggers' => [],
+            'commands' => [],
+            'ambiguities' => [],
+            'ambiguity_options' => [],
+            'errors' => [],
+            'attempted_tasks' => [],
+            'issue_codes' => [],
+        ];
+
+        $callcount = 0;
+        $mockorchestrator = $this->getMockBuilder(orchestrator::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $mockorchestrator->method('process')->willReturnCallback(
+            static function () use (&$callcount, $step1, $step2): array {
+                $callcount++;
+                return $callcount === 1 ? $step1 : $step2;
+            }
+        );
+
+        $runtime = new agent_runtime($registry, $mockorchestrator, $store, $authz);
+        $thread = $store->get_or_create_thread((int)$USER->id, (int)$booking->cmid, (int)$booking->id);
+        $threadid = (int)$thread->id;
+        $store->add_message($threadid, 'user', 'find options');
+
+        $result = $runtime->run_loop($threadid, (int)$booking->cmid, (int)$USER->id);
+
+        $this->assertNotSame('task_call', (string)($result['response_type'] ?? ''));
+        $this->assertContains('booking.search_options', (array)($result['attempted_tasks'] ?? []));
+        $this->assertNotEmpty((array)($result['results'] ?? []));
     }
 }

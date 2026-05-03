@@ -231,4 +231,77 @@ final class diagnose_booking_issue_real_llm_test extends abstract_agent_testcase
             'Diagnosis must contain reasons (at least one booking condition evaluated).'
         );
     }
+
+    // -------------------------------------------------------------------------
+
+    /**
+     * CONV-09: Other-user question with plain title (no quotes) auto-routes to diagnosis.
+     *
+     * Setup:  Creates option with unique title and a target user.
+     * Conversation:
+     *   User: "kann <firstname> <option title> buchen?"
+     *   Agent: clarification with loop results containing diagnose_booking_issue
+     *   Test:  diagnosis references target userid and optionid.
+     */
+    public function test_conv09_diagnose_other_user_with_plain_title_question(): void {
+        $this->setUser($this->teacher);
+
+        $unique = uniqid('', true);
+        $optiontitle = 'Lesung mit Georg ' . $unique;
+        $option = $this->create_option($optiontitle, ['maxanswers' => 5]);
+
+        $targetuser = $this->getDataGenerator()->create_user([
+            'firstname' => 'Billy',
+            'lastname' => 'Tester',
+            'email' => 'billy.' . $unique . '@example.com',
+        ]);
+        $this->getDataGenerator()->enrol_user($targetuser->id, $this->course->id, 'student');
+
+        [$store, $runtime, $threadid] = $this->build_runtime();
+
+        $query = 'kann Billy ' . $optiontitle . ' buchen?';
+
+        try {
+            $result = $this->chat($query, $threadid, $store, $runtime);
+        } catch (\Throwable $e) {
+            $this->fail('LLM unavailable: ' . $e->getMessage());
+        }
+
+        $this->assertArrayHasKey('response_type', $result);
+        $this->assertSame(
+            'clarification',
+            $result['response_type'],
+            'run_loop() must return clarification after auto-executing diagnose fallback; '
+                . 'got: ' . ($result['response_type'] ?? '?')
+        );
+
+        $this->assertNotEmpty(
+            $result['results'] ?? [],
+            'result[results] must be populated via loop_results for plain-title diagnose questions'
+        );
+
+        $taskresult = $this->extract_task_result($result, 'booking.diagnose_booking_issue');
+        $this->assertNotNull(
+            $taskresult,
+            'booking.diagnose_booking_issue must appear in result[results] for plain-title diagnose questions'
+        );
+
+        $status = (string)($taskresult['status'] ?? '');
+        $this->assertContains(
+            $status,
+            ['executed', 'error'],
+            'Diagnose fallback must execute the task; status must be executed or error. '
+                . 'Detail: ' . (string)($taskresult['detail'] ?? '')
+        );
+
+        if ($status === 'executed') {
+            $this->assertSame((int)$targetuser->id, (int)($taskresult['diagnosis']['userid'] ?? 0));
+            $this->assertSame((int)$option->id, (int)($taskresult['diagnosis']['optionid'] ?? 0));
+        } else {
+            $this->assertNotEmpty(
+                trim((string)($taskresult['detail'] ?? '')),
+                'Error status must still provide a human-readable detail message.'
+            );
+        }
+    }
 }

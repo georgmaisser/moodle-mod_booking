@@ -73,6 +73,20 @@ class result_payload_summarizer {
     }
 
     /**
+     * Build a compact description of a single result entry suitable for ASSISTANT_STATE injection.
+     *
+     * Unlike for_observation() (which labels steps), this returns just the content line
+     * — "Found 2 booking option(s): A, B." — so it can be inserted as a state fact by
+     * any caller that needs it (orchestrator state blocks, loop summaries, etc.).
+     *
+     * @param  array  $entry  A single raw task result payload.
+     * @return string         Empty string when nothing meaningful is available.
+     */
+    public static function describe_result_for_state(array $entry): string {
+        return self::describe_entry($entry);
+    }
+
+    /**
      * Classify a single result entry into a named category.
      *
      * Used by both for_observation() and execution_feedback_service to avoid
@@ -117,12 +131,15 @@ class result_payload_summarizer {
     }
 
     /**
-     * Describe a single result entry as an observation string.
+     * Describe a single result entry as a concise human-readable string.
+     *
+     * Public so that callers such as agent_runtime can use it directly
+     * without going through the step-labelled for_observation() wrapper.
      *
      * @param  array $entry
      * @return string
      */
-    private static function describe_entry(array $entry): string {
+    public static function describe_entry(array $entry): string {
         $category = self::detect_result_category($entry);
 
         switch ($category) {
@@ -162,6 +179,13 @@ class result_payload_summarizer {
                 $summary = 'Diagnosis completed';
                 if ($optname !== '') {
                     $summary .= " for option \"{$optname}\"";
+                }
+                $reasons = array_values(array_filter(array_map(
+                    static fn($reason): string => trim((string)$reason),
+                    (array)($entry['diagnosis']['reasons'] ?? [])
+                )));
+                if (!empty($reasons)) {
+                    $summary .= ' Reason: ' . (string)$reasons[0];
                 }
                 return $summary . '.';
 

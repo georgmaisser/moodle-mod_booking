@@ -233,7 +233,7 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
                     $preparedinput['optionid'] = (int)($resolved['optionid'] ?? 0);
                 }
             }
-            // is_last_option_reference is handled at execute() time using user-session data.
+            // Is_last_option_reference is handled at execute() time using user-session data.
         }
 
         return task_preflight_result::ok($preparedinput);
@@ -331,13 +331,20 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
         $optionstats = $ba->return_all_booking_information($diagnosticuserid);
         $userstatus = (string)$ba->user_status_as_string($diagnosticuserid);
         $optionstats['userstatus'] = $userstatus;
-        $reasons = $this->build_reason_lines($issuetype, $optionstats, $conditionresults, $settings);
-
-        $usermessage = $this->localized_string(
-            'agent_booking_diagnose_intro_checked_option',
-            $optionname,
+        $isselfdiagnosis = ($diagnosticuserid === $userid);
+        $reasons = $this->build_reason_lines(
+            $issuetype,
+            $optionstats,
+            $conditionresults,
+            $settings,
+            $isselfdiagnosis,
             $outputlang
         );
+
+        $introk = $isselfdiagnosis
+            ? 'agent_booking_diagnose_intro_checked_option'
+            : 'agent_booking_diagnose_intro_checked_option_other';
+        $usermessage = $this->localized_string($introk, $optionname, $outputlang);
 
         return [
             'status' => 'executed',
@@ -348,6 +355,7 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
             'diagnosis' => [
                 'issue' => $issuetype,
                 'userid' => $diagnosticuserid,
+                'isselfdiagnosis' => $isselfdiagnosis,
                 'optionid' => $optionid,
                 'optionname' => $optionname,
                 'userstatus' => $userstatus,
@@ -581,32 +589,76 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
      *
      * @param string $issuetype
      * @param array $optionstats
-    * @param array $conditionresults
-    * @param mixed $settings booking_option_settings instance from singleton_service.
+     * @param array $conditionresults
+     * @param mixed $settings booking_option_settings instance from singleton_service.
+     * @param bool $isselfdiagnosis
+     * @param string $lang
      * @return array
      */
-    private function build_reason_lines(string $issuetype, array $optionstats, array $conditionresults, $settings): array {
-        $lang = '';
+    private function build_reason_lines(
+        string $issuetype,
+        array $optionstats,
+        array $conditionresults,
+        $settings,
+        bool $isselfdiagnosis,
+        string $lang = ''
+    ): array {
         $reasons = [];
         $userstatus = (string)($optionstats['userstatus'] ?? 'notbooked');
 
         if ($issuetype === 'booking_status') {
             if ($userstatus === 'booked') {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_status_booked', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_status_booked'
+                        : 'agent_booking_diagnose_reason_status_booked_other',
+                    null,
+                    $lang
+                );
             } else if ($userstatus === 'waitinglist') {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_status_waitinglist', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_status_waitinglist'
+                        : 'agent_booking_diagnose_reason_status_waitinglist_other',
+                    null,
+                    $lang
+                );
             } else if ($userstatus === 'reserved') {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_status_reserved', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_status_reserved'
+                        : 'agent_booking_diagnose_reason_status_reserved_other',
+                    null,
+                    $lang
+                );
             } else if ($userstatus === 'notifylist') {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_status_notifylist', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_status_notifylist'
+                        : 'agent_booking_diagnose_reason_status_notifylist_other',
+                    null,
+                    $lang
+                );
             } else {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_status_notbooked', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_status_notbooked'
+                        : 'agent_booking_diagnose_reason_status_notbooked_other',
+                    null,
+                    $lang
+                );
             }
         }
 
         if ($issuetype === 'cannot_book' || $issuetype === 'booking_status') {
             if ($userstatus === 'booked') {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_cannot_book_already_booked', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_cannot_book_already_booked'
+                        : 'agent_booking_diagnose_reason_cannot_book_already_booked_other',
+                    null,
+                    $lang
+                );
             }
 
             if (!empty($optionstats['fullybooked'])) {
@@ -628,31 +680,68 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
             }
 
             foreach ($conditionresults as $condition) {
+                $classname = $condition['classname'] ?? '';
+
+                // Instantiate the condition class to inspect its properties.
                 try {
-                    $class = $condition['classname']::instance();
+                    $class = $classname::instance();
                 } catch (\Throwable $e) {
-                    $class = new $condition['classname']();
+                    try {
+                        $class = new $classname();
+                    } catch (\Throwable $e2) {
+                        $class = null;
+                    }
                 }
 
-                if (method_exists($class, 'get_description_string') && $settings !== null) {
+                // Skip UI-only / hardcoded conditions that are not configurable
+                // restrictions (e.g. the "Book it" button display control).
+                // is_shown_in_mform() === false means the condition is purely internal.
+                if ($class !== null && method_exists($class, 'is_shown_in_mform') && !$class->is_shown_in_mform()) {
+                    continue;
+                }
+
+                if ($class !== null && method_exists($class, 'get_description_string') && $settings !== null) {
                     $description = $class->get_description_string(false, true, $settings);
                 } else {
-                    $description = $condition["description"] ?? '';
+                    $description = $condition['description'] ?? '';
                 }
                 $description = trim(strip_tags((string)($description)));
-                if ($description !== '' && strtolower($description) !== 'book now') {
-                    $reasons[] = $description . ' Blocking class: ' .  $condition["classname"];
+
+                // Skip empty descriptions.
+                if ($description === '') {
+                    continue;
                 }
+
+                // Add the human-readable description only — no class names in user-facing strings.
+                $reasons[] = $description;
             }
         }
 
         if ($issuetype === 'missing_email') {
             if ($userstatus === 'booked') {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_missing_email_booked', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_missing_email_booked'
+                        : 'agent_booking_diagnose_reason_missing_email_booked_other',
+                    null,
+                    $lang
+                );
             } else if ($userstatus === 'waitinglist') {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_missing_email_waitinglist', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_missing_email_waitinglist'
+                        : 'agent_booking_diagnose_reason_missing_email_waitinglist_other',
+                    null,
+                    $lang
+                );
             } else {
-                $reasons[] = $this->localized_string('agent_booking_diagnose_reason_missing_email_not_booked', null, $lang);
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_missing_email_not_booked'
+                        : 'agent_booking_diagnose_reason_missing_email_not_booked_other',
+                    null,
+                    $lang
+                );
             }
             $reasons[] = $this->localized_string('agent_booking_diagnose_reason_missing_email_limitations', null, $lang);
             $reasons[] = $this->localized_string('agent_booking_diagnose_reason_missing_email_manager_check', null, $lang);
