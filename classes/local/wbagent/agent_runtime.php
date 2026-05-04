@@ -234,7 +234,7 @@ class agent_runtime {
         $this->store->clear_step_messages($threadid);
 
         for ($step = 0; $step < $limit; $step++) {
-            $state->current_step = $step + 1;
+            $state->currentstep = $step + 1;
 
             // Plan + route — does NOT persist anything.
             $result = $this->run_internal($threadid, $cmid, $userid, $state->get_observations());
@@ -849,6 +849,7 @@ class agent_runtime {
      *
      * @param agent_state $state
      * @param array $commands
+     * @param array $results
      * @return bool
      */
     private function is_repeated_readonly_step(agent_state $state, array $commands, array $results): bool {

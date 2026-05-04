@@ -264,7 +264,7 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
         }
 
         return [
-            'valid'       => $result->is_valid,
+            'valid'       => $result->isvalid,
             'errors'      => $errors,
             'ambiguities' => $ambiguities,
         ];
@@ -605,6 +605,14 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
     ): array {
         $reasons = [];
         $userstatus = (string)($optionstats['userstatus'] ?? 'notbooked');
+        $statusstats = [];
+        foreach (['notbooked', 'iambooked', 'iamreserved', 'onwaitinglist', 'onnotifylist'] as $statuskey) {
+            if (!empty($optionstats[$statuskey]) && is_array($optionstats[$statuskey])) {
+                $statusstats = (array)$optionstats[$statuskey];
+                break;
+            }
+        }
+        $effectivestats = array_merge($statusstats, $optionstats);
 
         if ($issuetype === 'booking_status') {
             if ($userstatus === 'booked') {
@@ -661,16 +669,16 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
                 );
             }
 
-            if (!empty($optionstats['fullybooked'])) {
+            if (!empty($effectivestats['fullybooked'])) {
                 $reasons[] = $this->localized_string('agent_booking_diagnose_reason_cannot_book_fully_booked', null, $lang);
             }
 
-            if ((int)($optionstats['maxoverbooking'] ?? 0) === 0 && !empty($optionstats['fullybooked'])) {
+            if ((int)($effectivestats['maxoverbooking'] ?? 0) === 0 && !empty($effectivestats['fullybooked'])) {
                 $reasons[] = $this->localized_string('agent_booking_diagnose_reason_cannot_book_no_waitinglist', null, $lang);
-            } else if ((int)($optionstats['maxoverbooking'] ?? 0) > 0) {
-                if (!empty($optionstats['waitinglistfull'])) {
+            } else if ((int)($effectivestats['maxoverbooking'] ?? 0) > 0) {
+                if (!empty($effectivestats['waitinglistfull'])) {
                     $reasons[] = $this->localized_string('agent_booking_diagnose_reason_cannot_book_waitinglist_full', null, $lang);
-                } else if (!empty($optionstats['fullybooked'])) {
+                } else if (!empty($effectivestats['fullybooked'])) {
                     $reasons[] = $this->localized_string(
                         'agent_booking_diagnose_reason_cannot_book_waitinglist_available',
                         null,

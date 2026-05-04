@@ -28,6 +28,8 @@ use mod_booking\local\wbagent\task_registry;
  *
  * @package    mod_booking
  * @category   test
+ * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @coversNothing
  */
 final class docs_explainer_task_test extends abstract_agent_testcase {

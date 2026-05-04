@@ -45,10 +45,10 @@ namespace mod_booking\local\wbagent;
  */
 final class agent_state {
     /** @var int Current step index (1-based, set by the loop before each internal step). */
-    public int $current_step = 0;
+    public int $currentstep = 0;
 
     /** @var int Maximum number of steps for this invocation. */
-    public readonly int $max_steps;
+    public readonly int $maxsteps;
 
     /**
      * Ordered list of completed step records.
@@ -72,20 +72,20 @@ final class agent_state {
     /**
      * Private constructor — use agent_state::make().
      *
-     * @param int $max_steps
+     * @param int $maxsteps
      */
-    private function __construct(int $max_steps) {
-        $this->max_steps = $max_steps;
+    private function __construct(int $maxsteps) {
+        $this->maxsteps = $maxsteps;
     }
 
     /**
      * Create a fresh agent state for a new loop invocation.
      *
-     * @param  int  $max_steps  Maximum loop steps (enforced by run_loop()).
+     * @param  int  $maxsteps  Maximum loop steps (enforced by run_loop()).
      * @return self
      */
-    public static function make(int $max_steps): self {
-        return new self(max(1, $max_steps));
+    public static function make(int $maxsteps): self {
+        return new self(max(1, $maxsteps));
     }
 
     /**
@@ -94,12 +94,12 @@ final class agent_state {
      * Used when resuming a loop that previously hit the step limit and stored
      * its observations in thread metadata (_loop_resume).
      *
-     * @param  int      $max_steps     Maximum loop steps.
+     * @param  int      $maxsteps      Maximum loop steps.
      * @param  string[] $observations  Observation strings from the previous loop.
      * @return self
      */
-    public static function make_resumed(int $max_steps, array $observations): self {
-        $instance = new self(max(1, $max_steps));
+    public static function make_resumed(int $maxsteps, array $observations): self {
+        $instance = new self(max(1, $maxsteps));
         foreach ($observations as $obs) {
             $trimmed = trim((string)$obs);
             if ($trimmed !== '') {
@@ -123,7 +123,7 @@ final class agent_state {
      */
     public function record_step(array $toolcalls, array $results, string $observation): void {
         $this->steps[] = [
-            'step'       => $this->current_step,
+            'step'       => $this->currentstep,
             'tool_calls' => $toolcalls,
             'results'    => $results,
             'observation' => trim($observation),

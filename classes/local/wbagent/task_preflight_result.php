@@ -44,7 +44,7 @@ namespace mod_booking\local\wbagent;
  */
 final class task_preflight_result {
     /** @var bool Whether execution may proceed. */
-    public readonly bool $is_valid;
+    public readonly bool $isvalid;
 
     /**
      * Input with IDs resolved and values normalised.
@@ -52,7 +52,7 @@ final class task_preflight_result {
      *
      * @var array<string,mixed>
      */
-    public readonly array $prepared_input;
+    public readonly array $preparedinput;
 
     /**
      * Structured issue descriptors.
@@ -76,9 +76,9 @@ final class task_preflight_result {
      * @param array $issues
      */
     private function __construct(bool $isvalid, array $preparedinput, array $issues) {
-        $this->is_valid       = $isvalid;
-        $this->prepared_input = $preparedinput;
-        $this->issues         = $issues;
+        $this->isvalid = $isvalid;
+        $this->preparedinput = $preparedinput;
+        $this->issues = $issues;
     }
 
     /**

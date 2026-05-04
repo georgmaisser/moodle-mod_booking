@@ -704,7 +704,7 @@ class agent_decision_service {
             }
             $allissues = array_merge($allissues, $preflightresult->issues);
 
-            if (!$preflightresult->is_valid) {
+            if (!$preflightresult->isvalid) {
                 // Collect blocking issues.
                 foreach ($preflightresult->get_issues_by_severity('needs_clarification') as $issue) {
                     $msg = trim((string)($issue['message'] ?? ''));
@@ -725,7 +725,7 @@ class agent_decision_service {
 
             // Preflight succeeded: store prepared_input so executor never re-resolves.
             $updatedcommand = $command;
-            $updatedcommand['input'] = $preflightresult->prepared_input;
+            $updatedcommand['input'] = $preflightresult->preparedinput;
             $updatedcommands[] = $updatedcommand;
         }
 
@@ -1073,7 +1073,7 @@ class agent_decision_service {
                 }
             }
 
-            if (!$preflightresult->is_valid) {
+            if (!$preflightresult->isvalid) {
                 foreach ($preflightresult->issues as $issue) {
                     $msg = trim((string)($issue['message'] ?? ''));
                     if ($msg !== '') {
@@ -1095,7 +1095,7 @@ class agent_decision_service {
 
             // Preflight passed: update command input with resolved prepared_input.
             $updatedcommand = $command;
-            $updatedcommand['input'] = $preflightresult->prepared_input;
+            $updatedcommand['input'] = $preflightresult->preparedinput;
             $preparedcommands[] = $updatedcommand;
         }
 
@@ -1732,10 +1732,12 @@ class agent_decision_service {
             return false;
         }
 
-        return (bool)preg_match(
-            '/(\?|\bwhy\b|\bwarum\b|\bwieso\b|\bcannot\b|can\s+not|kann\s+.*\snicht|\bnicht\s+buchen\b|\bnot\s+booked\b|\bcancel\b|\bstorno\b|\bstornieren\b|\bdiagnose\b|\büberprüfe\b|\bpruefe\b)/u',
-            $normalized
-        );
+        $pattern = '/(\?'
+            . '|\bwhy\b|\bwarum\b|\bwieso\b|\bcannot\b|can\s+not'
+            . '|kann\s+.*\snicht|\bnicht\s+buchen\b|\bnot\s+booked\b'
+            . '|\bcancel\b|\bstorno\b|\bstornieren\b|\bdiagnose\b'
+            . '|\büberprüfe\b|\bpruefe\b)/u';
+        return (bool)preg_match($pattern, $normalized);
     }
 
     /**
@@ -2044,10 +2046,12 @@ class agent_decision_service {
             return false;
         }
 
-        return (bool)preg_match(
-            '/\b(last\s+option|previous\s+option|this\s+option|that\s+option|letzte\s+option|vorherige\s+option|diese\s+option|jene\s+option|die\s+option|dieser\s+kurs|diese\s+buchungsoption|oben\s+genannte\s+option)\b/u',
-            $normalized
-        );
+        $pattern = '/\b('
+            . 'last\s+option|previous\s+option|this\s+option|that\s+option'
+            . '|letzte\s+option|vorherige\s+option|diese\s+option|jene\s+option'
+            . '|die\s+option|dieser\s+kurs|diese\s+buchungsoption'
+            . '|oben\s+genannte\s+option)\b/u';
+        return (bool)preg_match($pattern, $normalized);
     }
 
     /**

@@ -142,7 +142,7 @@ class docs_lookup_service {
     /**
      * Load the full content of specific docs by path.
      *
-     * @param array<int,string> $paths Relative paths as returned by get_all_doc_index()
+     * @param array<int, string> $paths Relative paths as returned by get_all_doc_index()
      * @return array<int,array<string,mixed>>
      */
     public function load_docs_by_paths(array $paths): array {

@@ -33,8 +33,6 @@
 
 namespace mod_booking;
 
-defined('MOODLE_INTERNAL') || die();
-
 use advanced_testcase;
 use mod_booking\local\wbagent\ai_error_classifier;
 use mod_booking\local\wbagent\privacy_anonymizer;
@@ -50,9 +48,8 @@ use mod_booking\local\wbagent\result_payload_summarizer;
  * @covers \mod_booking\local\wbagent\privacy_anonymizer
  */
 final class agent_decision_service_test extends advanced_testcase {
-
     // -------------------------------------------------------------------------
-    // ai_error_classifier: classify_from_response.
+    // AI error classifier: classify_from_response.
 
     /**
      * HTTP 401 maps to TRIAL_TOKEN_INVALID.
@@ -103,7 +100,7 @@ final class agent_decision_service_test extends advanced_testcase {
     }
 
     // -------------------------------------------------------------------------
-    // result_payload_summarizer: for_observation.
+    // Result payload summarizer: for_observation.
 
     /**
      * Options list produces a correct observation string.
@@ -159,7 +156,7 @@ final class agent_decision_service_test extends advanced_testcase {
     }
 
     // -------------------------------------------------------------------------
-    // privacy_anonymizer: looks_like_anon_token.
+    // Privacy anonymizer: looks_like_anon_token.
 
     /**
      * Valid ANON token is detected.

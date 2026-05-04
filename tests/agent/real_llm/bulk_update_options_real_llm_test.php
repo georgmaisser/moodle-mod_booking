@@ -51,7 +51,6 @@ require_once(__DIR__ . '/../abstract_agent_testcase.php');
  * @coversNothing
  */
 final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
-
     protected function setUp(): void {
         parent::setUp();
         $this->require_real_llm();

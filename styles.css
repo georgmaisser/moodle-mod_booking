@@ -656,7 +656,7 @@ div.checkbox:has(label[for^="id_bo_cond_allowedtobookininstance_capabilitynotnee
 }
 
 #booking-ai-wrapper .booking-ai-intro {
-    background: linear-gradient(135deg, #fff9e6 0%, #ffffff 100%);
+    background: linear-gradient(135deg, #fff9e6 0%, #fff 100%);
 }
 
 #booking-ai-wrapper .booking-ai-body-layout {
@@ -762,7 +762,7 @@ div.checkbox:has(label[for^="id_bo_cond_allowedtobookininstance_capabilitynotnee
     transform: translateY(-50%);
     border: 1px solid #d8dee4;
     border-right: 0;
-    background: #ffffff;
+    background: #fff;
     border-top-left-radius: 0.5rem;
     border-bottom-left-radius: 0.5rem;
     padding: 0.5rem 0.25rem;
@@ -882,7 +882,9 @@ div.checkbox:has(label[for^="id_bo_cond_allowedtobookininstance_capabilitynotnee
 }
 
 @keyframes booking-ai-spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* ---- Thinking bar with Stop button ---- */

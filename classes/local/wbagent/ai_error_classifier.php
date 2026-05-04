@@ -41,7 +41,6 @@ use core_text;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class ai_error_classifier {
-
     /**
      * Classify an AI provider error from response metadata.
      *

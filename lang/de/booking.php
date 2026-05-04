@@ -476,6 +476,10 @@ $string['agent_validation_customformenabled_disabled'] =
 $string['agent_validation_customformelements_not_array'] =
     'Feld "customformelements" muss ein Array sein.';
 // --- create_option_task: type-specific required fields ---
+$string['agent_booking_create_confirm_without_location'] =
+    'Bitte bestaetigen Sie, dass Sie diese Buchungsoption ohne Angabe eines Orts/einer Adresse erstellen moechten.';
+$string['agent_booking_create_missing_required_fields'] =
+    'Bitte geben Sie die fehlenden Details fuer den ausgewaehlten Buchungstyp an.';
 $string['agent_booking_create_normal_missing_maxanswers'] =
     'Fuer den normalen Buchungstyp bitte die maximale Teilnehmerzahl angeben.';
 $string['agent_booking_create_normal_missing_startdate'] =
@@ -504,7 +508,9 @@ $string['agent_booking_create_slotbooking_missing_validity'] =
     'Fuer den Slot-Buchungstyp bitte angeben, ab wann und bis wann Slots verfuegbar sein sollen (slot_valid_from, slot_valid_until).';
 $string['agent_booking_create_slotbooking_missing_weekday'] =
     'Fuer den Slot-Buchungstyp bitte angeben, an welchen Wochentag(en) Slots angeboten werden sollen (slot_day_1=Montag ... slot_day_7=Sonntag). Nur die gewuenschten Tage auf true setzen; alle anderen weglassen oder auf false setzen.';
-// --- option_input_verification ---
+$string['agent_booking_create_user_ambiguous'] = 'Die Benutzeranfrage ist mehrdeutig.';
+$string['agent_booking_diagnose_cancellation_user_resolve_failed'] =
+    'Zielbenutzer konnte nicht aufgeloest werden.';
 $string['agent_booking_verify_field_text_failed'] =
     'Feld "text" konnte nach dem Speichern nicht bestaetigt werden. Angefordert: "{$a->requested}", gespeichert: "{$a->actual}".';
 $string['agent_booking_verify_field_location_failed'] =
@@ -517,16 +523,6 @@ $string['agent_booking_verify_field_maxanswers_failed'] =
     'Feld "maxanswers" konnte nach dem Speichern nicht bestaetigt werden. Angefordert: "{$a->requested}", gespeichert: "{$a->actual}".';
 $string['agent_booking_verify_field_maxoverbooking_failed'] =
     'Feld "maxoverbooking" konnte nach dem Speichern nicht bestaetigt werden. Angefordert: "{$a->requested}", gespeichert: "{$a->actual}".';
-// --- create_option_task: soft confirmation issues ---
-$string['agent_booking_create_confirm_without_location'] =
-    'Bitte bestaetigen Sie, dass Sie diese Buchungsoption ohne Angabe eines Orts/einer Adresse erstellen moechten.';
-$string['agent_booking_create_missing_required_fields'] =
-    'Bitte geben Sie die fehlenden Details fuer den ausgewaehlten Buchungstyp an.';
-// --- diagnose_cancellation_issue_task ---
-$string['agent_booking_diagnose_cancellation_user_resolve_failed'] =
-    'Zielbenutzer konnte nicht aufgeloest werden.';
-// --- create_user_task: fallback ---
-$string['agent_booking_create_user_ambiguous'] = 'Die Benutzeranfrage ist mehrdeutig.';
 $string['ai_action_add_price_category'] = 'Preiskategorie anlegen';
 $string['ai_action_create_option'] = 'Buchungsoption erstellen';
 $string['ai_action_create_user'] = 'Benutzer erstellen';
@@ -614,6 +610,9 @@ $string['ai_result_feedback_options_found'] = 'Ich habe {$a} passende Buchungsop
 $string['ai_result_feedback_options_none'] = 'Ich konnte keine passende Buchungsoption finden.';
 $string['ai_result_feedback_users_found'] = 'Ich habe {$a} passende Nutzer gefunden.';
 $string['ai_result_feedback_users_none'] = 'Ich konnte keine passenden Nutzer finden.';
+$string['ai_agent_loop_repeat_message'] = 'Ich habe {$a->steps} wiederholte Nachschlage-Schritte abgeschlossen und das neueste Ergebnis zurückgegeben.';
+$string['ai_agent_malformed_taskcall_clarification'] =
+    'Ich konnte den letzten Schritt nicht zuverlaessig verarbeiten. Bitte stellen Sie Ihre Frage noch einmal in einem kurzen Satz.';
 $string['ai_status_confirm_booking_bulk_update_options'] = 'Ich werde mehrere Buchungsoptionen auf einmal aktualisieren. Soll ich fortfahren?';
 $string['ai_status_confirm_booking_create_option'] = 'Ich werde eine neue Buchungsoption erstellen.';
 $string['ai_status_confirm_booking_search_options'] = 'Ich werde die Buchungsoptionen auflisten.';
@@ -631,9 +630,6 @@ $string['ai_status_taskcall_entities_list_all'] = 'Lade Liste aller Entities.';
 $string['ai_status_taskcall_entities_search'] = 'Suche passende Entities.';
 $string['ai_status_taskcall_shopping_cart_items'] = 'Lade Warenkorbpositionen.';
 $string['ai_status_taskcall_shopping_cart_totals'] = 'Lade Warenkorbsummen.';
-$string['ai_agent_loop_repeat_message'] = 'Ich habe {$a->steps} wiederholte Nachschlage-Schritte abgeschlossen und das neueste Ergebnis zurückgegeben.';
-$string['ai_agent_malformed_taskcall_clarification'] =
-    'Ich konnte den letzten Schritt nicht zuverlaessig verarbeiten. Bitte stellen Sie Ihre Frage noch einmal in einem kurzen Satz.';
 $string['ai_trial_token_invalid_message'] = 'Ihr AI-Trial-Token ist nicht mehr gueltig. Bitte kaufen Sie ein Abonnement, um fortzufahren — Ihr Token wird direkt nach dem Kauf erneuert und Sie koennen sofort weitermachen.';
 $string['ai_trial_token_invalid_subscription_message'] = 'Ihr AI-Trial-Token ist nicht mehr gueltig. Um fortzufahren, kaufen Sie ein Abonnement. Ihr Token wird direkt nach dem Kauf erneuert und Sie koennen den Agenten sofort weiter nutzen.
 

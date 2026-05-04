@@ -74,6 +74,7 @@ class interpreter implements agent_interpreter {
      * @param string $rawresponse
      * @param int    $cmid
      * @param int    $userid
+     * @param string $lastusermessage
      * @return array
      */
     public function interpret(string $rawresponse, int $cmid, int $userid, string $lastusermessage = ''): array {
@@ -391,6 +392,9 @@ class interpreter implements agent_interpreter {
      * Deep validation (DB lookups, entity resolution, conflict detection) is
      * delegated to agent_decision_service via task->preflight().
      *
+     * @param array $commands
+     * @param int $cmid
+     * @param int $userid
      * Returns [validated, errors, ambiguities, ambiguityoptions, attemptedtasks, issuecodes, confirmablecommands].
      */
     private function validate_commands(array $commands, int $cmid, int $userid): array {

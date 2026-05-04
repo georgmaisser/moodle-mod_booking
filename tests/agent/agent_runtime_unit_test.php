@@ -49,7 +49,6 @@ use mod_booking\local\wbagent\task_result;
  * @covers \mod_booking\local\wbagent\booking\support\slot_booking_normalizer
  */
 final class agent_runtime_unit_test extends abstract_agent_testcase {
-
     // No LLM skip in setUp — these unit tests run in every CI pass.
 
     // -------------------------------------------------------------------------

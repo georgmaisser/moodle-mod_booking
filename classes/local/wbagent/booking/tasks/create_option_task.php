@@ -348,7 +348,7 @@ class create_option_task extends base_booking_task implements task_trigger_provi
         }
 
         return [
-            'valid'       => $result->is_valid,
+            'valid'       => $result->isvalid,
             'errors'      => $errors,
             'ambiguities' => $ambiguities,
             'issues'      => $result->issues,

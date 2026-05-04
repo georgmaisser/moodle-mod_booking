@@ -68,8 +68,8 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
         $this->resetAfterTest();
         $state = agent_state::make(4);
 
-        $this->assertSame(4, $state->max_steps);
-        $this->assertSame(0, $state->current_step);
+        $this->assertSame(4, $state->maxsteps);
+        $this->assertSame(0, $state->currentstep);
         $this->assertSame(0, $state->step_count());
         $this->assertEmpty($state->get_observations());
         $this->assertEmpty($state->get_steps());
@@ -84,10 +84,10 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
     public function test_agent_state_make_clamps_min_steps(): void {
         $this->resetAfterTest();
         $state = agent_state::make(0);
-        $this->assertSame(1, $state->max_steps);
+        $this->assertSame(1, $state->maxsteps);
 
         $state2 = agent_state::make(-5);
-        $this->assertSame(1, $state2->max_steps);
+        $this->assertSame(1, $state2->maxsteps);
     }
 
     /**
@@ -98,7 +98,7 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
     public function test_agent_state_record_step_accumulates(): void {
         $this->resetAfterTest();
         $state = agent_state::make(5);
-        $state->current_step = 1;
+        $state->currentstep = 1;
 
         $state->record_step(
             [['task' => 'booking.search_options']],
@@ -112,7 +112,7 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
         $this->assertStringContainsString('Yoga', $state->get_observations()[0]);
 
         // Second step.
-        $state->current_step = 2;
+        $state->currentstep = 2;
         $state->record_step([], [], 'Step 2: Found 3 users.');
 
         $this->assertSame(2, $state->step_count());
@@ -128,7 +128,7 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
     public function test_agent_state_blank_observation_is_ignored(): void {
         $this->resetAfterTest();
         $state = agent_state::make(3);
-        $state->current_step = 1;
+        $state->currentstep = 1;
         $state->record_step([], [], '   ');
 
         $this->assertSame(1, $state->step_count());

@@ -151,7 +151,7 @@ final class agent_e2e_update_option_test extends abstract_agent_testcase {
             'maxanswers' => 10,
         ], (int)$this->booking->cmid, (int)$this->teacher->id);
 
-        $this->assertFalse($preflight->is_valid);
+        $this->assertFalse($preflight->isvalid);
         $this->assertNotEmpty($preflight->issues);
     }
 

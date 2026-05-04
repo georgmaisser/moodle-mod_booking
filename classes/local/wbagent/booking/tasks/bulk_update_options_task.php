@@ -257,7 +257,7 @@ class bulk_update_options_task extends base_booking_task implements task_trigger
         }
 
         return [
-            'valid'       => $result->is_valid,
+            'valid'       => $result->isvalid,
             'errors'      => $errors,
             'ambiguities' => $ambiguities,
             'issues'      => $result->issues,

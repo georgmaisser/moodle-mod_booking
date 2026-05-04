@@ -308,6 +308,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
      * previously violating and verifies that no answering service class is
      * called (tasks no longer have create_*_answering_service() methods).
      *
+     * @param string $classname
      * @dataProvider task_classes_provider
      */
     public function test_task_class_has_no_answering_service_factory(string $classname): void {
