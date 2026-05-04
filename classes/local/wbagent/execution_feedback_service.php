@@ -162,17 +162,40 @@ class execution_feedback_service {
                 prompttext: $prompt,
             );
             $response = $manager->process_action($action);
+            $rawcontent = (string)($response->get_response_data()['generatedcontent'] ?? '');
+            llm_debug_logger::log_exchange(
+                $this->store,
+                $threadid,
+                $cmid,
+                $userid,
+                'execution_feedback.generate_llm_feedback',
+                $prompt,
+                $rawcontent,
+                (bool)$response->get_success(),
+                (string)($response->get_errormessage() ?? '')
+            );
             if (!$response->get_success()) {
                 return $this->fallback_message_for_results($results, $outputlang);
             }
 
-            $message = trim((string)($response->get_response_data()['generatedcontent'] ?? ''));
+            $message = trim($rawcontent);
             if ($message === '') {
                 return $this->fallback_message_for_results($results, $outputlang);
             }
 
             return $message;
         } catch (\Throwable $e) {
+            llm_debug_logger::log_exchange(
+                $this->store,
+                $threadid,
+                $cmid,
+                $userid,
+                'execution_feedback.generate_llm_feedback',
+                $prompt,
+                '',
+                false,
+                $e->getMessage()
+            );
             return $this->fallback_message_for_results($results, $outputlang);
         }
     }
@@ -250,17 +273,39 @@ class execution_feedback_service {
                 prompttext: $prompt,
             );
             $response = $manager->process_action($action);
+            $rawcontent = trim((string)($response->get_response_data()['generatedcontent'] ?? ''));
+            llm_debug_logger::log_exchange(
+                $this->store,
+                $threadid,
+                $cmid,
+                $userid,
+                'execution_feedback.generate_llm_follow_up_suggestions',
+                $prompt,
+                $rawcontent,
+                (bool)$response->get_success(),
+                (string)($response->get_errormessage() ?? '')
+            );
             if (!$response->get_success()) {
                 return ['followupmessage' => '', 'suggestions' => []];
             }
 
-            $raw = trim((string)($response->get_response_data()['generatedcontent'] ?? ''));
-            if ($raw === '') {
+            if ($rawcontent === '') {
                 return ['followupmessage' => '', 'suggestions' => []];
             }
 
-            return $this->parse_follow_up_suggestions_json($raw, $taskschemas);
+            return $this->parse_follow_up_suggestions_json($rawcontent, $taskschemas);
         } catch (\Throwable $e) {
+            llm_debug_logger::log_exchange(
+                $this->store,
+                $threadid,
+                $cmid,
+                $userid,
+                'execution_feedback.generate_llm_follow_up_suggestions',
+                $prompt,
+                '',
+                false,
+                $e->getMessage()
+            );
             return ['followupmessage' => '', 'suggestions' => []];
         }
     }

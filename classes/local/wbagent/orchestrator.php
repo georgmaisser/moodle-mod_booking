@@ -129,6 +129,21 @@ class orchestrator {
             $manager = di::get(ai_manager::class);
             $response = $manager->process_action($action);
 
+            $rawtext = (string)($response->get_response_data()['generatedcontent'] ?? '');
+            $providersuccess = (bool)$response->get_success();
+            $providererror = (string)($response->get_errormessage() ?? '');
+            llm_debug_logger::log_exchange(
+                $this->store,
+                $threadid,
+                $cmid,
+                $userid,
+                'orchestrator.process',
+                $prompt,
+                $rawtext,
+                $providersuccess,
+                $providererror
+            );
+
             if (!$response->get_success()) {
                 $errormessage = $response->get_errormessage() ?? 'Provider returned an error.';
                 $errorcode = (int)$response->get_errorcode();
@@ -144,7 +159,6 @@ class orchestrator {
                 ];
             }
 
-            $rawtext = (string)($response->get_response_data()['generatedcontent'] ?? '');
             if ($rawtext === '') {
                 return [
                     'response_type' => 'error',
@@ -156,6 +170,17 @@ class orchestrator {
                 ];
             }
         } catch (\Throwable $e) {
+            llm_debug_logger::log_exchange(
+                $this->store,
+                $threadid,
+                $cmid,
+                $userid,
+                'orchestrator.process',
+                $prompt,
+                '',
+                false,
+                $e->getMessage()
+            );
             $issuecodes = ai_error_classifier::classify_from_response($e->getMessage(), (int)$e->getCode(), '');
             return [
                 'response_type' => 'error',

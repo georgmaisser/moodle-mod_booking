@@ -536,4 +536,65 @@ class conversation_store implements agent_conversation_store {
     public function clear_pending_intent(int $threadid): void {
         $this->set_thread_metadata_value($threadid, 'pending_intent', null);
     }
+
+    /**
+     * Persist one raw LLM request/response exchange for debug mode.
+     *
+     * @param int $threadid
+     * @param int $userid
+     * @param int $cmid
+     * @param string $source
+     * @param string $requesttext
+     * @param string $responsetext
+     * @param int $success
+     * @param string $errormessage
+     * @return int
+     */
+    public function add_llm_debug_entry(
+        int $threadid,
+        int $userid,
+        int $cmid,
+        string $source,
+        string $requesttext,
+        string $responsetext,
+        int $success,
+        string $errormessage = ''
+    ): int {
+        global $DB;
+
+        $record = new stdClass();
+        $record->threadid = $threadid;
+        $record->userid = $userid;
+        $record->cmid = $cmid;
+        $record->source = trim($source);
+        $record->requesttext = $requesttext;
+        $record->responsetext = $responsetext;
+        $record->success = $success ? 1 : 0;
+        $record->errormessage = $errormessage;
+        $record->timecreated = time();
+
+        return (int)$DB->insert_record('booking_ai_llm_debug', $record);
+    }
+
+    /**
+     * Return latest raw LLM exchanges for a thread.
+     *
+     * @param int $threadid
+     * @param int $limit
+     * @return array<int,stdClass>
+     */
+    public function get_llm_debug_entries(int $threadid, int $limit = 100): array {
+        global $DB;
+
+        $records = $DB->get_records(
+            'booking_ai_llm_debug',
+            ['threadid' => $threadid],
+            'id DESC',
+            '*',
+            0,
+            max(1, $limit)
+        );
+
+        return array_reverse(array_values($records));
+    }
 }
