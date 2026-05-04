@@ -88,6 +88,8 @@ $string['aftercompletedtext'] = 'After activity completed';
 $string['aftercompletedtext_help'] = 'Message shown after activity was completed';
 $string['aftersubmitaction'] = 'After saving...';
 $string['age'] = 'Age';
+$string['agent_booking_add_pricecat_capability_required'] =
+    'Adding price categories requires moodle/site:config capability.';
 $string['agent_booking_blocker_followup_bookingpolicy'] =
     'Please confirm how booking policy consent should be transmitted.';
 $string['agent_booking_blocker_followup_customform'] =
@@ -96,6 +98,14 @@ $string['agent_booking_blocker_followup_customform_bookingpolicy'] =
     'Please provide the custom form values and confirm how booking policy consent should be transmitted.';
 $string['agent_booking_blocker_followup_generic'] =
     'Please provide the required information to satisfy the blocking condition(s).';
+$string['agent_booking_book_users_booked'] =
+    'Booked {$a->count} user(s) into option id={$a->optionid}: {$a->userids}.';
+$string['agent_booking_book_users_option_resolve_failed'] = 'Could not resolve booking option.';
+$string['agent_booking_book_users_required_bookusersquery'] =
+    'No users could be resolved from the provided query. Please specify at least one user by name, e-mail, or id.';
+$string['agent_booking_book_users_soft_block'] =
+    'User {$a->userid} cannot book themselves ({$a->descriptions}), but you have the right to book on their behalf.';
+$string['agent_booking_book_users_soft_block_confirm'] = 'Do you really want to proceed?';
 $string['agent_booking_bulk_update_bookusersquery_unsupported'] =
     'Field "bookusersquery" is not supported for booking.bulk_update_options. Use booking.update_option for per-option user booking.';
 $string['agent_booking_bulk_update_completed'] =
@@ -109,6 +119,27 @@ $string['agent_booking_bulk_update_no_preview'] =
     'No recently previewed booking options are available for this follow-up request.';
 $string['agent_booking_bulk_update_option_not_in_instance'] =
     'Option id {$a} does not exist in this booking instance.';
+$string['agent_booking_cohort_multiple_match'] =
+    'Multiple cohorts matched "{$a->query}": {$a->candidates}.';
+$string['agent_booking_cohort_no_match'] = 'No cohort matched query "{$a}".';
+$string['agent_booking_competency_multiple_match'] =
+    'Multiple competencies matched "{$a->query}": {$a->candidates}.';
+$string['agent_booking_competency_no_match'] = 'No competency matched query "{$a}".';
+$string['agent_booking_course_no_shortname'] = 'Resolved course "{$a}" has no shortname.';
+$string['agent_booking_create_confirm_without_location'] =
+    'Please confirm that you want to create this booking option without specifying a location/address.';
+$string['agent_booking_create_missing_required_fields'] =
+    'Please provide the missing details for the selected booking type.';
+$string['agent_booking_create_normal_missing_duration'] =
+    'For normal booking type, please provide a duration or end date/time.';
+$string['agent_booking_create_normal_missing_location'] =
+    'For normal booking type, please provide a location or address.';
+$string['agent_booking_create_normal_missing_maxanswers'] =
+    'For normal booking type, please provide the maximum number of participants.';
+$string['agent_booking_create_normal_missing_startdate'] =
+    'For normal booking type, please provide a start date/time or date ranges.';
+$string['agent_booking_create_normal_missing_teacher'] =
+    'For normal booking type, please provide a teacher or teacher email.';
 $string['agent_booking_create_option_confirm_missing_values'] =
     'Please confirm that missing values may remain empty/default, or provide overrides to proceed.';
 $string['agent_booking_create_option_confirm_without_location'] =
@@ -133,6 +164,40 @@ $string['agent_booking_create_option_placeholder_override_required_single'] =
     'The field "{$a->label}" appears empty. To proceed, add override: ["{$a->field}"] in the command.';
 $string['agent_booking_create_option_which_title_question'] =
     'What title should the new booking option have?';
+$string['agent_booking_create_selflearning_missing_duration'] =
+    'For self-learning type, please provide a duration (in seconds).';
+$string['agent_booking_create_selflearning_missing_maxanswers'] =
+    'For self-learning type, please provide the maximum number of participants.';
+$string['agent_booking_create_selflearning_missing_teacher'] =
+    'For self-learning type, please provide a teacher or teacher email.';
+$string['agent_booking_create_slotbooking_missing_custom_duration'] =
+    'For custom slot type, please provide the maximum slot duration in seconds (slot_custom_max_duration).';
+$string['agent_booking_create_slotbooking_missing_duration'] =
+    'For slot booking type, please provide the slot duration in minutes (slot_duration_minutes).';
+$string['agent_booking_create_slotbooking_missing_participants'] =
+    'For slot booking type, please provide how many people can book each slot (slot_max_participants_per_slot).';
+$string['agent_booking_create_slotbooking_missing_timewindow'] =
+    'For slot booking type, please provide the daily opening and closing time window (slot_opening_time, slot_closing_time).';
+$string['agent_booking_create_slotbooking_missing_validity'] =
+    'For slot booking type, please provide from when until when slots should be available (slot_valid_from, slot_valid_until).';
+$string['agent_booking_create_slotbooking_missing_weekday'] =
+    'For slot booking type, please specify on which weekday(s) slots should be offered (slot_day_1=Monday ... slot_day_7=Sunday). Only set the intended days to true; all others must be false or omitted.';
+$string['agent_booking_create_user_ambiguous'] = 'User query is ambiguous.';
+$string['agent_booking_create_user_capability_required'] =
+    'Creating users requires moodle/user:create capability.';
+$string['agent_booking_create_user_created'] = 'User created.';
+$string['agent_booking_create_user_email_invalid'] = 'Field "email" must be a valid e-mail address.';
+$string['agent_booking_create_user_failed'] = 'Could not create user: {$a}.';
+$string['agent_booking_create_user_missing_userquery'] = 'Missing required userquery.';
+$string['agent_booking_create_user_query_required'] =
+    'Field "userquery" is required for booking.create_user.';
+$string['agent_booking_customformelement_invalid_formtype'] =
+    'customformelements[{$a->n}].formtype must be one of: {$a->types}.';
+$string['agent_booking_customformelement_label_required'] =
+    'customformelements[{$a->n}].label is required for formtype "{$a->formtype}".';
+$string['agent_booking_customformelement_not_object'] = 'customformelements[{$a}] must be an object.';
+$string['agent_booking_customformelements_max'] =
+    'Field "customformelements" supports at most 50 elements.';
 $string['agent_booking_diagnose_ambiguity_last_preview_multiple'] =
     'Your last preview contains multiple options. Please tell me which one you mean.';
 $string['agent_booking_diagnose_ambiguity_option_required'] =
@@ -142,8 +207,6 @@ $string['agent_booking_diagnose_ambiguity_option_title_or_id'] =
     'Please provide the booking option title or id.';
 $string['agent_booking_diagnose_cancel_other_user_permission_denied'] =
     'You are not allowed to run cancellation diagnostics for other users.';
-$string['agent_booking_diagnose_other_user_permission_denied'] =
-    'You are not allowed to run booking diagnostics for other users.';
 $string['agent_booking_diagnose_cancel_reason_activity_completed'] =
     'Cancellation is disabled because this booking activity is already completed for you.';
 $string['agent_booking_diagnose_cancel_reason_activity_completed_other'] =
@@ -152,6 +215,20 @@ $string['agent_booking_diagnose_cancel_reason_blocked_by_higher_condition'] =
     'The cancel button can only appear when cancelmyself (id=105) is the highest blocking condition. A higher blocking condition currently takes precedence.';
 $string['agent_booking_diagnose_cancel_reason_cancel_button_available'] =
     'cancelmyself (id=105) is currently the highest blocking condition, so the cancel flow should be available.';
+$string['agent_booking_diagnose_cancel_reason_concrete_coolingoff_active'] =
+    'Concrete setting: booking/coolingoffperiod = {$a} seconds. Admin action: reduce cooling-off period or set it to 0.';
+$string['agent_booking_diagnose_cancel_reason_concrete_effective_canceluntil_passed'] =
+    'Concrete setting: Effective cancellation deadline (computed from instance settings) has passed: {$a->timestamp} ({$a->date}). Admin action: adjust allowupdatedays/allowupdatetimestamp or relative cancellation rule.';
+$string['agent_booking_diagnose_cancel_reason_concrete_instance_cancancelbook_disabled'] =
+    'Concrete setting: booking.cancancelbook != 1. Admin action: In the booking instance, enable "Allow users to cancel their booking themselves".';
+$string['agent_booking_diagnose_cancel_reason_concrete_instance_disablecancel'] =
+    'Concrete setting: booking.json.disablecancel = 1 (instance-wide cancellation block). Admin action: In the booking instance, disable "Disable cancellation for the whole booking instance".';
+$string['agent_booking_diagnose_cancel_reason_concrete_notbooked_state'] =
+    'Concrete state: bookinginformation.notbooked is set. Without an active booking, self-cancel is not available.';
+$string['agent_booking_diagnose_cancel_reason_concrete_option_canceluntil_passed'] =
+    'Concrete setting: booking_option.json.canceluntil = {$a->timestamp} ({$a->date}) is in the past. Admin action: set canceluntil to a future timestamp or remove that restriction.';
+$string['agent_booking_diagnose_cancel_reason_concrete_option_disablecancel'] =
+    'Concrete setting: booking_option.json.disablecancel = 1 (this option only). Admin action: In option advanced settings, disable "Disable cancellation of this booking option".';
 $string['agent_booking_diagnose_cancel_reason_coolingoff_active'] =
     'A cooling-off period is active ({$a} seconds), so cancellation is temporarily blocked.';
 $string['agent_booking_diagnose_cancel_reason_effective_canceluntil_passed'] =
@@ -166,24 +243,16 @@ $string['agent_booking_diagnose_cancel_reason_instance_cancancelbook_disabled'] 
     'Self-cancellation is disabled in this booking instance (cancancelbook is not enabled).';
 $string['agent_booking_diagnose_cancel_reason_instance_disablecancel'] =
     'Cancellation is disabled for the whole booking instance.';
-$string['agent_booking_diagnose_cancel_reason_concrete_instance_disablecancel'] =
-    'Concrete setting: booking.json.disablecancel = 1 (instance-wide cancellation block). Admin action: In the booking instance, disable "Disable cancellation for the whole booking instance".';
 $string['agent_booking_diagnose_cancel_reason_none'] =
     'No specific cancellation blocker could be derived from the current state.';
 $string['agent_booking_diagnose_cancel_reason_not_booked'] =
     'You are currently not booked for this option.';
 $string['agent_booking_diagnose_cancel_reason_not_booked_other'] =
     'The selected user is currently not booked for this option.';
-$string['agent_booking_diagnose_cancel_reason_concrete_notbooked_state'] =
-    'Concrete state: bookinginformation.notbooked is set. Without an active booking, self-cancel is not available.';
 $string['agent_booking_diagnose_cancel_reason_option_canceluntil_passed'] =
     'This option has its own cancellation deadline, and it has already passed (until {$a}).';
-$string['agent_booking_diagnose_cancel_reason_concrete_option_canceluntil_passed'] =
-    'Concrete setting: booking_option.json.canceluntil = {$a->timestamp} ({$a->date}) is in the past. Admin action: set canceluntil to a future timestamp or remove that restriction.';
 $string['agent_booking_diagnose_cancel_reason_option_disablecancel'] =
     'Cancellation is disabled directly on this booking option.';
-$string['agent_booking_diagnose_cancel_reason_concrete_option_disablecancel'] =
-    'Concrete setting: booking_option.json.disablecancel = 1 (this option only). Admin action: In option advanced settings, disable "Disable cancellation of this booking option".';
 $string['agent_booking_diagnose_cancel_reason_price_without_shopping_cart'] =
     'This option uses pricing, but local_shopping_cart is not available, so cancellation is disabled.';
 $string['agent_booking_diagnose_cancel_reason_reserved_state'] =
@@ -196,16 +265,9 @@ $string['agent_booking_diagnose_cancel_reason_waitinglist_confirmation_pending']
     'You are on the waiting list with a pending/confirmed waiting-list confirmation state that blocks cancellation.';
 $string['agent_booking_diagnose_cancel_reason_waitinglist_no_confirmation_flow'] =
     'You are on the waiting list without confirmation flow and the option is not fully booked, so this cancellation action is blocked.';
-$string['agent_booking_diagnose_cancel_reason_concrete_instance_cancancelbook_disabled'] =
-    'Concrete setting: booking.cancancelbook != 1. Admin action: In the booking instance, enable "Allow users to cancel their booking themselves".';
-$string['agent_booking_diagnose_cancel_reason_concrete_effective_canceluntil_passed'] =
-    'Concrete setting: Effective cancellation deadline (computed from instance settings) has passed: {$a->timestamp} ({$a->date}). Admin action: adjust allowupdatedays/allowupdatetimestamp or relative cancellation rule.';
-$string['agent_booking_diagnose_cancel_reason_concrete_coolingoff_active'] =
-    'Concrete setting: booking/coolingoffperiod = {$a} seconds. Admin action: reduce cooling-off period or set it to 0.';
 $string['agent_booking_diagnose_cancel_required_question'] =
     'Field "question" is required for diagnose_cancellation_issue.';
-$string['agent_booking_book_users_required_bookusersquery'] =
-    'No users could be resolved from the provided query. Please specify at least one user by name, e-mail, or id.';
+$string['agent_booking_diagnose_cancellation_user_resolve_failed'] = 'Could not resolve target user.';
 $string['agent_booking_diagnose_error_last_preview_none'] =
     'There is no recent previewed option to refer to.';
 $string['agent_booking_diagnose_error_no_answer'] =
@@ -219,6 +281,8 @@ $string['agent_booking_diagnose_intro_checked_option_other'] =
     'I checked the booking situation for the selected user on "{$a}".';
 $string['agent_booking_diagnose_intro_missing_email'] = 'Here is what I can confirm about the email question:';
 $string['agent_booking_diagnose_intro_status'] = 'Your current status is {$a}.';
+$string['agent_booking_diagnose_other_user_permission_denied'] =
+    'You are not allowed to run booking diagnostics for other users.';
 $string['agent_booking_diagnose_reason_cannot_book_already_booked'] =
     'You are already booked, so another normal booking is not available.';
 $string['agent_booking_diagnose_reason_cannot_book_already_booked_other'] =
@@ -272,13 +336,26 @@ $string['agent_booking_diagnose_status_notbooked'] = 'not booked';
 $string['agent_booking_diagnose_status_notifylist'] = 'notify list';
 $string['agent_booking_diagnose_status_reserved'] = 'reserved';
 $string['agent_booking_diagnose_status_waitinglist'] = 'waiting list';
+$string['agent_booking_enrolledincoursequery_required'] =
+    'Please provide enrolledincoursequery to identify course(s).';
 $string['agent_booking_get_current_user_fallback'] =
     'You are currently signed in as {$a->fullname} ({$a->email}).';
 $string['agent_booking_get_current_user_identified'] =
     'Current user identified successfully.';
+$string['agent_booking_hascompetencyquery_required'] = 'Please provide hascompetencyquery.';
+$string['agent_booking_invalid_course_module'] = 'Invalid course module.';
+$string['agent_booking_list_actions_scope_invalid'] =
+    'Field "scope" must be one of: all, readonly, mutating.';
+$string['agent_booking_list_option_properties_found'] = '{$a} booking option property/properties found.';
 $string['agent_booking_list_option_properties_invalid_scope'] =
     'Invalid scope. Allowed values are: all, create, update, shared.';
-$string['agent_booking_list_option_properties_found'] = '{$a} booking option property/properties found.';
+$string['agent_booking_no_matching_options_to_update'] = 'No matching booking options found to update.';
+$string['agent_booking_no_valid_course_enrolled'] = 'No valid course found for enrolledincoursequery.';
+$string['agent_booking_option_resolve_settings_failed'] =
+    'Could not resolve booking option settings for optionid {$a}.';
+$string['agent_booking_previouslybookedquery_resolve_failed'] = 'Could not resolve previouslybookedquery.';
+$string['agent_booking_price_negative'] = 'Price for category "{$a}" must be non-negative.';
+$string['agent_booking_price_not_numeric'] = 'Price for category "{$a}" must be numeric.';
 $string['agent_booking_pricecat_created'] = 'Price category "{$a}" was created.';
 $string['agent_booking_pricecat_defaultvalue_nonnegative'] = 'The default value must not be negative.';
 $string['agent_booking_pricecat_defaultvalue_numeric'] = 'The default value must be a number.';
@@ -286,16 +363,26 @@ $string['agent_booking_pricecat_duplicate_exists'] = 'A price category with the 
 $string['agent_booking_pricecat_duplicate_user_question'] = 'A price category with this identifier already exists. Do you want to create another one with the same identifier?';
 $string['agent_booking_pricecat_identifier_invalid'] = 'The identifier may only contain letters, numbers, hyphens, or underscores.';
 $string['agent_booking_pricecat_identifier_required'] = 'Please provide a unique identifier for the price category.';
+$string['agent_booking_prices_empty'] =
+    'Field "prices" must contain at least one category => value pair.';
+$string['agent_booking_prices_not_object'] =
+    'Field "prices" must be an object map like {"default": 10, "student": 20}.';
 $string['agent_booking_resolve_user_ambiguous'] =
     'Multiple users matched: {$a}. Please provide a more specific user query (for example with e-mail or user id).';
 $string['agent_booking_resolve_user_no_match'] = 'No user matched user query "{$a}".';
 $string['agent_booking_resolve_user_query_required'] = 'Please provide a user query to identify the user.';
+$string['agent_booking_search_courses_found'] = '{$a} matching course(s) found.';
+$string['agent_booking_search_courses_no_results'] = 'No matching courses found.';
+$string['agent_booking_search_courses_query_required'] = 'Field "query" is required.';
+$string['agent_booking_search_users_found'] = '{$a} matching user(s) found.';
+$string['agent_booking_search_users_no_results'] = 'No matching users found.';
 $string['agent_booking_search_users_required_query'] =
     'Please provide a user search query.';
-$string['agent_booking_search_users_no_results'] = 'No matching users found.';
-$string['agent_booking_search_users_found'] = '{$a} matching user(s) found.';
-$string['agent_booking_search_courses_no_results'] = 'No matching courses found.';
-$string['agent_booking_search_courses_found'] = '{$a} matching course(s) found.';
+$string['agent_booking_teacher_no_email'] =
+    'Resolved teacher has no e-mail address. Please provide teacheremail directly.';
+$string['agent_booking_unknown_price_categories'] =
+    'Unknown price category/categories: {$a->unknown}. Existing categories are: {$a->existing}.';
+$string['agent_booking_unknown_task'] = 'Unknown booking task: {$a}.';
 $string['agent_booking_update_option_invalid_optionid'] =
     'The provided option id {$a} does not belong to this booking instance.';
 $string['agent_booking_update_option_invalid_optionid_question'] =
@@ -311,202 +398,93 @@ $string['agent_booking_update_permission_check_failed'] =
 $string['agent_booking_update_permission_denied_generic'] = 'You cannot update one or more requested fields.';
 $string['agent_booking_update_permission_denied_groups'] =
     'You are not allowed to update these field groups in this booking context: {$a}.';
-// --- executor ---
-$string['agent_executor_run_already_executed'] = 'Run already executed (idempotency key matched).';
-$string['agent_executor_task_not_registered'] = 'No task registered for "{$a}".';
-$string['agent_executor_structural_failure'] = 'Structural validation failure: {$a}.';
-// --- agent_decision_service ---
-$string['agent_decision_command_malformed'] = 'Command #{$a}: malformed.';
-$string['agent_decision_command_missing_task'] = 'Command #{$a}: missing task.';
-$string['agent_decision_command_task_not_registered'] = 'Command #{$a->idx}: task {$a->task} is not registered.';
-// --- generic task error ---
-$string['agent_booking_unknown_task'] = 'Unknown booking task: {$a}.';
-// --- create_user_task ---
-$string['agent_booking_create_user_capability_required'] =
-    'Creating users requires moodle/user:create capability.';
-$string['agent_booking_create_user_missing_userquery'] = 'Missing required userquery.';
-$string['agent_booking_create_user_query_required'] =
-    'Field "userquery" is required for booking.create_user.';
-$string['agent_booking_create_user_email_invalid'] = 'Field "email" must be a valid e-mail address.';
-$string['agent_booking_create_user_failed'] = 'Could not create user: {$a}.';
-$string['agent_booking_create_user_created'] = 'User created.';
+$string['agent_booking_user_booked_completion_failed'] =
+    'User {$a->userid} booked, but completion toggle failed: {$a->error}.';
+$string['agent_booking_user_booking_booked_users'] = 'Booked users: {$a}.';
+$string['agent_booking_user_booking_failed'] = 'User booking failed: {$a}.';
+$string['agent_booking_user_cannot_book_blocked'] =
+    'User {$a->userid} cannot be booked due to blocking conditions: {$a->conditions} {$a->followup}';
+$string['agent_booking_user_cannot_book_error'] =
+    'User {$a->userid} could not be booked: {$a->message}.';
+$string['agent_booking_user_cannot_book_error_rollback'] =
+    'User {$a->userid} could not be booked: {$a->message}. Blocking conditions: {$a->conditions} {$a->followup}';
+$string['agent_booking_user_cannot_book_hard_block'] =
+    'User {$a->userid} cannot be booked (hard block): {$a->descriptions}.';
 $string['agent_booking_user_exists'] = 'User already exists.';
-// --- add_price_category_task ---
-$string['agent_booking_add_pricecat_capability_required'] =
-    'Adding price categories requires moodle/site:config capability.';
-// --- search_courses_task ---
-$string['agent_booking_search_courses_query_required'] = 'Field "query" is required.';
-// --- list_actions_task ---
-$string['agent_booking_list_actions_scope_invalid'] =
-    'Field "scope" must be one of: all, readonly, mutating.';
-// --- book_users_task ---
-$string['agent_booking_book_users_option_resolve_failed'] = 'Could not resolve booking option.';
-$string['agent_booking_book_users_booked'] =
-    'Booked {$a->count} user(s) into option id={$a->optionid}: {$a->userids}.';
-$string['agent_booking_book_users_soft_block'] =
-    'User {$a->userid} cannot book themselves ({$a->descriptions}), but you have the right to book on their behalf.';
-$string['agent_booking_book_users_soft_block_confirm'] = 'Do you really want to proceed?';
-// --- booking_task_support: cohorts ---
-$string['agent_booking_cohort_no_match'] = 'No cohort matched query "{$a}".';
-$string['agent_booking_cohort_multiple_match'] =
-    'Multiple cohorts matched "{$a->query}": {$a->candidates}.';
-// --- booking_task_support: competencies ---
-$string['agent_booking_competency_no_match'] = 'No competency matched query "{$a}".';
-$string['agent_booking_competency_multiple_match'] =
-    'Multiple competencies matched "{$a->query}": {$a->candidates}.';
-// --- booking_task_support: users ---
 $string['agent_booking_user_id_no_email'] =
     'User id "{$a}" could not be resolved to a valid user with e-mail.';
 $string['agent_booking_user_no_email'] = 'User matched "{$a}" but has no e-mail address.';
-// --- booking_task_support: courses ---
-$string['agent_booking_course_no_shortname'] = 'Resolved course "{$a}" has no shortname.';
-$string['agent_booking_enrolledincoursequery_required'] =
-    'Please provide enrolledincoursequery to identify course(s).';
-$string['agent_booking_hascompetencyquery_required'] = 'Please provide hascompetencyquery.';
-// --- booking_task_support: book_users_for_option ---
-$string['agent_booking_user_cannot_book_hard_block'] =
-    'User {$a->userid} cannot be booked (hard block): {$a->descriptions}.';
-$string['agent_booking_user_cannot_book_blocked'] =
-    'User {$a->userid} cannot be booked due to blocking conditions: {$a->conditions} {$a->followup}';
-$string['agent_booking_user_cannot_book_error_rollback'] =
-    'User {$a->userid} could not be booked: {$a->message}. Blocking conditions: {$a->conditions} {$a->followup}';
-$string['agent_booking_user_cannot_book_error'] =
-    'User {$a->userid} could not be booked: {$a->message}.';
-$string['agent_booking_user_booked_completion_failed'] =
-    'User {$a->userid} booked, but completion toggle failed: {$a->error}.';
-$string['agent_booking_option_resolve_settings_failed'] =
-    'Could not resolve booking option settings for optionid {$a}.';
-// --- booking_task_support: customformelements ---
-$string['agent_booking_customformelements_max'] =
-    'Field "customformelements" supports at most 50 elements.';
-$string['agent_booking_customformelement_not_object'] = 'customformelements[{$a}] must be an object.';
-$string['agent_booking_customformelement_invalid_formtype'] =
-    'customformelements[{$a->n}].formtype must be one of: {$a->types}.';
-$string['agent_booking_customformelement_label_required'] =
-    'customformelements[{$a->n}].label is required for formtype "{$a->formtype}".';
-// --- booking_task_support: prices ---
-$string['agent_booking_prices_not_object'] =
-    'Field "prices" must be an object map like {"default": 10, "student": 20}.';
-$string['agent_booking_prices_empty'] =
-    'Field "prices" must contain at least one category => value pair.';
-$string['agent_booking_price_not_numeric'] = 'Price for category "{$a}" must be numeric.';
-$string['agent_booking_price_negative'] = 'Price for category "{$a}" must be non-negative.';
-$string['agent_booking_unknown_price_categories'] =
-    'Unknown price category/categories: {$a->unknown}. Existing categories are: {$a->existing}.';
-// --- booking_task_mutation_execute_service ---
-$string['agent_booking_invalid_course_module'] = 'Invalid course module.';
-$string['agent_booking_teacher_no_email'] =
-    'Resolved teacher has no e-mail address. Please provide teacheremail directly.';
-$string['agent_booking_no_valid_course_enrolled'] = 'No valid course found for enrolledincoursequery.';
-$string['agent_booking_previouslybookedquery_resolve_failed'] = 'Could not resolve previouslybookedquery.';
-$string['agent_booking_no_matching_options_to_update'] = 'No matching booking options found to update.';
-$string['agent_booking_user_booking_failed'] = 'User booking failed: {$a}.';
-$string['agent_booking_user_booking_booked_users'] = 'Booked users: {$a}.';
-// --- booking_mutation_validation ---
-$string['agent_validation_optiondatesmode_invalid'] =
-    'Field "optiondatesmode" must be either "append" or "replace".';
-$string['agent_validation_enrolledincourseoperator_invalid'] =
-    'Field "enrolledincourseoperator" must be either "OR" or "AND".';
-$string['agent_validation_enrolledincourseenabled_disabled'] =
-    'Cannot provide enrolledincoursequery when enrolledincourseenabled is false.';
-$string['agent_validation_coursestarttime_invalid'] =
-    'Field "coursestarttime" must be a valid ISO 8601 date-time string or Unix timestamp.';
-$string['agent_validation_courseendtime_invalid'] =
-    'Field "courseendtime" must be a valid ISO 8601 date-time string or Unix timestamp.';
-$string['agent_validation_bookingopeningtime_invalid'] =
-    'Field "bookingopeningtime" must be a valid ISO 8601 date-time string or Unix timestamp.';
-$string['agent_validation_bookingclosingtime_invalid'] =
-    'Field "bookingclosingtime" must be a valid ISO 8601 date-time string or Unix timestamp.';
-$string['agent_validation_optiondates_invalid'] =
-    'Field "optiondates" must contain at least one valid date range.';
-$string['agent_validation_date_range_label'] = 'Date range #{$a}: ';
-$string['agent_validation_date_start_in_past'] =
-    'The provided start time appears to be in the past. Please confirm the intended date/time.';
-$string['agent_validation_date_end_in_past'] =
-    'The provided end time appears to be in the past. Please confirm the intended date/time.';
-$string['agent_validation_courseendtime_before_starttime'] =
-    '"courseendtime" must be later than "coursestarttime".';
-$string['agent_validation_enrolledincohortoperator_invalid'] =
-    'Field "enrolledincohortoperator" must be either "OR" or "AND".';
-$string['agent_validation_enrolledincohortenabled_disabled'] =
-    'Cannot provide enrolledincohortquery when enrolledincohortenabled is false.';
-$string['agent_validation_hascompetencyoperator_invalid'] =
-    'Field "hascompetencyoperator" must be either "OR" or "AND".';
-$string['agent_validation_hascompetencyenabled_disabled'] =
-    'Cannot provide hascompetencyquery when hascompetencyenabled is false.';
-$string['agent_validation_previouslybookedenabled_disabled'] =
-    'Cannot provide previouslybookedquery when previouslybookedenabled is false.';
-$string['agent_validation_selectusersenabled_disabled'] =
-    'Cannot provide selectusersquery when selectusersenabled is false.';
-$string['agent_validation_bookusersquery_exclusive'] =
-    'When using "bookusersquery" in booking.update_option, no option updates are allowed in the same command. Remove these fields: {$a}.';
-$string['agent_validation_bookuserstimebooked_invalid'] =
-    'Field "bookuserstimebooked" must be a valid ISO 8601 date-time string or Unix timestamp.';
-$string['agent_validation_nooverlappingmode_invalid'] =
-    'Field "nooverlappingmode" must be "block" or "warn".';
-$string['agent_validation_userprofile_standard_incomplete'] =
-    'For standard profile condition, provide userprofilestandardfield and userprofilestandardoperator.';
-$string['agent_validation_userprofile_custom_incomplete'] =
-    'For custom profile condition, provide userprofilecustomfield and userprofilecustomoperator.';
-$string['agent_validation_overrideoperator_invalid'] = 'Field "{$a}" must be "OR" or "AND".';
-$string['agent_validation_userprofilecustomoperator2_required'] =
-    'Field "userprofilecustomoperator2" is required when "userprofilecustomfield2" is provided.';
-$string['agent_validation_duration_invalid'] =
-    'Field "duration" must be a positive integer (seconds).';
-$string['agent_validation_customformenabled_disabled'] =
-    'Cannot provide custom form content when customformenabled is false.';
-$string['agent_validation_customformelements_not_array'] = 'Field "customformelements" must be an array.';
-// --- create_option_task: type-specific required fields ---
-$string['agent_booking_create_normal_missing_maxanswers'] =
-    'For normal booking type, please provide the maximum number of participants.';
-$string['agent_booking_create_normal_missing_startdate'] =
-    'For normal booking type, please provide a start date/time or date ranges.';
-$string['agent_booking_create_normal_missing_duration'] =
-    'For normal booking type, please provide a duration or end date/time.';
-$string['agent_booking_create_normal_missing_location'] =
-    'For normal booking type, please provide a location or address.';
-$string['agent_booking_create_normal_missing_teacher'] =
-    'For normal booking type, please provide a teacher or teacher email.';
-$string['agent_booking_create_selflearning_missing_maxanswers'] =
-    'For self-learning type, please provide the maximum number of participants.';
-$string['agent_booking_create_selflearning_missing_duration'] =
-    'For self-learning type, please provide a duration (in seconds).';
-$string['agent_booking_create_selflearning_missing_teacher'] =
-    'For self-learning type, please provide a teacher or teacher email.';
-$string['agent_booking_create_slotbooking_missing_custom_duration'] =
-    'For custom slot type, please provide the maximum slot duration in seconds (slot_custom_max_duration).';
-$string['agent_booking_create_slotbooking_missing_duration'] =
-    'For slot booking type, please provide the slot duration in minutes (slot_duration_minutes).';
-$string['agent_booking_create_slotbooking_missing_participants'] =
-    'For slot booking type, please provide how many people can book each slot (slot_max_participants_per_slot).';
-$string['agent_booking_create_slotbooking_missing_timewindow'] =
-    'For slot booking type, please provide the daily opening and closing time window (slot_opening_time, slot_closing_time).';
-$string['agent_booking_create_slotbooking_missing_validity'] =
-    'For slot booking type, please provide from when until when slots should be available (slot_valid_from, slot_valid_until).';
-$string['agent_booking_create_slotbooking_missing_weekday'] =
-    'For slot booking type, please specify on which weekday(s) slots should be offered (slot_day_1=Monday ... slot_day_7=Sunday). Only set the intended days to true; all others must be false or omitted.';
-// --- option_input_verification ---
-$string['agent_booking_verify_field_text_failed'] =
-    'Field "text" could not be confirmed after save. Requested "{$a->requested}", stored "{$a->actual}".';
-$string['agent_booking_verify_field_location_failed'] =
-    'Field "location" could not be confirmed after save. Requested "{$a->requested}", stored "{$a->actual}". If local_entities is active, this usually means no matching entity exists yet. If you want, create the entity first and run booking.update_option again with the same location.';
 $string['agent_booking_verify_field_address_failed'] =
     'Field "address" could not be confirmed after save. Requested "{$a->requested}", stored "{$a->actual}".';
 $string['agent_booking_verify_field_description_failed'] =
     'Field "description" could not be confirmed after save. Requested text was not found in stored description.';
+$string['agent_booking_verify_field_location_failed'] =
+    'Field "location" could not be confirmed after save. Requested "{$a->requested}", stored "{$a->actual}". If local_entities is active, this usually means no matching entity exists yet. If you want, create the entity first and run booking.update_option again with the same location.';
 $string['agent_booking_verify_field_maxanswers_failed'] =
     'Field "maxanswers" could not be confirmed after save. Requested "{$a->requested}", stored "{$a->actual}".';
 $string['agent_booking_verify_field_maxoverbooking_failed'] =
     'Field "maxoverbooking" could not be confirmed after save. Requested "{$a->requested}", stored "{$a->actual}".';
-// --- create_option_task: soft confirmation issues ---
-$string['agent_booking_create_confirm_without_location'] =
-    'Please confirm that you want to create this booking option without specifying a location/address.';
-$string['agent_booking_create_missing_required_fields'] =
-    'Please provide the missing details for the selected booking type.';
-// --- diagnose_cancellation_issue_task ---
-$string['agent_booking_diagnose_cancellation_user_resolve_failed'] = 'Could not resolve target user.';
-// --- create_user_task: fallback ---
-$string['agent_booking_create_user_ambiguous'] = 'User query is ambiguous.';
+$string['agent_booking_verify_field_text_failed'] =
+    'Field "text" could not be confirmed after save. Requested "{$a->requested}", stored "{$a->actual}".';
+$string['agent_decision_command_malformed'] = 'Command #{$a}: malformed.';
+$string['agent_decision_command_missing_task'] = 'Command #{$a}: missing task.';
+$string['agent_decision_command_task_not_registered'] = 'Command #{$a->idx}: task {$a->task} is not registered.';
+$string['agent_executor_run_already_executed'] = 'Run already executed (idempotency key matched).';
+$string['agent_executor_structural_failure'] = 'Structural validation failure: {$a}.';
+$string['agent_executor_task_not_registered'] = 'No task registered for "{$a}".';
+$string['agent_validation_bookingclosingtime_invalid'] =
+    'Field "bookingclosingtime" must be a valid ISO 8601 date-time string or Unix timestamp.';
+$string['agent_validation_bookingopeningtime_invalid'] =
+    'Field "bookingopeningtime" must be a valid ISO 8601 date-time string or Unix timestamp.';
+$string['agent_validation_bookusersquery_exclusive'] =
+    'When using "bookusersquery" in booking.update_option, no option updates are allowed in the same command. Remove these fields: {$a}.';
+$string['agent_validation_bookuserstimebooked_invalid'] =
+    'Field "bookuserstimebooked" must be a valid ISO 8601 date-time string or Unix timestamp.';
+$string['agent_validation_courseendtime_before_starttime'] =
+    '"courseendtime" must be later than "coursestarttime".';
+$string['agent_validation_courseendtime_invalid'] =
+    'Field "courseendtime" must be a valid ISO 8601 date-time string or Unix timestamp.';
+$string['agent_validation_coursestarttime_invalid'] =
+    'Field "coursestarttime" must be a valid ISO 8601 date-time string or Unix timestamp.';
+$string['agent_validation_customformelements_not_array'] = 'Field "customformelements" must be an array.';
+$string['agent_validation_customformenabled_disabled'] =
+    'Cannot provide custom form content when customformenabled is false.';
+$string['agent_validation_date_end_in_past'] =
+    'The provided end time appears to be in the past. Please confirm the intended date/time.';
+$string['agent_validation_date_range_label'] = 'Date range #{$a}: ';
+$string['agent_validation_date_start_in_past'] =
+    'The provided start time appears to be in the past. Please confirm the intended date/time.';
+$string['agent_validation_duration_invalid'] =
+    'Field "duration" must be a positive integer (seconds).';
+$string['agent_validation_enrolledincohortenabled_disabled'] =
+    'Cannot provide enrolledincohortquery when enrolledincohortenabled is false.';
+$string['agent_validation_enrolledincohortoperator_invalid'] =
+    'Field "enrolledincohortoperator" must be either "OR" or "AND".';
+$string['agent_validation_enrolledincourseenabled_disabled'] =
+    'Cannot provide enrolledincoursequery when enrolledincourseenabled is false.';
+$string['agent_validation_enrolledincourseoperator_invalid'] =
+    'Field "enrolledincourseoperator" must be either "OR" or "AND".';
+$string['agent_validation_hascompetencyenabled_disabled'] =
+    'Cannot provide hascompetencyquery when hascompetencyenabled is false.';
+$string['agent_validation_hascompetencyoperator_invalid'] =
+    'Field "hascompetencyoperator" must be either "OR" or "AND".';
+$string['agent_validation_nooverlappingmode_invalid'] =
+    'Field "nooverlappingmode" must be "block" or "warn".';
+$string['agent_validation_optiondates_invalid'] =
+    'Field "optiondates" must contain at least one valid date range.';
+$string['agent_validation_optiondatesmode_invalid'] =
+    'Field "optiondatesmode" must be either "append" or "replace".';
+$string['agent_validation_overrideoperator_invalid'] = 'Field "{$a}" must be "OR" or "AND".';
+$string['agent_validation_previouslybookedenabled_disabled'] =
+    'Cannot provide previouslybookedquery when previouslybookedenabled is false.';
+$string['agent_validation_selectusersenabled_disabled'] =
+    'Cannot provide selectusersquery when selectusersenabled is false.';
+$string['agent_validation_userprofile_custom_incomplete'] =
+    'For custom profile condition, provide userprofilecustomfield and userprofilecustomoperator.';
+$string['agent_validation_userprofile_standard_incomplete'] =
+    'For standard profile condition, provide userprofilestandardfield and userprofilestandardoperator.';
+$string['agent_validation_userprofilecustomoperator2_required'] =
+    'Field "userprofilecustomoperator2" is required when "userprofilecustomfield2" is provided.';
 $string['ai_action_add_price_category'] = 'Create price category';
 $string['ai_action_create_option'] = 'Create booking option';
 $string['ai_action_create_user'] = 'Create user';
@@ -521,9 +499,14 @@ $string['ai_action_search_courses'] = 'Search courses';
 $string['ai_action_search_options'] = 'Search booking options';
 $string['ai_action_search_users'] = 'Search users';
 $string['ai_action_update_option'] = 'Update booking option';
+$string['ai_agent_loop_continue_question'] = 'I have completed {$a->steps} research steps but need more to fully answer your question. Shall I continue?';
+$string['ai_agent_loop_repeat_message'] = 'I completed {$a->steps} repeated lookup steps and returned the latest result.';
+$string['ai_agent_malformed_taskcall_clarification'] =
+    'I could not reliably parse the last step. Please ask your question again in one short sentence.';
 $string['ai_btn_cancel'] = 'Cancel';
 $string['ai_btn_confirm'] = 'Confirm & Execute';
 $string['ai_btn_send'] = 'Send';
+$string['ai_btn_stop'] = 'Stop';
 $string['ai_capability_explain_setup_desc'] = 'I can show which settings are available and what can be changed in the current context.';
 $string['ai_capability_explain_setup_title'] = 'Explain fields and setup possibilities';
 $string['ai_capability_manage_options_desc'] = 'I can create new options, update existing ones and apply changes to multiple options when needed.';
@@ -649,11 +632,6 @@ $string['ai_status_taskcall_entities_search'] = 'Searching matching entities.';
 $string['ai_status_taskcall_shopping_cart_items'] = 'Fetching shopping cart items.';
 $string['ai_status_taskcall_shopping_cart_totals'] = 'Fetching shopping cart totals.';
 $string['ai_thinking'] = 'AI is thinking…';
-$string['ai_btn_stop'] = 'Stop';
-$string['ai_agent_loop_continue_question'] = 'I have completed {$a->steps} research steps but need more to fully answer your question. Shall I continue?';
-$string['ai_agent_loop_repeat_message'] = 'I completed {$a->steps} repeated lookup steps and returned the latest result.';
-$string['ai_agent_malformed_taskcall_clarification'] =
-    'I could not reliably parse the last step. Please ask your question again in one short sentence.';
 $string['ai_trial_token_invalid_message'] = 'Your AI trial token is no longer valid. Please purchase a subscription to continue — your token will be renewed directly after purchase and you can continue immediately.';
 $string['ai_trial_token_invalid_subscription_message'] = 'Your AI trial token is no longer valid. To continue, purchase a subscription and your token will be renewed immediately so you can keep using the agent right away.
 

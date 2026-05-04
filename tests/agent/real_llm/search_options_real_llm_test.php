@@ -148,7 +148,7 @@ final class search_options_real_llm_test extends abstract_agent_testcase {
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        // ---- Turn 1: search ----
+        // Turn 1: Search.
         try {
             $result1 = $this->chat('Show me all "' . $prefix . '" options.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
@@ -170,7 +170,7 @@ final class search_options_real_llm_test extends abstract_agent_testcase {
             'Turn-1 result[results] must be populated from loop auto-execution'
         );
 
-        // ---- Turn 2: follow-up about free spots ----
+        // Turn 2: Follow-up about free spots.
         try {
             $result2 = $this->chat(
                 'From the options you just found for "' . $prefix . '", which ones have more than 5 free spots?',

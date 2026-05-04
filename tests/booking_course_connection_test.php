@@ -445,7 +445,7 @@ final class booking_course_connection_test extends advanced_testcase {
         $settings8 = singleton_service::get_instance_of_booking_option_settings($option8->id);
         // To avoid retrieving the singleton with the wrong settings, we destroy it.
         singleton_service::destroy_booking_singleton_by_cmid($settings8->cmid);
-        // TODO: We can connect course from template only via updationg of option. Does it a bug?
+        // TODO MDL-00000: We can connect course from template only via updationg of option. Is this a bug?
         $record->id = $option8->id;
         $record->cmid = $settings8->cmid;
         // We must explicitly provide an ID of newly created cnnected course.

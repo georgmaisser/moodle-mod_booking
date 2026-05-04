@@ -133,7 +133,7 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        // ---- Turn 1: no filter/value ----
+        // Turn 1: No filter/value.
         try {
             $result1 = $this->chat('Update all options.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
@@ -149,7 +149,7 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
             );
         }
 
-        // ---- Turn 2: specific filter + value ----
+        // Turn 2: Specific filter + value.
         $reply = 'Change all "' . $prefix . '" options to have 15 seats.';
 
         try {

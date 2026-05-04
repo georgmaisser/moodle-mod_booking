@@ -119,7 +119,7 @@ final class create_option_real_llm_test extends abstract_agent_testcase {
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        // ---- Turn 1: vague request ----
+        // Turn 1: Vague request.
         try {
             $result1 = $this->chat('Create a new booking option.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
@@ -134,7 +134,7 @@ final class create_option_real_llm_test extends abstract_agent_testcase {
             );
         }
 
-        // ---- Turn 2: supply full details ----
+        // Turn 2: Supply full details.
         $title = 'Piano Loop Test CONV02 ' . uniqid('', true);
         $reply = 'Call it "' . $title . '", 8 spots, start 2045-11-02T10:00:00, end 2045-11-02T12:00:00.';
 

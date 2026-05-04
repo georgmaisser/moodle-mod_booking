@@ -68,7 +68,7 @@ class init_comments extends external_api {
         // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
         /* $params = self::validate_parameters(self::execute_parameters(), ['page' => $page]); */
 
-        // TODO: Unfortunately, this is not enough to fix comments with wunderbyte table.
+        // TODO MDL-00000: Unfortunately, this is not enough to fix comments with wunderbyte table.
         // We still need to figure out how we can fix comments in combination with wb-table-search.
         comment::init();
 

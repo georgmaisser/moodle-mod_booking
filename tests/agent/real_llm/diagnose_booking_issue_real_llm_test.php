@@ -151,7 +151,7 @@ final class diagnose_booking_issue_real_llm_test extends abstract_agent_testcase
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        // ---- Turn 1: vague ----
+        // Turn 1: vague.
         try {
             $result1 = $this->chat("Why can't someone book?", $threadid, $store, $runtime);
         } catch (\Throwable $e) {
@@ -171,7 +171,7 @@ final class diagnose_booking_issue_real_llm_test extends abstract_agent_testcase
             'Turn-1 result[results] must be empty: no ids given, no tool should have been called'
         );
 
-        // ---- Turn 2: provide option id ----
+        // Turn 2: provide option id.
         $reply = 'Please diagnose why I cannot book option id ' . (int)$option->id . '. Investigate only.';
 
         try {

@@ -151,7 +151,7 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        // Turn 1: vague ----
+        // Turn 1: Vague.
         try {
             $result1 = $this->chat("Why can't the user cancel?", $threadid, $store, $runtime);
         } catch (\Throwable $e) {
@@ -170,7 +170,7 @@ final class diagnose_cancellation_issue_real_llm_test extends abstract_agent_tes
             'Turn 1 must not already contain booking.diagnose_cancellation_issue without an option reference.'
         );
 
-        // Turn 2: provide option id ----
+        // Turn 2: Provide option id.
         $reply = 'Diagnose cancellation issue for current user (me) on option id ' . (int)$option->id
             . '. Investigate only with booking.diagnose_cancellation_issue.';
 

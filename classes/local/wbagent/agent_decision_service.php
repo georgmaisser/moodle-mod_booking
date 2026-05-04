@@ -596,7 +596,8 @@ class agent_decision_service {
             if (isset($properties['optionquery']) && is_array($properties['optionquery'])) {
                 $optionquery = trim((string)($input['optionquery'] ?? ''));
                 if ($optionquery !== '') {
-                    $input['optionquery'] = trim($optionquery, " \t\n\r\0\x0B\"'“”„`.,;:!?()[]{}");
+                        $trimchars = " \t\n\r\0\x0B\"'“”„" . chr(96) . ".,;:!?()[]{}";
+                        $input['optionquery'] = trim($optionquery, $trimchars);
                 }
             }
 
@@ -1885,7 +1886,8 @@ class agent_decision_service {
         for ($len = $maxtokens; $len >= 1; $len--) {
             for ($start = 0; $start + $len <= count($tokens); $start++) {
                 $phrase = trim(implode(' ', array_slice($tokens, $start, $len)));
-                $phrase = trim($phrase, " \t\n\r\0\x0B\"'“”„`.,;:!?()[]{}");
+                $trimchars = " \t\n\r\0\x0B\"'“”„" . chr(96) . ".,;:!?()[]{}";
+                $phrase = trim($phrase, $trimchars);
                 if (core_text::strlen($phrase) < 3) {
                     continue;
                 }

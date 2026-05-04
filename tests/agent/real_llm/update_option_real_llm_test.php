@@ -127,7 +127,7 @@ final class update_option_real_llm_test extends abstract_agent_testcase {
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        // ---- Turn 1: missing option name ----
+        // Turn 1: missing option name.
         try {
             $result1 = $this->chat('Update the capacity to 25.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
@@ -142,7 +142,7 @@ final class update_option_real_llm_test extends abstract_agent_testcase {
             );
         }
 
-        // ---- Turn 2: provide option name ----
+        // Turn 2: provide option name.
         try {
             $result2 = $this->chat(
                 'I mean the option "' . $title . '" (id: ' . (int)$option->id . ').',

@@ -216,7 +216,7 @@ final class book_users_real_llm_test extends abstract_agent_testcase {
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        // ---- Turn 1: no specifics ----
+        // Turn 1: No specifics.
         try {
             $result1 = $this->chat('Book a user into an option.', $threadid, $store, $runtime);
         } catch (\Throwable $e) {
@@ -231,7 +231,7 @@ final class book_users_real_llm_test extends abstract_agent_testcase {
             );
         }
 
-        // ---- Turn 2: provide ids ----
+        // Turn 2: Provide IDs.
         $reply = 'Book user id ' . (int)$target->id . ' into option id ' . (int)$option->id . '.';
 
         try {

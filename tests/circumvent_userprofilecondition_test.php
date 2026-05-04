@@ -344,7 +344,7 @@ final class circumvent_userprofilecondition_test extends advanced_testcase {
                 'coursestarttime_0' => strtotime('now + 1 day'),
                 'courseendtime_0' => strtotime('now + 2 day'),
                 'bo_cond_userprofilefield_1_default_restrict' => 1,
-                'bo_cond_allowedtobookininstance_capabilitynotneeded' => 1, // TODO: Check why this is needed here!
+                'bo_cond_allowedtobookininstance_capabilitynotneeded' => 1, // TODO MDL-00000: Check why this is needed here!
                 'bo_cond_allowedtobookininstance_restrict' => 1,
             ],
             'users' => [ // Number of entries corresponds to number of users.

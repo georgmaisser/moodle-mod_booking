@@ -154,7 +154,11 @@ class search_courses_task extends base_booking_task implements task_trigger_prov
         $limit = isset($input['limit']) ? max(1, (int)$input['limit']) : 10;
 
         if ($query === '') {
-            return ['status' => 'error', 'detail' => get_string('agent_booking_search_courses_query_required', 'mod_booking'), 'resultid' => null];
+            return [
+                'status' => 'error',
+                'detail' => get_string('agent_booking_search_courses_query_required', 'mod_booking'),
+                'resultid' => null,
+            ];
         }
 
         $debugbase = $this->build_task_debug_message(self::TASK_NAME, $input);

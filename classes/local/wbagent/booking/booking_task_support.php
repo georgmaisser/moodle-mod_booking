@@ -1176,7 +1176,11 @@ class booking_task_support {
 
         $parts = self::split_query_list($rawquery);
         if (empty($parts)) {
-            return ['competencyids' => [], 'errors' => [get_string('agent_booking_hascompetencyquery_required', 'mod_booking')], 'ambiguities' => []];
+            return [
+                'competencyids' => [],
+                'errors' => [get_string('agent_booking_hascompetencyquery_required', 'mod_booking')],
+                'ambiguities' => [],
+            ];
         }
 
         $ids = [];

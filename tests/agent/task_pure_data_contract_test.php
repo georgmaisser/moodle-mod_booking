@@ -53,7 +53,6 @@ use mod_booking\local\wbagent\task_registry;
  * @covers     \mod_booking\local\wbagent\booking\tasks\bulk_update_options_task
  */
 final class task_pure_data_contract_test extends abstract_agent_testcase {
-    // ─────────────────────────────────────────────────────────────────────────
     // Helpers.
 
     /**
@@ -76,8 +75,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         return $this->get_option_from_db((int)$result['resultid']);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // search_options_task.
+    // Search_options_task.
 
     /**
      * search_options_task returns structured options array without calling LLM.
@@ -90,7 +88,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertArrayHasKey('options', $result);
         $this->assertIsArray($result['options']);
         $this->assertNotEmpty($result['options']);
-        // usermessage must be deterministic (not LLM-generated).
+        // Usermessage must be deterministic (not LLM-generated).
         $this->assertIsString($result['usermessage'] ?? '');
     }
 
@@ -105,8 +103,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertSame([], $result['options']);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // search_users_task.
+    // Search_users_task.
 
     /**
      * search_users_task returns structured users array without calling LLM.
@@ -119,8 +116,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertIsArray($result['users']);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // search_courses_task.
+    // Search_courses_task.
 
     /**
      * search_courses_task returns structured courses array without calling LLM.
@@ -133,8 +129,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertIsArray($result['courses']);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // diagnose_booking_issue_task.
+    // Diagnose_booking_issue_task.
 
     /**
      * diagnose_booking_issue_task returns structured diagnosis data without calling LLM.
@@ -160,8 +155,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertStringContainsString((string)$option->text, $usermessage);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // explain_docs_topic_task.
+    // Explain_docs_topic_task.
 
     /**
      * explain_docs_topic_task returns raw docs without calling LLM.
@@ -178,12 +172,11 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertArrayHasKey('path', $firstdoc);
         $this->assertArrayHasKey('title', $firstdoc);
         $this->assertArrayHasKey('excerpt', $firstdoc);
-        // usermessage is a deterministic doc summary, not LLM-generated narration.
+        // Usermessage is a deterministic doc summary, not LLM-generated narration.
         $this->assertNotSame('', trim((string)($result['usermessage'] ?? '')));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // list_option_properties_task.
+    // List_option_properties_task.
 
     /**
      * list_option_properties_task returns structured property list without calling LLM.
@@ -199,8 +192,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertArrayHasKey('type', $firstprop);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // list_actions_task.
+    // List_actions_task.
 
     /**
      * list_actions_task returns structured capabilities and actions without calling LLM.
@@ -212,7 +204,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertArrayHasKey('capabilities', $result);
         $this->assertNotEmpty($result['capabilities']);
         $this->assertArrayHasKey('actions', $result);
-        // usermessage is build_user_summary() output — deterministic, not LLM.
+        // Usermessage is build_user_summary() output — deterministic, not LLM.
         $usermessage = trim((string)($result['usermessage'] ?? ''));
         $this->assertNotSame('', $usermessage);
     }
@@ -234,8 +226,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // get_current_user_task.
+    // Get_current_user_task.
 
     /**
      * get_current_user_task returns structured user data without calling LLM.
@@ -250,7 +241,6 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertSame((int)$this->teacher->id, (int)$result['userid']);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
     // Agent runtime: fallback_message uses task schema (Phase 4).
 
     /**
@@ -298,7 +288,6 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
     // Verify no answering service class is instantiated in task execute().
 
     /**

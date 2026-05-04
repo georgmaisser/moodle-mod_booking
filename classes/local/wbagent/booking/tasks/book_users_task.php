@@ -312,7 +312,10 @@ class book_users_task extends base_booking_task implements task_trigger_provider
         if (($resolvedoption['status'] ?? '') !== 'ok') {
             return [
                 'status' => 'error',
-                'detail' => (string)($resolvedoption['message'] ?? get_string('agent_booking_book_users_option_resolve_failed', 'mod_booking')),
+                'detail' => (string)($resolvedoption['message'] ?? get_string(
+                    'agent_booking_book_users_option_resolve_failed',
+                    'mod_booking'
+                )),
                 'resultid' => null,
                 'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $input, ['Status: error']),
             ];
