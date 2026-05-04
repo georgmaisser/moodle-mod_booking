@@ -92,6 +92,13 @@ final class docs_explainer_task_test extends abstract_agent_testcase {
         $this->assertNotSame('', trim($summary));
         $this->assertStringContainsString('book', strtolower($summary));
         $this->assertStringContainsString('other option', strtolower($summary));
+        $this->assertNotEmpty($result['followupmessage'] ?? '');
+        $this->assertArrayHasKey('suggestions', $result);
+        $this->assertNotEmpty($result['suggestions']);
+        $firstsuggestion = $result['suggestions'][0] ?? [];
+        $this->assertSame('booking.list_actions', (string)($firstsuggestion['task'] ?? ''));
+        $this->assertNotSame('', trim((string)($firstsuggestion['label'] ?? '')));
+        $this->assertNotSame('', trim((string)($firstsuggestion['query'] ?? '')));
     }
 
     /**

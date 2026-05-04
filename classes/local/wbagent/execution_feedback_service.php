@@ -32,6 +32,9 @@ use mod_booking\local\wbagent\result_payload_summarizer;
  * Generates post-execution feedback and client-safe run results.
  */
 class execution_feedback_service {
+    /** @var int Maximum number of follow-up prompt suggestions. */
+    private const MAX_FOLLOW_UP_SUGGESTIONS = 3;
+
     /** @var conversation_store */
     private conversation_store $store;
 
@@ -66,12 +69,376 @@ class execution_feedback_service {
         array $results,
         string $outputlang = ''
     ): array {
-        $message = $this->fallback_message_for_results($results, $outputlang);
+        // Always generate the final user-facing message through the feedback layer
+        // so language policy is consistently enforced (same language as user input).
+        $message = $this->generate_llm_feedback($threadid, $cmid, $userid, $commands, $results, $outputlang);
+        $clientresults = $this->sanitize_results_for_client($results, $outputlang);
+
+        // Second pass: ask the model for context-aware follow-up prompts based on
+        // latest user intent + execution outcome + available tasks.
+        $followups = $this->generate_llm_follow_up_suggestions(
+            $threadid,
+            $cmid,
+            $userid,
+            $message,
+            $commands,
+            $results,
+            $outputlang
+        );
+        if (!empty($followups['suggestions']) && is_array($followups['suggestions']) && !empty($clientresults)) {
+            $clientresults[0]['suggestions'] = $followups['suggestions'];
+            $followupmessage = trim((string)($followups['followupmessage'] ?? ''));
+            if ($followupmessage !== '') {
+                $clientresults[0]['followupmessage'] = $followupmessage;
+            }
+        }
 
         return [
             'message' => $message,
-            'results' => $this->sanitize_results_for_client($results, $outputlang),
+            'results' => $clientresults,
         ];
+    }
+
+    /**
+     * Ask the LLM for the final user-facing post-execution message.
+     *
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @param array $commands
+     * @param array $results
+     * @param string $outputlang
+     * @return string
+     */
+    private function generate_llm_feedback(
+        int $threadid,
+        int $cmid,
+        int $userid,
+        array $commands,
+        array $results,
+        string $outputlang
+    ): string {
+        $context = context_module::instance($cmid);
+        $recentmessages = $this->store->get_recent_messages($threadid, 8);
+        $latestusermessage = '';
+        for ($i = count($recentmessages) - 1; $i >= 0; $i--) {
+            if (($recentmessages[$i]->role ?? '') === 'user') {
+                $latestusermessage = (string)($recentmessages[$i]->content ?? '');
+                break;
+            }
+        }
+
+        $sanitizedcommands = $this->anonymizer->anonymize_value_for_llm($threadid, $commands);
+        $sanitizedresults = $this->anonymizer->anonymize_value_for_llm($threadid, $results);
+
+        $prompt = $this->build_feedback_prompt(
+            $outputlang,
+            $latestusermessage,
+            $sanitizedcommands,
+            $sanitizedresults
+        );
+
+        try {
+            $manager = di::get(ai_manager::class);
+            if (!$manager->is_action_available(generate_text::class)) {
+                return $this->fallback_message_for_results($results, $outputlang);
+            }
+
+            $hascontextavailabilitycheck = method_exists($manager, 'is_action_enabled_in_context');
+            $actiondisabledincontext = $hascontextavailabilitycheck
+                && !call_user_func([$manager, 'is_action_enabled_in_context'], $context, generate_text::class);
+            if ($actiondisabledincontext) {
+                return $this->fallback_message_for_results($results, $outputlang);
+            }
+
+            $action = new generate_text(
+                contextid: $context->id,
+                userid: $userid,
+                prompttext: $prompt,
+            );
+            $response = $manager->process_action($action);
+            if (!$response->get_success()) {
+                return $this->fallback_message_for_results($results, $outputlang);
+            }
+
+            $message = trim((string)($response->get_response_data()['generatedcontent'] ?? ''));
+            if ($message === '') {
+                return $this->fallback_message_for_results($results, $outputlang);
+            }
+
+            return $message;
+        } catch (\Throwable $e) {
+            return $this->fallback_message_for_results($results, $outputlang);
+        }
+    }
+
+    /**
+     * Generate follow-up prompt suggestions via a second model call.
+     *
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @param string $finalmessage
+     * @param array $commands
+     * @param array $results
+     * @param string $outputlang
+     * @return array{followupmessage:string,suggestions:array<int,array<string,string>>}
+     */
+    private function generate_llm_follow_up_suggestions(
+        int $threadid,
+        int $cmid,
+        int $userid,
+        string $finalmessage,
+        array $commands,
+        array $results,
+        string $outputlang
+    ): array {
+        $context = context_module::instance($cmid);
+        $latestusermessage = $this->extract_latest_user_message($threadid);
+        $registry = task_registry::make_default();
+        $taskschemas = [];
+        foreach ($registry->get_task_names() as $taskname) {
+            $task = $registry->get_task($taskname);
+            if (!$task) {
+                continue;
+            }
+            $schema = (array)$task->get_schema();
+            $taskschemas[] = [
+                'task' => $taskname,
+                'description' => (string)($schema['description'] ?? ''),
+                'readonly' => (bool)($schema['readonly'] ?? false),
+            ];
+        }
+
+        $sanitizedcommands = $this->anonymizer->anonymize_value_for_llm($threadid, $commands);
+        $sanitizedresults = $this->anonymizer->anonymize_value_for_llm($threadid, $results);
+        $prompt = $this->build_follow_up_prompt(
+            $outputlang,
+            $latestusermessage,
+            $finalmessage,
+            $taskschemas,
+            $sanitizedcommands,
+            $sanitizedresults
+        );
+
+        try {
+            $manager = di::get(ai_manager::class);
+            if (!$manager->is_action_available(generate_text::class)) {
+                return ['followupmessage' => '', 'suggestions' => []];
+            }
+
+            if (method_exists($manager, 'is_action_enabled_in_context')) {
+                $actionenabledincontext = (bool)call_user_func(
+                    [$manager, 'is_action_enabled_in_context'],
+                    $context,
+                    generate_text::class
+                );
+                if (!$actionenabledincontext) {
+                    return ['followupmessage' => '', 'suggestions' => []];
+                }
+            }
+
+            $action = new generate_text(
+                contextid: $context->id,
+                userid: $userid,
+                prompttext: $prompt,
+            );
+            $response = $manager->process_action($action);
+            if (!$response->get_success()) {
+                return ['followupmessage' => '', 'suggestions' => []];
+            }
+
+            $raw = trim((string)($response->get_response_data()['generatedcontent'] ?? ''));
+            if ($raw === '') {
+                return ['followupmessage' => '', 'suggestions' => []];
+            }
+
+            return $this->parse_follow_up_suggestions_json($raw, $taskschemas);
+        } catch (\Throwable $e) {
+            return ['followupmessage' => '', 'suggestions' => []];
+        }
+    }
+
+    /**
+     * Build prompt for follow-up suggestion generation.
+     *
+     * @param string $outputlang
+     * @param string $latestusermessage
+     * @param string $finalmessage
+     * @param array $taskschemas
+     * @param array $commands
+     * @param array $results
+     * @return string
+     */
+    private function build_follow_up_prompt(
+        string $outputlang,
+        string $latestusermessage,
+        string $finalmessage,
+        array $taskschemas,
+        array $commands,
+        array $results
+    ): string {
+        $tasksjson = json_encode($taskschemas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $commandsjson = json_encode($commands, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $resultsjson = json_encode($results, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+        return "You are a follow-up prompt suggestion assistant for Moodle Booking.\n"
+            . "You get the latest user request, executed task results, and the list of allowed tasks.\n"
+            . "Suggest what the user could ask next, as editable prompt texts (not auto-executed commands).\n\n"
+            . "Rules:\n"
+            . "- Output ONLY valid JSON object.\n"
+            . "- JSON format: {\"followupmessage\":\"...\",\"suggestions\":[{\"query\":\"...\",\"task\":\"...\","
+            . "\"label\":\"...\"}]}.\n"
+            . "- suggestions length: 1 to " . self::MAX_FOLLOW_UP_SUGGESTIONS . ".\n"
+            . "- query must be a natural language prompt the user can edit and send.\n"
+            . "- Do not output commands or internal metadata.\n"
+            . "- task must be one of the allowed task names.\n"
+            . "- Use same language as latest user message. If unclear use: "
+            . ($outputlang !== '' ? $outputlang : 'current') . ".\n"
+            . "- Keep suggestions specific to the actual result context.\n\n"
+            . "Latest user message:\n"
+            . ($latestusermessage !== '' ? $latestusermessage : '(none)') . "\n\n"
+            . "Final assistant message:\n"
+            . ($finalmessage !== '' ? $finalmessage : '(none)') . "\n\n"
+            . "Allowed tasks:\n"
+            . ($tasksjson !== false ? $tasksjson : '[]') . "\n\n"
+            . "Executed commands:\n"
+            . ($commandsjson !== false ? $commandsjson : '[]') . "\n\n"
+            . "Execution results:\n"
+            . ($resultsjson !== false ? $resultsjson : '[]');
+    }
+
+    /**
+     * Parse model JSON output for follow-up suggestions.
+     *
+     * @param string $raw
+     * @param array $taskschemas
+     * @return array{followupmessage:string,suggestions:array<int,array<string,string>>}
+     */
+    private function parse_follow_up_suggestions_json(string $raw, array $taskschemas): array {
+        $allowedtasks = [];
+        foreach ($taskschemas as $task) {
+            $name = trim((string)($task['task'] ?? ''));
+            if ($name !== '') {
+                $allowedtasks[$name] = true;
+            }
+        }
+
+        $candidate = trim($raw);
+        if ($candidate === '') {
+            return ['followupmessage' => '', 'suggestions' => []];
+        }
+
+        if (preg_match('/\{.*\}/s', $candidate, $matches) === 1) {
+            $candidate = (string)$matches[0];
+        }
+
+        $decoded = json_decode($candidate, true);
+        if (!is_array($decoded)) {
+            return ['followupmessage' => '', 'suggestions' => []];
+        }
+
+        $followupmessage = trim((string)($decoded['followupmessage'] ?? ''));
+        $suggestions = [];
+        $seenqueries = [];
+        $rawsuggestions = $decoded['suggestions'] ?? [];
+        if (!is_array($rawsuggestions)) {
+            $rawsuggestions = [];
+        }
+
+        foreach ($rawsuggestions as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $query = trim((string)($entry['query'] ?? ''));
+            $task = trim((string)($entry['task'] ?? ''));
+            $label = trim((string)($entry['label'] ?? ''));
+
+            if ($query === '' || $task === '' || !isset($allowedtasks[$task])) {
+                continue;
+            }
+            if ($label === '') {
+                $label = $task;
+            }
+            if (isset($seenqueries[$query])) {
+                continue;
+            }
+
+            $seenqueries[$query] = true;
+            $suggestions[] = [
+                'query' => $query,
+                'task' => $task,
+                'label' => $label,
+            ];
+
+            if (count($suggestions) >= self::MAX_FOLLOW_UP_SUGGESTIONS) {
+                break;
+            }
+        }
+
+        return [
+            'followupmessage' => $followupmessage,
+            'suggestions' => $suggestions,
+        ];
+    }
+
+    /**
+     * Extract the latest user message from a thread.
+     *
+     * @param int $threadid
+     * @return string
+     */
+    private function extract_latest_user_message(int $threadid): string {
+        $recentmessages = $this->store->get_recent_messages($threadid, 8);
+        for ($i = count($recentmessages) - 1; $i >= 0; $i--) {
+            if (($recentmessages[$i]->role ?? '') === 'user') {
+                return (string)($recentmessages[$i]->content ?? '');
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Build the summary prompt for the post-execution LLM pass.
+     *
+     * @param string $outputlang
+     * @param string $latestusermessage
+     * @param array $commands
+     * @param array $results
+     * @return string
+     */
+    private function build_feedback_prompt(
+        string $outputlang,
+        string $latestusermessage,
+        array $commands,
+        array $results
+    ): string {
+        $commandsjson = json_encode($commands, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $resultsjson = json_encode($results, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+        return "You are the final user-facing assistant message writer for Moodle Booking.\n"
+            . "The internal tasks have already been executed successfully or with structured result data.\n"
+            . "Write exactly the assistant message that should be shown to the end user now.\n\n"
+            . "Rules:\n"
+            . "- Output plain text only.\n"
+            . "- Do not output JSON, bullet lists, code fences, or internal metadata.\n"
+            . "- Use the same language as the latest user message. If unclear, prefer this language code: "
+            . ($outputlang !== '' ? $outputlang : 'current') . ".\n"
+            . "- Do not mention task names, command numbers, run ids, response types, or raw JSON.\n"
+            . "- If there are zero matches, say that clearly.\n"
+            . "- If there are matches, summarize them naturally and concisely.\n"
+            . "- If booking options are included, use their real option ids from the structured results.\n"
+            . "- Never renumber options as 1, 2, 3, ... unless those are the actual option ids.\n"
+            . "- If ANON_USER tokens appear, keep them unchanged.\n"
+            . "- Never invent details not present in the results.\n\n"
+            . "Latest user message:\n"
+            . ($latestusermessage !== '' ? $latestusermessage : '(none)') . "\n\n"
+            . "Executed commands:\n"
+            . ($commandsjson !== false ? $commandsjson : '[]') . "\n\n"
+            . "Structured results:\n"
+            . ($resultsjson !== false ? $resultsjson : '[]');
     }
 
     /**
@@ -164,6 +531,18 @@ class execution_feedback_service {
 
             if (!empty($result['capabilities']) && is_array($result['capabilities'])) {
                 $entry['capabilities'] = $result['capabilities'];
+            }
+
+            if (!empty($result['suggestions']) && is_array($result['suggestions'])) {
+                $entry['suggestions'] = $result['suggestions'];
+            }
+
+            if (
+                isset($result['followupmessage'])
+                && is_string($result['followupmessage'])
+                && trim($result['followupmessage']) !== ''
+            ) {
+                $entry['followupmessage'] = trim($result['followupmessage']);
             }
 
             if (

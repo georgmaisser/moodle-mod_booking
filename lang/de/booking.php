@@ -524,8 +524,11 @@ $string['agent_booking_verify_field_maxanswers_failed'] =
 $string['agent_booking_verify_field_maxoverbooking_failed'] =
     'Feld "maxoverbooking" konnte nach dem Speichern nicht bestaetigt werden. Angefordert: "{$a->requested}", gespeichert: "{$a->actual}".';
 $string['ai_action_add_price_category'] = 'Preiskategorie anlegen';
+$string['ai_action_bulk_update_options'] = 'Mehrere Buchungsoptionen aktualisieren';
 $string['ai_action_create_option'] = 'Buchungsoption erstellen';
 $string['ai_action_create_user'] = 'Benutzer erstellen';
+$string['ai_action_diagnose_booking_issue'] = 'Buchungsproblem analysieren';
+$string['ai_action_explain_docs_topic'] = 'Dokumentationsthema erklaeren';
 $string['ai_action_diagnose_cancellation_issue'] = 'Stornoproblem analysieren';
 $string['ai_action_get_current_user'] = 'Aktuellen Benutzer abrufen';
 $string['ai_action_list_actions'] = 'Unterstuetzte Aktionen auflisten';
@@ -543,6 +546,12 @@ $string['ai_docs_explain_generation_failed'] =
 $string['ai_docs_explain_invalid_maxdocs'] = 'Das Feld "maxdocs" muss groesser als 0 sein, wenn es angegeben wird.';
 $string['ai_docs_explain_no_match'] = 'Ich konnte kein passendes Dokumentationsthema fuer diese Frage finden.';
 $string['ai_docs_explain_required_question'] = 'Das Feld "question" ist fuer explain_docs_topic erforderlich.';
+$string['ai_followup_offer'] = 'Kann ich noch weiter helfen? Sie koennen mit einer dieser Optionen fortfahren.';
+$string['ai_followup_create_option_with_property_query'] = 'Bitte helfen Sie mir, eine Buchungsoption zu erstellen und dieses Feld zu verwenden: {$a}';
+$string['ai_followup_diagnose_option_query'] = 'Bitte analysieren Sie, warum diese Buchungsoption fuer Nutzende problematisch sein koennte: {$a}';
+$string['ai_followup_search_related_options_query'] = 'Bitte finden Sie aehnliche Buchungsoptionen zu: {$a}';
+$string['ai_followup_suggestion_query'] = 'Bitte helfen Sie mir bei: {$a}';
+$string['ai_followup_update_option_query'] = 'Bitte aktualisieren Sie diese Buchungsoption: {$a}';
 $string['ai_lookup_detected_blocked_mutation'] = 'Ich habe Ihre Nachricht als Such-/Listenanfrage verstanden und deshalb keine Aenderung vorbereitet. Bitte sagen Sie, was ich genau suchen soll.';
 $string['ai_preview_latest_option'] =
     'Hier ist die zuletzt erstellte oder aktualisierte Buchungsoption.';

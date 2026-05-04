@@ -330,6 +330,49 @@ const renderAmbiguityOptionsHtml = (options = []) => {
 };
 
 /**
+ * Render clickable follow-up suggestions below a completed assistant response.
+ *
+ * @param {Array<Object>} results
+ * @returns {string}
+ */
+const renderFollowUpSuggestionsHtml = (results = []) => {
+    const entries = Array.isArray(results) ? results : [];
+    const resultWithSuggestions = entries.find(
+        (entry) => Array.isArray(entry && entry.suggestions) && entry.suggestions.length > 0
+    );
+    if (!resultWithSuggestions) {
+        return '';
+    }
+
+    const suggestions = Array.isArray(resultWithSuggestions.suggestions) ? resultWithSuggestions.suggestions : [];
+    const buttons = suggestions.map((entry) => {
+        const query = String((entry && entry.query) || '').trim();
+        const label = String((entry && entry.label) || query).trim();
+        if (query === '' || label === '') {
+            return '';
+        }
+
+        return '<button type="button" class="btn btn-sm btn-outline-secondary mr-2 mb-2 booking-ai-followup-option"'
+            + ` data-query="${escapeHtml(query)}"`
+            + ` title="${escapeHtml(query)}">${escapeHtml(label)}</button>`;
+    }).filter((button) => button !== '').join('');
+
+    if (buttons === '') {
+        return '';
+    }
+
+    const followUpMessage = String((resultWithSuggestions && resultWithSuggestions.followupmessage) || '').trim();
+    const introHtml = followUpMessage !== ''
+        ? `<div class="font-weight-bold mb-2">${escapeHtml(followUpMessage)}</div>`
+        : '';
+
+    return '<div class="booking-ai-followup-options mt-3 p-3 border rounded bg-light">'
+        + introHtml
+        + `<div class="d-flex flex-wrap">${buttons}</div>`
+        + '</div>';
+};
+
+/**
  * Append a chat bubble to the message list.
  *
  * @param {string} role      'user' | 'assistant'
@@ -975,6 +1018,16 @@ const showRunStatus = (status, message, results = []) => {
             response_type: 'execution_debug',
             status: String(status || ''),
             source: 'showRunStatus',
+            time: (new Date()).toISOString(),
+        });
+    }
+
+    const followUpHtml = renderFollowUpSuggestionsHtml(results);
+    if (followUpHtml && (status === 'completed' || status === 'failed')) {
+        appendMessageHtml('assistant', followUpHtml, {
+            response_type: 'execution_followup',
+            status: String(status || ''),
+            source: 'showRunStatus_followup',
             time: (new Date()).toISOString(),
         });
     }
@@ -1827,8 +1880,19 @@ export const init = (config = null) => {
 
             const query = String(button.getAttribute('data-query') || '').trim();
             if (query !== '') {
-                button.classList.remove('btn-outline-primary');
+                button.classList.remove('btn-outline-primary', 'btn-outline-secondary');
                 button.classList.add('btn-primary');
+                const isFollowUp = button.classList.contains('booking-ai-followup-option');
+                if (isFollowUp) {
+                    const inputElement = document.getElementById('booking-ai-input');
+                    if (inputElement instanceof HTMLTextAreaElement || inputElement instanceof HTMLInputElement) {
+                        inputElement.value = query;
+                        inputElement.focus();
+                        inputElement.setSelectionRange(inputElement.value.length, inputElement.value.length);
+                    }
+                    return;
+                }
+
                 button.setAttribute('aria-disabled', 'true');
                 sendMessage(query);
             }

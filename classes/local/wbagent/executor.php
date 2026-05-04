@@ -44,6 +44,9 @@ use mod_booking\local\wbagent\privacy_anonymizer;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class executor implements agent_executor {
+    /** @var int Maximum number of follow-up suggestions returned per result. */
+    private const MAX_FOLLOW_UP_SUGGESTIONS = 3;
+
     /** @var task_registry */
     private task_registry $registry;
 
@@ -135,9 +138,337 @@ class executor implements agent_executor {
                     array_map('intval', $result['previewoptionids'])
                 );
             }
+            $result = $this->enrich_result_with_follow_ups($taskname, $input, $result);
             $results[] = $result;
         }
 
         return $results;
+    }
+
+    /**
+     * Add consistent follow-up guidance and supported next-step suggestions.
+     *
+     * @param string $taskname
+     * @param array $input
+     * @param array $result
+     * @return array
+     */
+    private function enrich_result_with_follow_ups(string $taskname, array $input, array $result): array {
+        if (empty($result['status']) || !in_array((string)$result['status'], ['executed', 'skipped', 'error'], true)) {
+            return $result;
+        }
+
+        $lang = trim((string)($result['outputlang'] ?? $input['outputlang'] ?? ''));
+        $suggestions = $result['suggestions'] ?? [];
+        if (!is_array($suggestions) || empty($suggestions)) {
+            $suggestions = $this->build_follow_up_suggestions($taskname, $lang, $result);
+        }
+
+        if (empty($suggestions)) {
+            return $result;
+        }
+
+        $result['suggestions'] = $suggestions;
+        if (empty($result['followupmessage'])) {
+            $result['followupmessage'] = $this->localized_string('ai_followup_offer', null, $lang);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Build a short list of supported next-step suggestions for the current task.
+     *
+     * @param string $taskname
+     * @param string $lang
+     * @return array<int,array<string,string>>
+     */
+    private function build_follow_up_suggestions(string $taskname, string $lang, array $result = []): array {
+        $suggestions = [];
+        $seen = [];
+
+        // Prefer suggestions grounded in actual result payload (docs/options/properties/etc.).
+        $this->append_result_driven_suggestions($suggestions, $seen, $taskname, $lang, $result);
+
+        if (count($suggestions) >= self::MAX_FOLLOW_UP_SUGGESTIONS) {
+            return array_slice($suggestions, 0, self::MAX_FOLLOW_UP_SUGGESTIONS);
+        }
+
+        // Fill remaining slots with task-level fallbacks.
+        $candidates = $this->get_follow_up_candidate_tasks($taskname);
+        $tasks = $this->registry->get_tasks();
+        foreach ($candidates as $candidatetask) {
+            if (!isset($tasks[$candidatetask])) {
+                continue;
+            }
+
+            $label = $this->get_task_label($candidatetask, $lang);
+            $query = $this->localized_string('ai_followup_suggestion_query', $label, $lang);
+            $this->append_suggestion($suggestions, $seen, $candidatetask, $label, $query);
+
+            if (count($suggestions) >= self::MAX_FOLLOW_UP_SUGGESTIONS) {
+                break;
+            }
+        }
+
+        return $suggestions;
+    }
+
+    /**
+     * Add context-aware follow-up suggestions derived from the current task result.
+     *
+     * @param array $suggestions
+     * @param array $seen
+     * @param string $taskname
+     * @param string $lang
+     * @param array $result
+     * @return void
+     */
+    private function append_result_driven_suggestions(
+        array &$suggestions,
+        array &$seen,
+        string $taskname,
+        string $lang,
+        array $result
+    ): void {
+        $tasks = $this->registry->get_tasks();
+
+        $firstdoc = $this->get_first_row_field($result, 'docs', ['title', 'path']);
+        if ($firstdoc !== '' && $taskname !== 'booking.explain_docs_topic' && isset($tasks['booking.explain_docs_topic'])) {
+            $this->append_suggestion(
+                $suggestions,
+                $seen,
+                'booking.explain_docs_topic',
+                $this->get_task_label('booking.explain_docs_topic', $lang),
+                $this->localized_string('ai_docs_explain_followup_query', $firstdoc, $lang)
+            );
+        }
+
+        $firstoption = $this->get_first_row_field($result, 'options', ['name']);
+        if ($firstoption !== '') {
+            if (isset($tasks['booking.update_option'])) {
+                $this->append_suggestion(
+                    $suggestions,
+                    $seen,
+                    'booking.update_option',
+                    $this->get_task_label('booking.update_option', $lang),
+                    $this->localized_string('ai_followup_update_option_query', $firstoption, $lang)
+                );
+            }
+            if (isset($tasks['booking.diagnose_booking_issue'])) {
+                $this->append_suggestion(
+                    $suggestions,
+                    $seen,
+                    'booking.diagnose_booking_issue',
+                    $this->get_task_label('booking.diagnose_booking_issue', $lang),
+                    $this->localized_string('ai_followup_diagnose_option_query', $firstoption, $lang)
+                );
+            }
+            if (isset($tasks['booking.search_options'])) {
+                $this->append_suggestion(
+                    $suggestions,
+                    $seen,
+                    'booking.search_options',
+                    $this->get_task_label('booking.search_options', $lang),
+                    $this->localized_string('ai_followup_search_related_options_query', $firstoption, $lang)
+                );
+            }
+        }
+
+        $firstproperty = $this->get_first_row_field($result, 'properties', ['label', 'name']);
+        if ($firstproperty !== '' && isset($tasks['booking.create_option'])) {
+            $this->append_suggestion(
+                $suggestions,
+                $seen,
+                'booking.create_option',
+                $this->get_task_label('booking.create_option', $lang),
+                $this->localized_string('ai_followup_create_option_with_property_query', $firstproperty, $lang)
+            );
+        }
+
+        $firstaction = $this->get_first_row_field($result, 'actions', ['label']);
+        if ($firstaction !== '' && isset($tasks['booking.list_actions'])) {
+            $this->append_suggestion(
+                $suggestions,
+                $seen,
+                'booking.list_actions',
+                $this->get_task_label('booking.list_actions', $lang),
+                $this->localized_string('ai_followup_suggestion_query', $firstaction, $lang)
+            );
+        }
+    }
+
+    /**
+     * Append a suggestion if it is complete and not already present.
+     *
+     * @param array $suggestions
+     * @param array $seen
+     * @param string $task
+     * @param string $label
+     * @param string $query
+     * @return void
+     */
+    private function append_suggestion(array &$suggestions, array &$seen, string $task, string $label, string $query): void {
+        $task = trim($task);
+        $label = trim($label);
+        $query = trim($query);
+        if ($task === '' || $label === '' || $query === '') {
+            return;
+        }
+
+        $signature = $task . '|' . $query;
+        if (isset($seen[$signature])) {
+            return;
+        }
+
+        $seen[$signature] = true;
+        $suggestions[] = [
+            'task' => $task,
+            'label' => $label,
+            'query' => $query,
+        ];
+    }
+
+    /**
+     * Read a preferred text value from the first row of a result list.
+     *
+     * @param array $result
+     * @param string $listkey
+     * @param array $fieldcandidates
+     * @return string
+     */
+    private function get_first_row_field(array $result, string $listkey, array $fieldcandidates): string {
+        $rows = $result[$listkey] ?? [];
+        if (!is_array($rows) || empty($rows) || !is_array($rows[0])) {
+            return '';
+        }
+
+        foreach ($fieldcandidates as $field) {
+            $value = trim((string)($rows[0][$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Return ordered task candidates for follow-up suggestions.
+     *
+     * @param string $taskname
+     * @return array<int,string>
+     */
+    private function get_follow_up_candidate_tasks(string $taskname): array {
+        $map = [
+            'booking.explain_docs_topic' => [
+                'booking.list_actions',
+                'booking.search_options',
+                'booking.diagnose_booking_issue',
+            ],
+            'booking.list_actions' => [
+                'booking.explain_docs_topic',
+                'booking.search_options',
+                'booking.list_option_properties',
+            ],
+            'booking.search_options' => [
+                'booking.list_option_properties',
+                'booking.update_option',
+                'booking.bulk_update_options',
+            ],
+            'booking.search_users' => [
+                'booking.get_current_user',
+                'booking.search_courses',
+                'booking.list_actions',
+            ],
+            'booking.search_courses' => [
+                'booking.search_users',
+                'booking.create_option',
+                'booking.list_actions',
+            ],
+            'booking.list_option_properties' => [
+                'booking.create_option',
+                'booking.update_option',
+                'booking.list_actions',
+            ],
+            'booking.get_current_user' => [
+                'booking.search_users',
+                'booking.search_options',
+                'booking.list_actions',
+            ],
+            'booking.diagnose_booking_issue' => [
+                'booking.explain_docs_topic',
+                'booking.search_options',
+                'booking.list_actions',
+            ],
+        ];
+
+        $fallback = [
+            'booking.list_actions',
+            'booking.explain_docs_topic',
+            'booking.search_options',
+        ];
+
+        $tasks = $map[$taskname] ?? $fallback;
+        return array_values(array_filter(array_unique($tasks), static function (string $candidate) use ($taskname): bool {
+            return $candidate !== $taskname;
+        }));
+    }
+
+    /**
+     * Resolve a user-facing label for a task, honoring optional language overrides.
+     *
+     * @param string $taskname
+     * @param string $lang
+     * @return string
+     */
+    private function get_task_label(string $taskname, string $lang): string {
+        $stringmap = [
+            'booking.create_option' => 'ai_action_create_option',
+            'booking.create_user' => 'ai_action_create_user',
+            'booking.update_option' => 'ai_action_update_option',
+            'booking.bulk_update_options' => 'ai_action_bulk_update_options',
+            'booking.search_options' => 'ai_action_search_options',
+            'booking.search_users' => 'ai_action_search_users',
+            'booking.search_courses' => 'ai_action_search_courses',
+            'booking.add_price_category' => 'ai_action_add_price_category',
+            'booking.list_option_properties' => 'ai_action_list_option_properties',
+            'booking.list_actions' => 'ai_action_list_actions',
+            'booking.get_current_user' => 'ai_action_get_current_user',
+            'booking.explain_docs_topic' => 'ai_action_explain_docs_topic',
+            'booking.diagnose_booking_issue' => 'ai_action_diagnose_booking_issue',
+        ];
+
+        if (isset($stringmap[$taskname])) {
+            return $this->localized_string($stringmap[$taskname], null, $lang);
+        }
+
+        $task = $this->registry->get_task($taskname);
+        if ($task) {
+            $schema = $task->get_schema();
+            $description = trim((string)($schema['description'] ?? ''));
+            if ($description !== '') {
+                return $description;
+            }
+        }
+
+        return $taskname;
+    }
+
+    /**
+     * Read a localized string, optionally forcing a specific output language.
+     *
+     * @param string $identifier
+     * @param mixed $a
+     * @param string $lang
+     * @return string
+     */
+    private function localized_string(string $identifier, $a = null, string $lang = ''): string {
+        $targetlang = trim($lang);
+        if ($targetlang === '') {
+            return get_string($identifier, 'mod_booking', $a);
+        }
+
+        return get_string_manager()->get_string($identifier, 'mod_booking', $a, $targetlang);
     }
 }

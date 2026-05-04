@@ -181,7 +181,8 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
         if (!empty($doclinks)) {
             $usermessage .= "\n" . implode("\n", array_values(array_unique($doclinks)));
         }
-        $usermessage = $this->enforce_max_chars($usermessage, 500);
+
+        $usermessage = $this->enforce_max_chars($usermessage, 650);
 
         $structureddocs = [];
         foreach ($selecteddocs as $doc) {
