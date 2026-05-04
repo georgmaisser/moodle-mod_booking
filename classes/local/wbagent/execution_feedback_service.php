@@ -26,7 +26,11 @@ declare(strict_types=1);
 
 namespace mod_booking\local\wbagent;
 
+use core\di;
+use core_ai\aiactions\generate_text;
+use core_ai\manager as ai_manager;
 use mod_booking\local\wbagent\result_payload_summarizer;
+use context_module;
 
 /**
  * Generates post-execution feedback and client-safe run results.
@@ -121,6 +125,7 @@ class execution_feedback_service {
         $context = context_module::instance($cmid);
         $recentmessages = $this->store->get_recent_messages($threadid, 8);
         $latestusermessage = '';
+        $anonymizer = new privacy_anonymizer($this->store);
         for ($i = count($recentmessages) - 1; $i >= 0; $i--) {
             if (($recentmessages[$i]->role ?? '') === 'user') {
                 $latestusermessage = (string)($recentmessages[$i]->content ?? '');
@@ -128,8 +133,8 @@ class execution_feedback_service {
             }
         }
 
-        $sanitizedcommands = $this->anonymizer->anonymize_value_for_llm($threadid, $commands);
-        $sanitizedresults = $this->anonymizer->anonymize_value_for_llm($threadid, $results);
+        $sanitizedcommands = $anonymizer->anonymize_value_for_llm($threadid, $commands);
+        $sanitizedresults = $anonymizer->anonymize_value_for_llm($threadid, $results);
 
         $prompt = $this->build_feedback_prompt(
             $outputlang,
@@ -195,6 +200,7 @@ class execution_feedback_service {
     ): array {
         $context = context_module::instance($cmid);
         $latestusermessage = $this->extract_latest_user_message($threadid);
+        $anonymizer = new privacy_anonymizer($this->store);
         $registry = task_registry::make_default();
         $taskschemas = [];
         foreach ($registry->get_task_names() as $taskname) {
@@ -210,8 +216,8 @@ class execution_feedback_service {
             ];
         }
 
-        $sanitizedcommands = $this->anonymizer->anonymize_value_for_llm($threadid, $commands);
-        $sanitizedresults = $this->anonymizer->anonymize_value_for_llm($threadid, $results);
+        $sanitizedcommands = $anonymizer->anonymize_value_for_llm($threadid, $commands);
+        $sanitizedresults = $anonymizer->anonymize_value_for_llm($threadid, $results);
         $prompt = $this->build_follow_up_prompt(
             $outputlang,
             $latestusermessage,

@@ -1449,6 +1449,16 @@ const sendMessage = (message) => {
                     });
                 }
 
+                const followUpHtml = renderFollowUpSuggestionsHtml(results);
+                if (followUpHtml) {
+                    appendMessageHtml('assistant', followUpHtml, {
+                        response_type: 'execution_followup',
+                        status: 'completed',
+                        source: 'ai_send_message_followup',
+                        time: (new Date()).toISOString(),
+                    });
+                }
+
                 const optionIds = extractPreviewOptionIds(results);
                 if (optionIds.length > 0) {
                     renderOptionPreviewsInline(currentCmid, optionIds);
@@ -1495,6 +1505,16 @@ const sendMessage = (message) => {
                     response_type: 'execution_debug',
                     status: isError ? 'failed' : 'completed',
                     source: 'ai_send_message',
+                    time: (new Date()).toISOString(),
+                });
+            }
+
+            const followUpHtml = renderFollowUpSuggestionsHtml(results);
+            if (followUpHtml) {
+                appendMessageHtml('assistant', followUpHtml, {
+                    response_type: 'execution_followup',
+                    status: isError ? 'failed' : 'completed',
+                    source: 'ai_send_message_followup',
                     time: (new Date()).toISOString(),
                 });
             }
@@ -1873,7 +1893,7 @@ export const init = (config = null) => {
                 }
             }
 
-            const button = target.closest('.booking-ai-ambiguity-option');
+            const button = target.closest('.booking-ai-ambiguity-option, .booking-ai-followup-option');
             if (!(button instanceof HTMLElement)) {
                 return;
             }
