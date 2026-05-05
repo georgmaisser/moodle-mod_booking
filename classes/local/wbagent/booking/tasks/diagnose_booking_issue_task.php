@@ -65,8 +65,10 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
             'properties' => [
                 'question' => [
                     'type' => 'string',
-                    'description' => 'The user question in natural language, e.g. "Why am I not booked for option X?"',
-                    'required' => true,
+                    'description' => 'The user question in natural language, e.g. "Why am I not booked for option X?". '
+                        . 'Pass the original user wording so the task can classify the issue type automatically. '
+                        . 'Omit only when the issue type is passed explicitly via the issue field.',
+                    'required' => false,
                 ],
                 'optionquery' => [
                     'type' => 'string',
@@ -136,16 +138,22 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
                 'id' => 'booking.self_help_diagnostics',
                 'triggers' => [
                     'why am i not booked', 'why can i not book', 'why no email',
+                    'cannot book', 'can not book', 'can\'t book',
                     'warum bin ich nicht eingetragen', 'warum kann ich mich nicht eintragen',
                     'wieso habe ich keine mail bekommen',
+                    'warum kann', 'nicht buchen', 'nicht eintragen', 'nicht anmelden',
+                    'kann nicht buchen', 'kann sich nicht', 'wieso kann',
+                    'diagnose', 'diagnos',
                 ],
                 'guidance' => [
-                    '- Use booking.diagnose_booking_issue for self-help questions about one booking option.',
-                    '- Pass the original user wording as question so the task can classify the issue type.',
-                    '- If the question is about another person, pass userquery (e.g. "Maxima Müller") or targetuserid explicitly.',
-                    '- Do NOT infer userquery from question text; extract it semantically and pass it as a field.',
-                    '- Pass optionquery when the option title/reference is available; '
-                        . 'otherwise the task will ask a follow-up question.',
+                    '- Use booking.diagnose_booking_issue as response_type "task_call" IMMEDIATELY — no clarification, no confirmation_request.',
+                    '- booking.diagnose_booking_issue is READ-ONLY. Execute it directly without asking the user for permission.',
+                    '- Extract ALL information from the user message in one pass: option name → optionquery, person name → userquery.',
+                    '- Example: "Why can\'t Maxima book \'Reading with Georg\'?" → optionquery="Reading with Georg", userquery="Maxima".',
+                    '- Same applies to German input: "Warum kann Maxima \'Lesung mit Georg\' nicht buchen?" → optionquery="Lesung mit Georg", userquery="Maxima".',
+                    '- Pass the full original user question as the "question" field so the task can classify the issue type.',
+                    '- Do NOT ask for clarification when the option name or person name appears in the user message — extract directly.',
+                    '- If genuinely nothing about the option is mentioned (no name, no id, no context), only then ask once.',
                 ],
             ],
         ];
@@ -160,7 +168,13 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
      * @return array{valid:bool,errors:array<int,string>}
      */
     public function check_structure(array $input): array {
-        if (trim((string)($input['question'] ?? '')) === '') {
+        // question is optional when issue is passed explicitly; otherwise the task derives it from question text.
+        // We only hard-fail when neither question nor any identifying field is present at all.
+        $hasquestion   = trim((string)($input['question']   ?? '')) !== '';
+        $hasoptionref  = trim((string)($input['optionquery'] ?? '')) !== '' || !empty($input['optionid']);
+        $hasissue      = trim((string)($input['issue'] ?? '')) !== '';
+
+        if (!$hasquestion && !$hasoptionref && !$hasissue) {
             return [
                 'valid'  => false,
                 'errors' => [get_string('agent_booking_diagnose_required_question', 'mod_booking')],

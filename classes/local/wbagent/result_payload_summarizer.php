@@ -169,19 +169,7 @@ class result_payload_summarizer {
                 return self::describe_docs_entry($entry['docs']);
 
             case 'diagnosis':
-                $optname = trim((string)($entry['diagnosis']['optionname'] ?? ''));
-                $summary = 'Diagnosis completed';
-                if ($optname !== '') {
-                    $summary .= " for option \"{$optname}\"";
-                }
-                $reasons = array_values(array_filter(array_map(
-                    static fn($reason): string => trim((string)$reason),
-                    (array)($entry['diagnosis']['reasons'] ?? [])
-                )));
-                if (!empty($reasons)) {
-                    $summary .= ' Reason: ' . (string)$reasons[0];
-                }
-                return $summary . '.';
+                return self::describe_diagnosis_entry($entry['diagnosis']);
 
             case 'capabilities':
                 return 'Listed ' . count($entry['capabilities']) . ' capability/action item(s).';
@@ -261,5 +249,57 @@ class result_payload_summarizer {
         }
 
         return $body;
+    }
+
+    /**
+     * Build a rich observation string for a diagnosis-category result.
+     *
+     * Includes: option name, user name, user booking status, issue type,
+     * and ALL reason lines so the LLM has complete information to answer.
+     *
+     * @param  array $diagnosis  The diagnosis sub-array from the task result.
+     * @return string
+     */
+    private static function describe_diagnosis_entry(array $diagnosis): string {
+        $optionname = trim((string)($diagnosis['optionname'] ?? ''));
+        $issue      = trim((string)($diagnosis['issue'] ?? ''));
+        $userstatus = trim((string)($diagnosis['userstatus'] ?? ''));
+
+        $reasons = array_values(array_filter(array_map(
+            static fn($r): string => trim((string)$r),
+            (array)($diagnosis['reasons'] ?? [])
+        )));
+
+        // Header line.
+        $header = 'Diagnosis';
+        if ($optionname !== '') {
+            $header .= " for option \"{$optionname}\"";
+        }
+        if ($issue !== '') {
+            $header .= " (issue: {$issue})";
+        }
+        $header .= '.';
+
+        $lines = [$header];
+
+        if ($userstatus !== '') {
+            $lines[] = "User booking status: {$userstatus}.";
+        }
+
+        if (!empty($reasons)) {
+            $lines[] = 'Findings:';
+            foreach ($reasons as $i => $reason) {
+                $lines[] = '- ' . $reason;
+                // Stay within a reasonable observation budget.
+                if ($i >= 9) {
+                    $lines[] = '- [' . (count($reasons) - 10) . ' more finding(s) omitted]';
+                    break;
+                }
+            }
+        } else {
+            $lines[] = 'No specific blocking reasons detected.';
+        }
+
+        return implode("\n", $lines);
     }
 }
