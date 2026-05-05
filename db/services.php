@@ -281,6 +281,14 @@ $functions = [
         'capabilities' => 'mod/booking:useaiinstructions',
         'ajax'        => 1,
     ],
+    'mod_booking_ai_get_doc_content' => [
+        'classname'   => 'mod_booking\\external\\ai_get_doc_content',
+        'methodname'  => 'execute',
+        'description' => 'Load a booking/docs markdown file and return it as rendered HTML for the AI preview pane.',
+        'type'        => 'read',
+        'capabilities' => 'mod/booking:useaiinstructions',
+        'ajax'        => 1,
+    ],
     'mod_booking_booking_create_option' => [
         'classname'   => 'mod_booking\\external\\booking_create_option',
         'methodname'  => 'execute',

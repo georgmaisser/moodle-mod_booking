@@ -646,23 +646,64 @@ const escapeHtml = (str) => {
  */
 const renderTextWithLinks = (text) => {
     const input = String(text || '');
-    const urlRegex = /https?:\/\/[^\s)]+/g;
+
+    // Combined regex: markdown links [label](url) first, then bare https:// URLs.
+    // Markdown pattern must come first so bare-URL branch never fires inside [...](...)
+    const combinedRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(https?:\/\/[^\s)]+)/g;
 
     let html = '';
     let lastIndex = 0;
     let match;
 
-    while ((match = urlRegex.exec(input)) !== null) {
-        const url = match[0];
-        const index = match.index;
+    while ((match = combinedRegex.exec(input)) !== null) {
+        html += escapeHtml(input.slice(lastIndex, match.index));
 
-        html += escapeHtml(input.slice(lastIndex, index));
-        html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
-        lastIndex = index + url.length;
+        if (match[1] !== undefined) {
+            // Markdown link: [label](url)
+            const label = match[1];
+            const url = match[2];
+            html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+        } else {
+            // Bare URL
+            const url = match[3];
+            html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+        }
+
+        lastIndex = match.index + match[0].length;
     }
 
     html += escapeHtml(input.slice(lastIndex));
     return html.replace(/\n/g, '<br>');
+};
+
+/**
+ * Extract the first doc URL from structured task results (docs array).
+ *
+ * @param {Array} results
+ * @returns {string}
+ */
+/**
+ * Extract the first doc entry (path + url) from explain_docs_topic results.
+ *
+ * @param {Array} results
+ * @returns {{path:string, url:string}} — both may be empty strings when no doc is found.
+ */
+const extractFirstDoc = (results) => {
+    const safeResults = Array.isArray(results) ? results : [];
+    for (const result of safeResults) {
+        if (!result || typeof result !== 'object') {
+            continue;
+        }
+        const docs = Array.isArray(result.docs) ? result.docs : [];
+        for (const doc of docs) {
+            const url  = String((doc && doc.url)  || '').trim();
+            const path = String((doc && doc.path) || '').trim();
+            if (url !== '' || path !== '') {
+                return {path, url};
+            }
+        }
+    }
+    return {path: '', url: ''};
 };
 
 /**
@@ -673,8 +714,13 @@ const renderTextWithLinks = (text) => {
  */
 const extractFirstUrl = (text) => {
     const input = String(text || '');
-    const match = input.match(/https?:\/\/[^\s)]+/);
-    return match ? String(match[0]) : '';
+    // Prefer markdown link URL, fall back to bare URL.
+    const mdMatch = input.match(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/);
+    if (mdMatch) {
+        return String(mdMatch[2]);
+    }
+    const bareMatch = input.match(/https?:\/\/[^\s)]+/);
+    return bareMatch ? String(bareMatch[0]) : '';
 };
 
 /**
@@ -694,6 +740,53 @@ const loadUrlInSidePreview = (url) => {
         + ' loading="lazy" referrerpolicy="no-referrer"'
         + ' style="width:100%;min-height:420px;border:0;" title="Documentation preview"></iframe>'
     );
+};
+
+/**
+ * Load a booking/docs markdown file into the side preview via the webservice renderer.
+ *
+ * Falls back to loadUrlInSidePreview() when the webservice call fails.
+ *
+ * @param {string} docpath  Relative path inside booking/docs, e.g. "booking_rules/README.md".
+ * @param {string} fallbackUrl  Optional bare URL to use as iframe fallback.
+ */
+const loadDocInPreview = (docpath, fallbackUrl = '') => {
+    const safePath = String(docpath || '').trim();
+    if (safePath === '') {
+        if (fallbackUrl !== '') {
+            loadUrlInSidePreview(fallbackUrl);
+        }
+        return;
+    }
+
+    setSidePreviewHtml('<div class="booking-doc-loading p-3 text-muted">Loading documentation…</div>');
+
+    Ajax.call([{
+        methodname: 'mod_booking_ai_get_doc_content',
+        args: {cmid: currentCmid, path: safePath},
+    }])[0].then((resp) => {
+        if (resp && resp.success && String(resp.html || '').trim() !== '') {
+            const title = String(resp.title || '').trim();
+            const titleHtml = title !== ''
+                ? `<h2 class="booking-doc-preview-title">${escapeHtml(title)}</h2>`
+                : '';
+            setSidePreviewHtml(
+                '<div class="booking-doc-preview p-3">'
+                + titleHtml
+                + String(resp.html)
+                + '</div>'
+            );
+        } else if (fallbackUrl !== '') {
+            loadUrlInSidePreview(fallbackUrl);
+        } else {
+            setSidePreviewHtml('<div class="p-3 text-muted small">No content available.</div>');
+        }
+        return resp;
+    }).catch(() => {
+        if (fallbackUrl !== '') {
+            loadUrlInSidePreview(fallbackUrl);
+        }
+    });
 };
 
 /**
@@ -1492,7 +1585,11 @@ const sendMessage = (message) => {
                 const bubble = div.querySelector('.bubble');
                 enforceErrorBubbleStyleFallback(bubble);
             } else {
-                appendMessage('assistant', resp.displaymessage || resp.message, meta);
+                appendMessageHtml(
+                    'assistant',
+                    `<span>${renderTextWithLinks(String(resp.displaymessage || resp.message || ''))}</span>`,
+                    meta
+                );
             }
 
             const debugHtml = buildDebugRunHtml(
@@ -1522,6 +1619,12 @@ const sendMessage = (message) => {
             const optionIds = extractPreviewOptionIds(results);
             if (optionIds.length > 0) {
                 renderOptionPreviewsInline(currentCmid, optionIds);
+            }
+
+            // Auto-load the first doc from explain_docs_topic results into the side preview.
+            const firstDoc = extractFirstDoc(results);
+            if (firstDoc.path !== '' || firstDoc.url !== '') {
+                loadDocInPreview(firstDoc.path, firstDoc.url);
             }
         } else if (resp.response_type === 'execution_result') {
             appendAssistantPrivacyNote(resp, 'ai_send_message');
@@ -1849,6 +1952,26 @@ export const init = (config = null) => {
 
     initResizableLayout();
     initMobilePreviewSwitch();
+
+    // Delegate clicks on internal doc links rendered by ai_get_doc_content (data-docpath attribute).
+    const sidePreviewEl = document.getElementById('booking-ai-side-preview');
+    if (sidePreviewEl) {
+        sidePreviewEl.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+            const anchor = target.closest('a.booking-doc-link');
+            if (!(anchor instanceof HTMLAnchorElement)) {
+                return;
+            }
+            const docpath = String(anchor.getAttribute('data-docpath') || '').trim();
+            if (docpath !== '') {
+                event.preventDefault();
+                loadDocInPreview(docpath, '');
+            }
+        });
+    }
 
     // Display welcome message based on booking statistics.
     displayWelcomeMessage(runtimeConfig.num_options || 0, runtimeConfig.num_booked || 0);
