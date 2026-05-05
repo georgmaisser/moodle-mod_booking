@@ -68,6 +68,14 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                     'description' => 'Optional language code for task-authored wrapper strings, e.g. de or en.',
                     'required' => false,
                 ],
+                'search_queries' => [
+                    'type' => 'array',
+                    'description' => 'Optional list of up to 2 alternative English search phrases for the same '
+                        . 'user question. Provide these when the question is not in English so that the '
+                        . 'lexical doc search can match English doc titles and content. '
+                        . 'Keep booking domain terms (e.g. booking rules, placeholders, shortcodes) unchanged.',
+                    'required' => false,
+                ],
             ],
         ];
     }
@@ -152,7 +160,18 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
         $outputlang = $this->get_output_language($input);
 
         $service = $this->create_docs_lookup_service();
-        $docs = $service->search($question, 2);
+
+        // Build query list: original question + up to 2 optional alternative search phrases.
+        $extraqueries = array_values(array_filter(array_slice(
+            array_map('trim', (array)($input['search_queries'] ?? [])),
+            0,
+            2
+        )));
+        $allqueries = array_values(array_unique(array_filter(array_merge([$question], $extraqueries))));
+
+        $docs = count($allqueries) > 1
+            ? $service->search_multi($allqueries, 2)
+            : $service->search($question, 2);
 
         if (empty($docs)) {
             $nomatch = $this->localized_string('ai_docs_explain_no_match', null, $outputlang);
@@ -210,6 +229,7 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                 [
                     'Docs matched: ' . count($selecteddocs),
                     'Top doc: ' . (string)($firstdoc['path'] ?? ''),
+                    'Queries used: ' . implode(' | ', $allqueries),
                 ]
             ),
         ];

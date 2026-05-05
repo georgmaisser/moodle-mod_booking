@@ -73,6 +73,79 @@ class docs_lookup_service {
     }
 
     /**
+     * Search documentation files using multiple query variants and merge the results.
+     *
+     * Runs each query independently, then merges by keeping the best score per
+     * document path.  Documents that are hit by more than one query receive a
+     * small bonus (+15 per additional hit, capped at 2 extra hits = +30 max),
+     * which nudges cross-query relevant documents to the top without drowning
+     * single-query exact hits.
+     *
+     * @param  string[] $queries  List of search phrases (duplicates are removed).
+     * @param  int      $limit    Maximum number of results to return.
+     * @return array<int,array<string,mixed>>
+     */
+    public function search_multi(array $queries, int $limit = 3): array {
+        $queries = array_values(array_unique(array_filter(array_map('trim', $queries))));
+        if (empty($queries)) {
+            return [];
+        }
+
+        $alldocs = $this->load_docs();
+
+        // Track best score and hit count per doc path across all queries.
+        $pathmap = [];
+        foreach ($queries as $query) {
+            $tokens = $this->extract_query_tokens($query);
+            if (empty($tokens)) {
+                continue;
+            }
+            foreach ($alldocs as $doc) {
+                $score = $this->score_doc($doc, $tokens, $query);
+                if ($score <= 0) {
+                    continue;
+                }
+                $path = (string)($doc['path'] ?? '');
+                if (!isset($pathmap[$path])) {
+                    $pathmap[$path] = ['doc' => $doc, 'best_score' => 0, 'hit_count' => 0];
+                }
+                if ($score > $pathmap[$path]['best_score']) {
+                    $pathmap[$path]['best_score'] = $score;
+                    $pathmap[$path]['doc']        = $doc;
+                }
+                $pathmap[$path]['hit_count']++;
+            }
+        }
+
+        $results = [];
+        foreach ($pathmap as $entry) {
+            $doc = $entry['doc'];
+            // Multi-query bonus: +15 per additional hit beyond the first (max +30).
+            $bonus = min($entry['hit_count'] - 1, 2) * 15;
+            $doc['score'] = $entry['best_score'] + $bonus;
+            // Exact-basename detection: true if any query triggers it.
+            $doc['exactbasenamehit'] = false;
+            foreach ($queries as $query) {
+                if ($this->has_exact_basename_hit($doc, $query)) {
+                    $doc['exactbasenamehit'] = true;
+                    break;
+                }
+            }
+            $results[] = $doc;
+        }
+
+        usort($results, static function (array $left, array $right): int {
+            $scorecompare = ((int)($right['score'] ?? 0)) <=> ((int)($left['score'] ?? 0));
+            if ($scorecompare !== 0) {
+                return $scorecompare;
+            }
+            return strcmp((string)($left['path'] ?? ''), (string)($right['path'] ?? ''));
+        });
+
+        return array_slice($results, 0, max(1, $limit));
+    }
+
+    /**
      * Whether the given search result set should be treated as ambiguous.
      *
      * @param array $docs

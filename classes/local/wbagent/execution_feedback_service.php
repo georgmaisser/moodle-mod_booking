@@ -73,27 +73,36 @@ class execution_feedback_service {
         array $results,
         string $outputlang = ''
     ): array {
-        // Always generate the final user-facing message through the feedback layer
-        // so language policy is consistently enforced (same language as user input).
-        $message = $this->generate_llm_feedback($threadid, $cmid, $userid, $commands, $results, $outputlang);
+        $allowpolish = $this->should_apply_polish_step($commands);
+
+        // Only final clarification payloads (commands=[]) may be polished via LLM.
+        // Command-bearing execution flows stay deterministic by design.
+        if ($allowpolish) {
+            $message = $this->generate_llm_feedback($threadid, $cmid, $userid, $commands, $results, $outputlang);
+        } else {
+            $message = $this->fallback_message_for_results($results, $outputlang);
+        }
+
         $clientresults = $this->sanitize_results_for_client($results, $outputlang);
 
-        // Second pass: ask the model for context-aware follow-up prompts based on
-        // latest user intent + execution outcome + available tasks.
-        $followups = $this->generate_llm_follow_up_suggestions(
-            $threadid,
-            $cmid,
-            $userid,
-            $message,
-            $commands,
-            $results,
-            $outputlang
-        );
-        if (!empty($followups['suggestions']) && is_array($followups['suggestions']) && !empty($clientresults)) {
-            $clientresults[0]['suggestions'] = $followups['suggestions'];
-            $followupmessage = trim((string)($followups['followupmessage'] ?? ''));
-            if ($followupmessage !== '') {
-                $clientresults[0]['followupmessage'] = $followupmessage;
+        // Follow-up suggestions are also part of the polish step and are therefore
+        // disabled for command-bearing execution responses.
+        if ($allowpolish) {
+            $followups = $this->generate_llm_follow_up_suggestions(
+                $threadid,
+                $cmid,
+                $userid,
+                $message,
+                $commands,
+                $results,
+                $outputlang
+            );
+            if (!empty($followups['suggestions']) && is_array($followups['suggestions']) && !empty($clientresults)) {
+                $clientresults[0]['suggestions'] = $followups['suggestions'];
+                $followupmessage = trim((string)($followups['followupmessage'] ?? ''));
+                if ($followupmessage !== '') {
+                    $clientresults[0]['followupmessage'] = $followupmessage;
+                }
             }
         }
 
@@ -101,6 +110,16 @@ class execution_feedback_service {
             'message' => $message,
             'results' => $clientresults,
         ];
+    }
+
+    /**
+     * Polish step is allowed only for final clarification payloads.
+     *
+     * @param array $commands
+     * @return bool
+     */
+    private function should_apply_polish_step(array $commands): bool {
+        return empty($commands);
     }
 
     /**
@@ -584,6 +603,10 @@ class execution_feedback_service {
                 $entry['capabilities'] = $result['capabilities'];
             }
 
+            if (!empty($result['docs']) && is_array($result['docs'])) {
+                $entry['docs'] = $result['docs'];
+            }
+
             if (!empty($result['suggestions']) && is_array($result['suggestions'])) {
                 $entry['suggestions'] = $result['suggestions'];
             }
@@ -621,6 +644,17 @@ class execution_feedback_service {
     private function sanitize_result_detail(array $result, string $outputlang = ''): string {
         // Diagnosis result: use localized string with option name when available.
         $category = result_payload_summarizer::detect_result_category($result);
+
+        // Docs result: pass task-authored usermessage through regardless of outputlang,
+        // because the content is doc text that must always reach the caller unchanged.
+        if ($category === 'docs') {
+            $usermessage = trim((string)($result['usermessage'] ?? ''));
+            if ($usermessage !== '') {
+                return $usermessage;
+            }
+            $detail = trim((string)($result['detail'] ?? ''));
+            return $detail !== '' ? $detail : $this->localized_string('ai_result_detail_action_executed', null, $outputlang);
+        }
 
         if ($category === 'diagnosis') {
             $optionname = trim((string)($result['diagnosis']['optionname'] ?? ''));

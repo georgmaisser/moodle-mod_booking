@@ -1068,17 +1068,11 @@ class agent_runtime {
             . 'and summarize the latest findings for the user in plain language.';
 
         $narration = $this->orchestrator->process($threadid, $cmid, $userid, $observations);
-        $narrationlang = $this->resolve_output_language($threadid, $narration);
-        $message = trim((string)($narration['message'] ?? ''));
-
-        if (
-            (string)($narration['response_type'] ?? '') === 'clarification'
-            && empty((array)($narration['commands'] ?? []))
-            && $message !== ''
-        ) {
+        if ($this->is_final_clarification_without_commands($narration)) {
+            $narrationlang = $this->resolve_output_language($threadid, $narration);
             return [
                 'response_type'             => 'clarification',
-                'message'                   => $message,
+                'message'                   => trim((string)($narration['message'] ?? '')),
                 'commands'                  => [],
                 'ambiguities'               => [],
                 'ambiguity_options'         => [],
@@ -1095,7 +1089,88 @@ class agent_runtime {
             ];
         }
 
-        return $this->loop_repeat_result($lang, $state->step_count(), $latestmessage);
+        // Deterministic fallback is mandatory when narration output is malformed
+        // or command-bearing. This guarantees loop termination with commands=[].
+        return $this->build_deterministic_loop_repeat_fallback($state, $lang, $latestmessage);
+    }
+
+    /**
+     * Accept only final clarification payloads as narration-polish output.
+     *
+     * @param array $result
+     * @return bool
+     */
+    private function is_final_clarification_without_commands(array $result): bool {
+        if ((string)($result['response_type'] ?? '') !== 'clarification') {
+            return false;
+        }
+
+        if (!empty((array)($result['commands'] ?? []))) {
+            return false;
+        }
+
+        return trim((string)($result['message'] ?? '')) !== '';
+    }
+
+    /**
+     * Build a deterministic clarification fallback from accumulated loop results.
+     *
+     * @param agent_state $state
+     * @param string $lang
+     * @param string $latestmessage
+     * @return array
+     */
+    private function build_deterministic_loop_repeat_fallback(
+        agent_state $state,
+        string $lang,
+        string $latestmessage = ''
+    ): array {
+        $accumulated = [];
+        foreach ($state->get_steps() as $step) {
+            foreach ((array)($step['results'] ?? []) as $entry) {
+                if (is_array($entry)) {
+                    $accumulated[] = $entry;
+                }
+            }
+        }
+
+        $message = trim($latestmessage);
+        if (!empty($accumulated)) {
+            $summary = trim($this->build_loop_repeat_summary($accumulated, ''));
+            if ($summary !== '') {
+                $message = $summary;
+            }
+        }
+
+        if ($message === '') {
+            $message = $this->localized_string(
+                'ai_agent_loop_repeat_message',
+                'mod_booking',
+                (object)['steps' => $state->step_count()],
+                $lang
+            );
+            if ($message === 'ai_agent_loop_repeat_message') {
+                $message = 'I completed repeated lookup steps and returned the latest result.';
+            }
+        }
+
+        return [
+            'response_type'             => 'clarification',
+            'message'                   => $message,
+            'commands'                  => [],
+            'ambiguities'               => [],
+            'ambiguity_options'         => [],
+            'errors'                    => [],
+            'attempted_tasks'           => [],
+            'issue_codes'               => ['LOOP_REPEAT_DETECTED', 'LOOP_REPEAT_NARRATION_FALLBACK'],
+            'pending_confirmation_code' => '',
+            'used_triggers'             => [],
+            'runid'                     => 0,
+            'results'                   => [],
+            'lang'                      => $lang,
+            'loop_step'                 => $state->step_count(),
+            'loop_max_steps'            => self::MAX_LOOP_STEPS,
+        ];
     }
 
     /**

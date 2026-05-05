@@ -166,13 +166,7 @@ class result_payload_summarizer {
                 return 'Found ' . count($entry['courses']) . ' course(s).';
 
             case 'docs':
-                $count = count($entry['docs']);
-                $title = trim((string)($entry['docs'][0]['title'] ?? ''));
-                $summary = "Retrieved {$count} documentation excerpt(s)";
-                if ($title !== '') {
-                    $summary .= " (top: \"{$title}\")";
-                }
-                return $summary . '.';
+                return self::describe_docs_entry($entry['docs']);
 
             case 'diagnosis':
                 $optname = trim((string)($entry['diagnosis']['optionname'] ?? ''));
@@ -200,5 +194,72 @@ class result_payload_summarizer {
                 // Fallback: use task-authored user message or detail string.
                 return trim((string)($entry['usermessage'] ?? $entry['detail'] ?? ''));
         }
+    }
+
+    /**
+     * Build a rich observation string for a docs-category result.
+     *
+     * Format:
+     *   ## <title>
+     *   <excerpt up to 500 chars>[...]
+     *
+     *   (repeated per doc)
+     *
+     *   Links:
+     *   - <title>: <url>
+     *
+     * Hard maximum: 2000 characters total. Truncated sections get a "[...]" suffix.
+     *
+     * @param  array $docs  Array of doc entries: {title, excerpt, url, path, score}
+     * @return string
+     */
+    private static function describe_docs_entry(array $docs): string {
+        $maxobservation  = 2000;
+        $maxexcerpt      = 500;
+        $parts           = [];
+        $linklines       = [];
+
+        foreach ($docs as $doc) {
+            $title   = trim((string)($doc['title'] ?? ''));
+            $excerpt = trim((string)($doc['excerpt'] ?? ''));
+            $url     = trim((string)($doc['url'] ?? ''));
+
+            if ($excerpt !== '') {
+                $block = '';
+                if ($title !== '') {
+                    $block .= "## {$title}\n";
+                }
+                if (mb_strlen($excerpt) > $maxexcerpt) {
+                    $block .= mb_substr($excerpt, 0, $maxexcerpt) . '[...]';
+                } else {
+                    $block .= $excerpt;
+                }
+                $parts[] = $block;
+            }
+
+            if ($url !== '') {
+                $linkline = $title !== '' ? "- {$title}: {$url}" : "- {$url}";
+                $linklines[] = $linkline;
+            }
+        }
+
+        $body = implode("\n\n", $parts);
+
+        if (!empty($linklines)) {
+            $linksblock = "Links:\n" . implode("\n", $linklines);
+            $separator  = $body !== '' ? "\n\n" : '';
+            $body      .= $separator . $linksblock;
+        }
+
+        if ($body === '') {
+            return 'Retrieved ' . count($docs) . ' documentation excerpt(s) (no text available).';
+        }
+
+        // Hard truncation to stay within max observation budget.
+        if (mb_strlen($body) > $maxobservation) {
+            $body = mb_substr($body, 0, $maxobservation) . '[...]';
+        }
+
+        return $body;
     }
 }
