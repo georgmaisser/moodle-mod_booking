@@ -190,10 +190,12 @@ class executor implements agent_executor {
 
     /**
      * Build a short list of supported next-step suggestions for the current task.
-     *
      * @param string $taskname
      * @param string $lang
-     * @return array<int,array<string,string>>
+     * @param array $result
+     *
+     * @return array
+     *
      */
     private function build_follow_up_suggestions(string $taskname, string $lang, array $result = []): array {
         $suggestions = [];
