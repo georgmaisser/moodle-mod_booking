@@ -55,7 +55,7 @@ class ai_get_doc_content extends external_api {
      */
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters([
-            'cmid' => new external_value(PARAM_INT,  'Course-module id.'),
+            'cmid' => new external_value(PARAM_INT, 'Course-module id.'),
             'path' => new external_value(PARAM_PATH, 'Relative path inside booking/docs, e.g. booking_rules/README.md'),
         ]);
     }
@@ -116,10 +116,10 @@ class ai_get_doc_content extends external_api {
      */
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
-            'success' => new external_value(PARAM_BOOL,    'Whether the file was loaded successfully.'),
-            'html'    => new external_value(PARAM_RAW,     'Rendered HTML content of the markdown file.'),
-            'title'   => new external_value(PARAM_TEXT,    'H1 title extracted from the document.'),
-            'error'   => new external_value(PARAM_TEXT,    'Error message if success=false, otherwise empty.'),
+            'success' => new external_value(PARAM_BOOL, 'Whether the file was loaded successfully.'),
+            'html'    => new external_value(PARAM_RAW, 'Rendered HTML content of the markdown file.'),
+            'title'   => new external_value(PARAM_TEXT, 'H1 title extracted from the document.'),
+            'error'   => new external_value(PARAM_TEXT, 'Error message if success=false, otherwise empty.'),
         ]);
     }
 
@@ -160,12 +160,13 @@ class ai_get_doc_content extends external_api {
         while ($i < $total) {
             $line = $lines[$i];
 
-            // Fenced code block.
-            if (preg_match('/^```(\w*)/', $line, $m)) {
+            // Fenced code block (opening marker is three backtick characters).
+            $backtick3 = str_repeat(chr(96), 3);
+            if (preg_match('/^' . $backtick3 . '(\w*)/', $line, $m)) {
                 $lang  = htmlspecialchars($m[1], ENT_QUOTES, 'UTF-8');
                 $code  = '';
                 $i++;
-                while ($i < $total && !str_starts_with($lines[$i], '```')) {
+                while ($i < $total && !str_starts_with($lines[$i], $backtick3)) {
                     $code .= htmlspecialchars($lines[$i], ENT_QUOTES, 'UTF-8') . "\n";
                     $i++;
                 }
@@ -250,7 +251,7 @@ class ai_get_doc_content extends external_api {
             while (
                 $i < $total
                 && trim($lines[$i]) !== ''
-                && !preg_match('/^#{1,4}\s|^```|^[-*]\s|^\d+\.\s|^(\s*\|)/', $lines[$i])
+                && !preg_match('/^#{1,4}\s|^' . str_repeat(chr(96), 3) . '|^[-*]\s|^\d+\.\s|^(\s*\|)/', $lines[$i])
             ) {
                 $para .= ($para !== '' ? ' ' : '') . $lines[$i];
                 $i++;
@@ -296,20 +297,21 @@ class ai_get_doc_content extends external_api {
         ) ?? $text;
 
         // Escape remaining HTML (now that links are already safe tags).
-        // We need to escape only the non-tag parts; simplest: escape then unescape our own tags.
-        // Approach: split on already-converted <a …> tags, escape the text parts only.
+        // Split on already-converted anchor tags; escape only the plain-text parts.
         $parts  = preg_split('/(<a [^>]+>.*?<\/a>)/s', $text, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$text];
         $output = '';
         foreach ($parts as $idx => $part) {
             if ($idx % 2 === 0) {
                 // Text part — apply escaping + inline formatting.
                 $part = htmlspecialchars($part, ENT_QUOTES, 'UTF-8');
-                // **bold**
+                // Bold.
                 $part = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $part) ?? $part;
-                // *italic*
+                // Italic.
                 $part = preg_replace('/\*(.+?)\*/', '<em>$1</em>', $part) ?? $part;
-                // `code`
-                $part = preg_replace('/`([^`]+)`/', '<code>$1</code>', $part) ?? $part;
+                // Inline code spans delimited by single backtick characters.
+                $backtick1 = chr(96);
+                $codepattern = '/' . $backtick1 . '([^' . $backtick1 . ']+)' . $backtick1 . '/';
+                $part = preg_replace($codepattern, '<code>$1</code>', $part) ?? $part;
             }
             $output .= $part;
         }

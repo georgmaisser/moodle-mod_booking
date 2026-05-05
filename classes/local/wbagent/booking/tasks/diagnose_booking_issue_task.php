@@ -146,13 +146,18 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
                     'diagnose', 'diagnos',
                 ],
                 'guidance' => [
-                    '- Use booking.diagnose_booking_issue as response_type "task_call" IMMEDIATELY — no clarification, no confirmation_request.',
+                    '- Use booking.diagnose_booking_issue as response_type "task_call" IMMEDIATELY
+                        — no clarification, no confirmation_request.',
                     '- booking.diagnose_booking_issue is READ-ONLY. Execute it directly without asking the user for permission.',
-                    '- Extract ALL information from the user message in one pass: option name → optionquery, person name → userquery.',
-                    '- Example: "Why can\'t Maxima book \'Reading with Georg\'?" → optionquery="Reading with Georg", userquery="Maxima".',
-                    '- Same applies to German input: "Warum kann Maxima \'Lesung mit Georg\' nicht buchen?" → optionquery="Lesung mit Georg", userquery="Maxima".',
+                    '- Extract ALL information from the user message in one pass:
+                        option name → optionquery, person name → userquery.',
+                    '- Example: "Why can\'t Maxima book \'Reading with Georg\'?" → optionquery=
+                        "Reading with Georg", userquery="Maxima".',
+                    '- Same applies to German input: "Warum kann Maxima \'Lesung mit Georg\' nicht buchen?"
+                        → optionquery="Lesung mit Georg", userquery="Maxima".',
                     '- Pass the full original user question as the "question" field so the task can classify the issue type.',
-                    '- Do NOT ask for clarification when the option name or person name appears in the user message — extract directly.',
+                    '- Do NOT ask for clarification when the option name or person name appears in the user message
+                        — extract directly.',
                     '- If genuinely nothing about the option is mentioned (no name, no id, no context), only then ask once.',
                 ],
             ],
@@ -168,9 +173,9 @@ class diagnose_booking_issue_task extends base_booking_task implements task_trig
      * @return array{valid:bool,errors:array<int,string>}
      */
     public function check_structure(array $input): array {
-        // question is optional when issue is passed explicitly; otherwise the task derives it from question text.
+        // Question is optional when issue is passed explicitly; otherwise the task derives it from question text.
         // We only hard-fail when neither question nor any identifying field is present at all.
-        $hasquestion   = trim((string)($input['question']   ?? '')) !== '';
+        $hasquestion   = trim((string)($input['question'] ?? '')) !== '';
         $hasoptionref  = trim((string)($input['optionquery'] ?? '')) !== '' || !empty($input['optionid']);
         $hasissue      = trim((string)($input['issue'] ?? '')) !== '';
 
