@@ -129,7 +129,7 @@ class ai_get_doc_content extends external_api {
      * Handles the subset used in booking/docs:
      *   - H1–H4 headings
      *   - **bold** and *italic*
-     *   - `inline code` and fenced code blocks
+     *   - inline code spans and fenced code blocks
      *   - [text](url) links (external urls open in new tab; relative .md links rewritten to webservice calls)
      *   - unordered lists (-, *)
      *   - ordered lists (1. 2. …)
@@ -267,7 +267,7 @@ class ai_get_doc_content extends external_api {
     /**
      * Apply inline markdown formatting to a single line or inline fragment.
      *
-     * Handles: **bold**, *italic*, `code`, [text](url).
+     * Handles: bold (**), italic (*), inline code (backtick), [text](url) links.
      * Relative .md links are rewritten to a JS-friendly data-docpath attribute
      * so the frontend can load them via the webservice instead of navigating away.
      *

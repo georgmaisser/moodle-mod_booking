@@ -99,6 +99,7 @@ class result_payload_summarizer {
      *  'docs'         — entry contains a docs/documentation array
      *  'diagnosis'    — entry contains a diagnosis object
      *  'capabilities' — entry contains a capabilities array
+     *  'properties'   — entry contains a properties array (list_option_properties result)
      *  'current_user' — entry has fullname or email keys (get_current_user result)
      *  'generic'      — none of the above
      *
@@ -123,6 +124,9 @@ class result_payload_summarizer {
         }
         if (!empty($entry['capabilities']) && is_array($entry['capabilities'])) {
             return 'capabilities';
+        }
+        if (!empty($entry['properties']) && is_array($entry['properties'])) {
+            return 'properties';
         }
         if (array_key_exists('fullname', $entry) || array_key_exists('email', $entry)) {
             return 'current_user';
@@ -160,10 +164,36 @@ class result_payload_summarizer {
                 return $summary . '.';
 
             case 'users':
-                return 'Found ' . count($entry['users']) . ' user(s).';
+                $ucount = count($entry['users']);
+                $unames = array_slice(
+                    array_filter(array_map(
+                        static fn($u): string => trim((string)($u['fullname'] ?? $u['username'] ?? '')),
+                        $entry['users']
+                    )),
+                    0,
+                    5
+                );
+                $usummary = "Found {$ucount} user(s)";
+                if (!empty($unames)) {
+                    $usummary .= ': ' . implode(', ', $unames);
+                }
+                return $usummary . '.';
 
             case 'courses':
-                return 'Found ' . count($entry['courses']) . ' course(s).';
+                $ccount = count($entry['courses']);
+                $cnames = array_slice(
+                    array_filter(array_map(
+                        static fn($c): string => trim((string)($c['fullname'] ?? $c['shortname'] ?? '')),
+                        $entry['courses']
+                    )),
+                    0,
+                    5
+                );
+                $csummary = "Found {$ccount} course(s)";
+                if (!empty($cnames)) {
+                    $csummary .= ': ' . implode(', ', $cnames);
+                }
+                return $csummary . '.';
 
             case 'docs':
                 return self::describe_docs_entry($entry['docs']);
@@ -172,7 +202,37 @@ class result_payload_summarizer {
                 return self::describe_diagnosis_entry($entry['diagnosis']);
 
             case 'capabilities':
-                return 'Listed ' . count($entry['capabilities']) . ' capability/action item(s).';
+                $capcount = count($entry['capabilities']);
+                $actcount = count($entry['actions'] ?? []);
+                $acttitles = array_slice(
+                    array_filter(array_map(
+                        static fn($a): string => trim((string)($a['label'] ?? $a['task'] ?? '')),
+                        (array)($entry['actions'] ?? [])
+                    )),
+                    0,
+                    8
+                );
+                $capsummary = "Listed {$capcount} capability item(s) and {$actcount} action(s)";
+                if (!empty($acttitles)) {
+                    $capsummary .= '. Actions: ' . implode(', ', $acttitles);
+                }
+                return $capsummary . '.';
+
+            case 'properties':
+                $propcount = count($entry['properties']);
+                $propnames = array_slice(
+                    array_filter(array_map(
+                        static fn($p): string => trim((string)($p['name'] ?? '')),
+                        $entry['properties']
+                    )),
+                    0,
+                    8
+                );
+                $propsummary = "Listed {$propcount} option property/properties";
+                if (!empty($propnames)) {
+                    $propsummary .= ': ' . implode(', ', $propnames);
+                }
+                return $propsummary . '.';
 
             case 'current_user':
                 $name = trim((string)($entry['fullname'] ?? ''));

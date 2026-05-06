@@ -698,7 +698,7 @@ class execution_feedback_service {
             return $this->localized_string('ai_result_detail_current_user', null, $outputlang);
         }
 
-        if ($category === 'capabilities') {
+        if ($category === 'capabilities' || $category === 'properties') {
             $summary = trim((string)($result['summary'] ?? ''));
             if ($summary !== '' && $outputlang === '') {
                 return $summary;

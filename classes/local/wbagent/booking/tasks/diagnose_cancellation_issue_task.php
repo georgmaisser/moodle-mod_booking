@@ -64,8 +64,10 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
             'properties' => [
                 'question' => [
                     'type' => 'string',
-                    'description' => 'The user question in natural language, e.g. "Why can I not cancel option X?"',
-                    'required' => true,
+                    'description' => 'The user question in natural language, e.g. "Why can I not cancel option X?". '
+                        . 'Pass the original wording so the task can classify the blocker automatically. '
+                        . 'Omit only when the option is already identified via optionquery or optionid.',
+                    'required' => false,
                 ],
                 'optionquery' => [
                     'type' => 'string',
@@ -127,18 +129,20 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
             [
                 'id' => 'booking.cancellation_self_help_diagnostics',
                 'triggers' => [
-                    'why can i not cancel',
-                    'why no cancel button',
-                    'cannot cancel booking',
-                    'cancel button missing',
+                    'why can i not cancel', 'why no cancel button', 'cannot cancel booking',
+                    'cancel button missing', 'cannot cancel', 'can not cancel', 'stornieren nicht',
+                    'warum kann ich nicht stornieren', 'warum kann ich nicht abmelden',
+                    'kein storno', 'keine stornierung', 'nicht stornieren',
                 ],
                 'guidance' => [
-                    '- Use booking.diagnose_cancellation_issue for self-help questions about missing cancellation options.',
-                    '- Pass the original user wording as question.',
-                    '- If the question is about another person, pass userquery (e.g. "Maxima Müller") or targetuserid explicitly.',
-                    '- Do NOT infer userquery from question text; extract it semantically and pass it as a field.',
-                    '- Pass optionquery when the option title/reference is available; '
-                        . 'otherwise the task will ask a follow-up question.',
+                    '- Use booking.diagnose_cancellation_issue as response_type "task_call" IMMEDIATELY — no clarification, no confirmation_request.',
+                    '- booking.diagnose_cancellation_issue is READ-ONLY. Execute it directly without asking the user for permission.',
+                    '- Extract ALL information from the user message in one pass: option name → optionquery, person name → userquery.',
+                    '- Example: "Why can\'t Maxima cancel \'Reading with Georg\'?" → optionquery="Reading with Georg", userquery="Maxima".',
+                    '- Same applies to German input: extract optionquery and userquery directly from the message.',
+                    '- Pass the full original user question as the "question" field so the task can classify the blocker.',
+                    '- Do NOT ask for clarification when the option name appears in the user message — extract directly.',
+                    '- If genuinely nothing about the option is mentioned (no name, no id, no context), only then ask once.',
                 ],
             ],
         ];
@@ -157,7 +161,8 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
         $lang = $this->get_output_language($input);
 
         $question = trim((string)($input['question'] ?? ''));
-        if ($question === '') {
+        $hasoptionref = trim((string)($input['optionquery'] ?? '')) !== '' || !empty($input['optionid']);
+        if ($question === '' && !$hasoptionref) {
             $errors[] = $this->localized_string('agent_booking_diagnose_cancel_required_question', null, $lang);
         }
 
