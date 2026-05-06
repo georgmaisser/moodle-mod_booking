@@ -214,3 +214,11 @@ This page shows complete, real-world booking rule configurations. Each example l
 | **Action** | `delete_conditions_from_bookinganswer` |
 
 **Note:** Using a negative *Days* value means the rule fires 30 days **after** the `courseendtime`. No email is sent — the action only removes stored condition data from the `booking_answers` table.
+
+
+## Quick setup path
+
+1. Open booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
+2. Click Add rule or edit an existing rule.
+3. Apply the configuration from this page.
+4. Save, activate, and test with one booking event.

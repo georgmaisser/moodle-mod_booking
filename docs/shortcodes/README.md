@@ -14,6 +14,14 @@ mod_booking provides a set of Moodle shortcodes that you can embed in any page, 
   ```
 - The user viewing the page must have the required capability for the shortcode to render (otherwise a "no permission" message is shown).
 
+## Click-by-click setup
+
+1. Enable the Shortcodes filter in Site administration.
+2. Open a Moodle page or label in edit mode.
+3. Paste one shortcode, for example `[courselist cmid="42" perpage="10"]`.
+4. Save the page and open it as a normal user.
+5. If nothing is shown, verify capabilities and shortcode parameters.
+
 ---
 
 ## Overview

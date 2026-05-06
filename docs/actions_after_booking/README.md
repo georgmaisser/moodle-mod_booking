@@ -74,3 +74,11 @@ Most action types (cancel, book others, execute REST) return status `1` (abort) 
 - [Action type: Execute REST script](executerestscript.md)
 - [Action type: Set user profile field](userprofilefield.md)
 - [Booking rules](../booking_rules/README.md) — For schedule-based and event-based email notifications
+
+
+## Quick setup path
+
+1. Open option edit page: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+2. Edit target option and open Booking actions section.
+3. Add or edit the action type documented here.
+4. Save and test with one booking event.

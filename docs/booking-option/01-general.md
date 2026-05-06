@@ -118,3 +118,11 @@ Admins can limit the maximum description length in the booking plugin settings (
 - [Dates](02-dates.md) — When the option takes place
 - [Availability conditions](04-availability.md) — Restrict who can book
 - [Price](05-price.md) — Add a price to the option
+
+
+## Quick setup path
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open the feature-specific page from this document and apply the settings.
+4. Save and verify with one test booking.

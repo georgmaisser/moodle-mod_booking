@@ -188,3 +188,11 @@ Moodle capabilities define what each role is allowed to do inside **mod_booking*
 - [Booking rules](../booking_rules/README.md) — `editbookingrules` capability
 - [Shortcodes](../shortcodes/README.md) — Capability requirements for each shortcode
 - [Availability conditions](../booking_conditions/README.md) — `overrideboconditions` capability
+
+
+## Quick setup path
+
+1. Open role permissions in Site administration.
+2. Search for booking capabilities listed on this page.
+3. Assign only required capabilities to target roles.
+4. Verify with a test user account.

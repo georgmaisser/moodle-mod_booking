@@ -156,3 +156,11 @@ Commonly used placeholders:
 The full list of available placeholders is shown dynamically inside the rule editor form, just above the subject field. Custom user profile fields and custom booking option fields can also be used by their shortname (e.g., `{profile_field_department}`).
 
 > **Tip:** Click the *"Show placeholders"* link in the rule editor to expand the complete list for your site.
+
+
+## Quick setup path
+
+1. Open booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
+2. Click Add rule or edit an existing rule.
+3. Apply the configuration from this page.
+4. Save, activate, and test with one booking event.

@@ -8,6 +8,16 @@
 
 Campaigns are a **PRO feature** of mod_booking.
 
+## Click-by-click setup
+
+1. Open campaign management: [/mod/booking/edit_campaigns.php](/mod/booking/edit_campaigns.php).
+2. Click Add campaign.
+3. Choose campaign type (Block-booking or Custom field).
+4. Set campaign time window.
+5. Set option field filter and value.
+6. Configure effect values (block percentage, price factor, limit factor).
+7. Save campaign and test one matching option.
+
 ---
 
 ## Table of Contents

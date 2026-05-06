@@ -186,3 +186,11 @@ Alerts the teachers of a booking option when the option is cancelled.
 - Loaded templates are fully editable before saving. They are a starting point, not a fixed configuration.
 - You can save your own rules as **custom templates** by enabling the *Use as template* checkbox when creating or editing a rule. Custom templates appear alongside the built-in ones in the template loader.
 - Templates are stored with `useastemplate = 1` in the `booking_rules` database table.
+
+
+## Quick setup path
+
+1. Open booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
+2. Click Add rule or edit an existing rule.
+3. Apply the configuration from this page.
+4. Save, activate, and test with one booking event.

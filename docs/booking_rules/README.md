@@ -123,3 +123,11 @@ See [Templates](templates.md) for the full subject lines, message bodies, and co
 | [actions.md](actions.md) | All available actions and their configuration options |
 | [templates.md](templates.md) | Pre-built rule templates and how to load them |
 | [examples.md](examples.md) | Practical end-to-end examples |
+
+
+## Quick setup path
+
+1. Open booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
+2. Click Add rule or edit an existing rule.
+3. Apply the configuration from this page.
+4. Save, activate, and test with one booking event.

@@ -10,6 +10,16 @@ Sub-bookings allow you to:
 
 Sub-bookings are a **PRO feature** of mod_booking.
 
+## Click-by-click setup
+
+1. Open the booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option management: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Click Edit on the target option.
+4. In the option form, open Sub-bookings.
+5. Click Add sub-booking and choose the type.
+6. Configure fields and save.
+7. Test booking as participant to verify the extra step appears.
+
 ---
 
 ## Table of Contents

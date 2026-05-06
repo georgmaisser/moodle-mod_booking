@@ -117,3 +117,11 @@ All three fields support HTML and [placeholders](#) (e.g. `{bookingdetails}`, `{
 - [Availability conditions](04-availability.md) — Booking window (opening and closing time)
 - [Demand confirmation](08-confirmation.md) — Manual confirmation workflow
 - [CSV Import — Cancellation settings](../CSV_IMPORT_USER_GUIDE.md#7-cancellation-settings)
+
+
+## Quick setup path
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open the feature-specific page from this document and apply the settings.
+4. Save and verify with one test booking.

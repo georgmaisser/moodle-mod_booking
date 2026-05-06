@@ -29,6 +29,14 @@ Important distinction for AI/explain tasks:
 - Questions about messages, reminders, notification emails, or message automation belong to [Booking rules](booking_rules/README.md).
 - [Actions after booking](actions_after_booking/README.md) (bo_actions) are not the messaging system; they run immediate post-booking actions like cancel/book/profile/REST.
 
+## First Admin Workflow (click-by-click)
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option management: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open global booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
+4. Open campaign management: [/mod/booking/edit_campaigns.php](/mod/booking/edit_campaigns.php).
+5. Use this docs index to jump to the feature-specific step-by-step page.
+
 ---
 
 ## Documentation sections
