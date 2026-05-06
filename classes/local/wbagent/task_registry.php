@@ -131,6 +131,174 @@ class task_registry {
     }
 
     /**
+     * Return compact task metadata for system-prompt routing.
+     *
+     * This intentionally excludes full field descriptions so the initial prompt
+     * stays small. Runtime validation continues to use the full task schemas.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_all_prompt_contracts(): array {
+        $contracts = [];
+        foreach ($this->tasks as $name => $task) {
+            $contracts[] = $this->build_prompt_contract($name, $task);
+        }
+        return $contracts;
+    }
+
+    /**
+     * Build compact prompt metadata for one task.
+     *
+     * @param string $taskname
+     * @param task_interface $task
+     * @return array<string,mixed>
+     */
+    private function build_prompt_contract(string $taskname, task_interface $task): array {
+        $schema = (array)$task->get_schema();
+        $properties = (array)($schema['properties'] ?? []);
+
+        return [
+            'task' => $taskname,
+            'description' => trim((string)($schema['description'] ?? '')),
+            'readonly' => (bool)($schema['readonly'] ?? $task->is_read_only()),
+            'intent' => $this->detect_task_intent($taskname, $schema),
+            'anchors' => $this->extract_anchor_fields($properties),
+            'minimal_input' => $this->build_minimal_input_fields($taskname, $properties),
+        ];
+    }
+
+    /**
+     * Derive a compact intent label for routing.
+     *
+     * @param string $taskname
+     * @param array $schema
+     * @return string
+     */
+    private function detect_task_intent(string $taskname, array $schema): string {
+        if (!empty($schema['readonly'])) {
+            if (strpos($taskname, '.diagnose_') !== false) {
+                return 'diagnose';
+            }
+            if (strpos($taskname, '.explain_') !== false) {
+                return 'explain';
+            }
+            if (strpos($taskname, '.search_') !== false) {
+                return 'search';
+            }
+            if (strpos($taskname, '.list_') !== false) {
+                return 'list';
+            }
+            if (strpos($taskname, '.get_') !== false) {
+                return 'get';
+            }
+            return 'read';
+        }
+
+        if (strpos($taskname, '.bulk_') !== false) {
+            return 'bulk_update';
+        }
+        if (strpos($taskname, '.create_') !== false) {
+            return 'create';
+        }
+        if (strpos($taskname, '.update_') !== false) {
+            return 'update';
+        }
+        if (strpos($taskname, '.add_') !== false) {
+            return 'add';
+        }
+        if (strpos($taskname, '.book_') !== false) {
+            return 'book';
+        }
+
+        return 'mutate';
+    }
+
+    /**
+     * Extract anchor fields from schema properties.
+     *
+     * @param array $properties
+     * @return array<int,string>
+     */
+    private function extract_anchor_fields(array $properties): array {
+        $anchors = [];
+        $map = [
+            'optionquery' => 'option',
+            'optionid' => 'option',
+            'userquery' => 'user',
+            'targetuserid' => 'user',
+            'userids' => 'user',
+            'coursequery' => 'course',
+            'courseid' => 'course',
+            'question' => 'question',
+            'search_queries' => 'docs',
+        ];
+
+        foreach ($map as $field => $anchor) {
+            if (array_key_exists($field, $properties) && !in_array($anchor, $anchors, true)) {
+                $anchors[] = $anchor;
+            }
+        }
+
+        return $anchors;
+    }
+
+    /**
+     * Build a short list of the most relevant input keys for prompt routing.
+     *
+     * @param string $taskname
+     * @param array $properties
+     * @return array<int,string>
+     */
+    private function build_minimal_input_fields(string $taskname, array $properties): array {
+        $preferred = [
+            'booking.create_option' => ['text', 'optiontype', 'optiondates', 'maxanswers'],
+            'booking.create_user' => ['firstname', 'lastname', 'email'],
+            'booking.update_option' => ['optionquery', 'optionid', 'text', 'optiondates'],
+            'booking.bulk_update_options' => ['optionquery', 'optionids', 'changes'],
+            'booking.search_options' => ['query'],
+            'booking.search_users' => ['query'],
+            'booking.search_courses' => ['query'],
+            'booking.add_price_category' => ['name'],
+            'booking.list_option_properties' => ['scope'],
+            'booking.list_actions' => ['scope'],
+            'booking.get_current_user' => [],
+            'booking.explain_docs_topic' => ['question', 'search_queries'],
+            'booking.diagnose_booking_issue' => ['question', 'optionquery', 'optionid', 'userquery'],
+            'booking.diagnose_cancellation_issue' => ['question', 'optionquery', 'optionid', 'userquery'],
+            'booking.book_users' => ['optionquery', 'optionid', 'userquery', 'userids'],
+        ];
+
+        $selected = [];
+        foreach ($preferred[$taskname] ?? [] as $field) {
+            if (array_key_exists($field, $properties)) {
+                $selected[] = $field;
+            }
+        }
+
+        if (!empty($selected)) {
+            return $selected;
+        }
+
+        foreach ($properties as $field => $definition) {
+            if (!empty($definition['required'])) {
+                $selected[] = (string)$field;
+            }
+        }
+
+        if (count($selected) >= 6) {
+            return array_slice(array_values(array_unique($selected)), 0, 6);
+        }
+
+        foreach (['optionquery', 'optionid', 'query', 'question', 'text', 'name'] as $field) {
+            if (array_key_exists($field, $properties)) {
+                $selected[] = $field;
+            }
+        }
+
+        return array_slice(array_values(array_unique($selected)), 0, 6);
+    }
+
+    /**
      * Return all context-specific prompt packs from registered providers.
      *
      * @return array<int,array<string,mixed>>

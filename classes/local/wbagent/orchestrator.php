@@ -211,7 +211,9 @@ class orchestrator {
      * - {{timezonename}}
      * - {{nowiso}}
      * - {{tasklist}}
-     * - {{schemajson}}
+    * - {{schemajson}}
+    * - {{taskcatalogjson}}
+    * - {{fullschemajson}}
      *
      * @return string
      */
@@ -239,15 +241,17 @@ class orchestrator {
     }
 
     /**
-     * Build the state-based system prompt with task schemas embedded.
+    * Build the state-based system prompt with compact task metadata embedded.
      *
      * @param  int    $cmid
      * @return string System prompt text.
      */
     private function build_system_prompt(int $cmid): string {
         $schemas = $this->registry->get_all_schemas();
+        $taskcatalog = $this->registry->get_all_prompt_contracts();
         $tasklist = implode(', ', $this->registry->get_task_names());
-        $schemajson = json_encode($schemas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $fullschemajson = json_encode($schemas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $taskcatalogjson = json_encode($taskcatalog, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $triggerregistry = new message_trigger_registry($this->registry);
         $triggerjson = json_encode($triggerregistry->get_available_triggers(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $timezonename = (string)(get_config('core', 'timezone') ?? '');
@@ -275,7 +279,9 @@ class orchestrator {
             '{{timezonename}}' => $timezonename,
             '{{nowiso}}' => $nowiso,
             '{{tasklist}}' => $tasklist,
-            '{{schemajson}}' => (string)$schemajson,
+            '{{schemajson}}' => (string)$taskcatalogjson,
+            '{{taskcatalogjson}}' => (string)$taskcatalogjson,
+            '{{fullschemajson}}' => (string)$fullschemajson,
         ]);
 
         // Enforce language mirroring even when administrators provide a custom prompt template.
