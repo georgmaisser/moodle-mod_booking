@@ -135,10 +135,14 @@ class diagnose_cancellation_issue_task extends base_booking_task implements task
                     'kein storno', 'keine stornierung', 'nicht stornieren',
                 ],
                 'guidance' => [
-                    '- Use booking.diagnose_cancellation_issue as response_type "task_call" IMMEDIATELY — no clarification, no confirmation_request.',
-                    '- booking.diagnose_cancellation_issue is READ-ONLY. Execute it directly without asking the user for permission.',
-                    '- Extract ALL information from the user message in one pass: option name → optionquery, person name → userquery.',
-                    '- Example: "Why can\'t Maxima cancel \'Reading with Georg\'?" → optionquery="Reading with Georg", userquery="Maxima".',
+                    '- Use booking.diagnose_cancellation_issue as response_type "task_call" IMMEDIATELY
+                        — no clarification, no confirmation_request.',
+                    '- booking.diagnose_cancellation_issue is READ-ONLY.
+                        Execute it directly without asking the user for permission.',
+                    '- Extract ALL information from the user message in one pass: option name
+                        → optionquery, person name → userquery.',
+                    '- Example: "Why can\'t Maxima cancel \'Reading with Georg\'?"
+                        → optionquery="Reading with Georg", userquery="Maxima".',
                     '- Same applies to German input: extract optionquery and userquery directly from the message.',
                     '- Pass the full original user question as the "question" field so the task can classify the blocker.',
                     '- Do NOT ask for clarification when the option name appears in the user message — extract directly.',
