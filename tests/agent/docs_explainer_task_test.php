@@ -148,4 +148,24 @@ final class docs_explainer_task_test extends abstract_agent_testcase {
         $summary = (string)($result['usermessage'] ?? '');
         $this->assertLessThanOrEqual(500, \core_text::strlen($summary));
     }
+
+    /**
+     * Messaging/notification questions must prioritize booking_rules docs.
+     */
+    public function test_docs_explain_notifications_prioritize_booking_rules(): void {
+        $result = $this->exec_command('booking.explain_docs_topic', [
+            'question' => 'Kannst du mir die Benachrichtigungen in Booking erklären?',
+            'search_queries' => ['notifications booking'],
+            'outputlang' => 'de',
+        ]);
+
+        $this->assertSame('executed', $result['status'], (string)($result['detail'] ?? ''));
+        $this->assertArrayHasKey('docs', $result);
+        $this->assertNotEmpty($result['docs']);
+
+        $firstdoc = $result['docs'][0] ?? [];
+        $firstpath = (string)($firstdoc['path'] ?? '');
+        $this->assertStringStartsWith('booking_rules/', $firstpath);
+        $this->assertSame('booking_rules/README.md', $firstpath);
+    }
 }

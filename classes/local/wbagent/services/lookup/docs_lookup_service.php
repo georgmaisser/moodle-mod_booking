@@ -24,6 +24,15 @@ namespace mod_booking\local\wbagent\services\lookup;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class docs_lookup_service {
+    /** Maximum number of sample paths included per TOC topic. */
+    private const MAX_TOPIC_SAMPLE_PATHS = 3;
+
+    /** Query terms that indicate message/notification intent in docs lookups. */
+    private const MESSAGING_HINT_TOKENS = [
+        'notification', 'notifications', 'reminder', 'reminders',
+        'message', 'messages', 'email', 'emails', 'mail', 'mails',
+    ];
+
     /** @var string */
     private string $docsroot;
 
@@ -213,6 +222,234 @@ class docs_lookup_service {
     }
 
     /**
+     * Build a compact, deterministic topic catalog over all docs.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_master_toc_index(): array {
+        $topics = [];
+
+        foreach ($this->load_docs() as $doc) {
+            $path = (string)($doc['path'] ?? '');
+            $topicid = $this->extract_topic_id_from_path($path);
+            if (!isset($topics[$topicid])) {
+                $topics[$topicid] = [
+                    'topic_id' => $topicid,
+                    'title' => $this->build_topic_title($topicid),
+                    'intent' => $this->detect_topic_intent($topicid),
+                    'doc_count' => 0,
+                    'keywords' => [],
+                    'sample_paths' => [],
+                ];
+            }
+
+            $topics[$topicid]['doc_count']++;
+
+            if (
+                count($topics[$topicid]['sample_paths']) < self::MAX_TOPIC_SAMPLE_PATHS
+                && $path !== ''
+            ) {
+                $topics[$topicid]['sample_paths'][] = $path;
+            }
+
+            $terms = $this->extract_topic_terms($doc);
+            foreach ($terms as $term) {
+                if (!isset($topics[$topicid]['keywords'][$term])) {
+                    $topics[$topicid]['keywords'][$term] = 0;
+                }
+                $topics[$topicid]['keywords'][$term]++;
+            }
+        }
+
+        foreach ($topics as &$topic) {
+            $keywordscores = $topic['keywords'];
+            arsort($keywordscores);
+            $topic['keywords'] = array_slice(array_keys($keywordscores), 0, 8);
+            sort($topic['sample_paths']);
+        }
+        unset($topic);
+
+        usort($topics, static function (array $left, array $right): int {
+            $countcompare = ((int)($right['doc_count'] ?? 0)) <=> ((int)($left['doc_count'] ?? 0));
+            if ($countcompare !== 0) {
+                return $countcompare;
+            }
+            return strcmp((string)($left['topic_id'] ?? ''), (string)($right['topic_id'] ?? ''));
+        });
+
+        return array_values($topics);
+    }
+
+    /**
+     * Return only docs that belong to a specific topic id.
+     *
+     * @param string $topicid
+     * @return array<int,array{path:string,title:string,excerpt:string}>
+     */
+    public function get_topic_doc_index(string $topicid): array {
+        $topicid = trim($topicid);
+        if ($topicid === '') {
+            return [];
+        }
+
+        $index = [];
+        foreach ($this->load_docs() as $doc) {
+            $path = (string)($doc['path'] ?? '');
+            if ($this->extract_topic_id_from_path($path) !== $topicid) {
+                continue;
+            }
+            $index[] = [
+                'path' => $path,
+                'title' => (string)($doc['title'] ?? ''),
+                'excerpt' => (string)($doc['excerpt'] ?? ''),
+            ];
+        }
+
+        return $index;
+    }
+
+    /**
+     * Render a compact TOC observation string for agent context injection.
+     *
+     * @param int $maxchars
+     * @return string
+     */
+    public function render_master_toc_observation(int $maxchars = 3500): string {
+        $payload = [
+            'type' => 'docs_master_toc',
+            'topics' => $this->get_master_toc_index(),
+        ];
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        if (!is_string($json) || $json === '') {
+            return 'DOCS_MASTER_TOC: {}';
+        }
+
+        $maxchars = max(800, $maxchars);
+        if (mb_strlen($json) > $maxchars) {
+            $json = mb_substr($json, 0, $maxchars) . '...';
+        }
+
+        return 'DOCS_MASTER_TOC: ' . $json;
+    }
+
+    /**
+     * Deterministically map a question to the most likely docs topic.
+     *
+     * @param string $question
+     * @param string[] $queries
+     * @return array{topic_id:string,topic_title:string,score:int,confidence:float,candidates:array<int,array<string,mixed>>}
+     */
+    public function detect_best_topic(string $question, array $queries = []): array {
+        $queries = array_values(array_filter(array_unique(array_map('trim', $queries))));
+        $basequeries = array_values(array_filter(array_unique(array_merge([$question], $queries))));
+
+        $combinedtokens = [];
+        foreach ($basequeries as $query) {
+            $combinedtokens = array_merge($combinedtokens, $this->extract_query_tokens($query));
+        }
+        $combinedtokens = array_values(array_unique($combinedtokens));
+
+        $topics = $this->get_master_toc_index();
+        if (empty($topics) || empty($combinedtokens)) {
+            return [
+                'topic_id' => '',
+                'topic_title' => '',
+                'score' => 0,
+                'confidence' => 0.0,
+                'candidates' => [],
+            ];
+        }
+
+        $candidates = [];
+        foreach ($topics as $topic) {
+            $score = $this->score_topic($topic, $combinedtokens, $basequeries);
+            if ($score <= 0) {
+                continue;
+            }
+
+            $candidates[] = [
+                'topic_id' => (string)($topic['topic_id'] ?? ''),
+                'title' => (string)($topic['title'] ?? ''),
+                'score' => $score,
+                'doc_count' => (int)($topic['doc_count'] ?? 0),
+            ];
+        }
+
+        if (!empty($candidates)) {
+            $queryhinttokens = [];
+            foreach ($basequeries as $query) {
+                $queryhinttokens = array_merge($queryhinttokens, $this->extract_query_tokens($query));
+            }
+            $queryhinttokens = array_values(array_unique($queryhinttokens));
+
+            foreach ($candidates as &$candidate) {
+                $candidate['score'] += $this->score_topic_hints(
+                    (string)($candidate['topic_id'] ?? ''),
+                    $queryhinttokens
+                );
+            }
+            unset($candidate);
+        }
+
+        usort($candidates, static function (array $left, array $right): int {
+            $scorecompare = ((int)($right['score'] ?? 0)) <=> ((int)($left['score'] ?? 0));
+            if ($scorecompare !== 0) {
+                return $scorecompare;
+            }
+            return strcmp((string)($left['topic_id'] ?? ''), (string)($right['topic_id'] ?? ''));
+        });
+
+        $first = $candidates[0] ?? ['topic_id' => '', 'title' => '', 'score' => 0];
+        $secondscore = (int)(($candidates[1] ?? [])['score'] ?? 0);
+        $topscore = (int)($first['score'] ?? 0);
+        $confidence = 0.0;
+        if ($topscore > 0) {
+            $confidence = ($topscore - $secondscore) / max($topscore, 1);
+        }
+
+        return [
+            'topic_id' => (string)($first['topic_id'] ?? ''),
+            'topic_title' => (string)($first['title'] ?? ''),
+            'score' => $topscore,
+            'confidence' => max(0.0, min(1.0, $confidence)),
+            'candidates' => array_slice($candidates, 0, 3),
+        ];
+    }
+
+    /**
+     * Search only inside one topic and optionally merge multiple query variants.
+     *
+     * @param string $topicid
+     * @param string $question
+     * @param string[] $queries
+     * @param int $limit
+     * @return array<int,array<string,mixed>>
+     */
+    public function search_in_topic(string $topicid, string $question, array $queries = [], int $limit = 3): array {
+        $topicid = trim($topicid);
+        if ($topicid === '') {
+            return [];
+        }
+
+        $queries = array_values(array_filter(array_unique(array_map('trim', $queries))));
+        $allqueries = array_values(array_filter(array_unique(array_merge([$question], $queries))));
+
+        $docsintopic = [];
+        foreach ($this->load_docs() as $doc) {
+            $path = (string)($doc['path'] ?? '');
+            if ($this->extract_topic_id_from_path($path) === $topicid) {
+                $docsintopic[] = $doc;
+            }
+        }
+
+        if (empty($docsintopic)) {
+            return [];
+        }
+
+        return $this->search_docs($docsintopic, $allqueries, $limit);
+    }
+
+    /**
      * Load the full content of specific docs by path.
      * @param array $paths
      * @return array
@@ -227,6 +464,224 @@ class docs_lookup_service {
             }
         }
         return $result;
+    }
+
+    /**
+     * Search in a pre-filtered document list using one or more query variants.
+     *
+     * @param array<int,array<string,mixed>> $docs
+     * @param string[] $queries
+     * @param int $limit
+     * @return array<int,array<string,mixed>>
+     */
+    private function search_docs(array $docs, array $queries, int $limit): array {
+        $queries = array_values(array_filter(array_unique(array_map('trim', $queries))));
+        if (empty($queries)) {
+            return [];
+        }
+
+        $pathmap = [];
+        foreach ($queries as $query) {
+            $tokens = $this->extract_query_tokens($query);
+            if (empty($tokens)) {
+                continue;
+            }
+            foreach ($docs as $doc) {
+                $score = $this->score_doc($doc, $tokens, $query);
+                if ($score <= 0) {
+                    continue;
+                }
+                $path = (string)($doc['path'] ?? '');
+                if (!isset($pathmap[$path])) {
+                    $pathmap[$path] = ['doc' => $doc, 'best_score' => 0, 'hit_count' => 0];
+                }
+                if ($score > $pathmap[$path]['best_score']) {
+                    $pathmap[$path]['best_score'] = $score;
+                    $pathmap[$path]['doc'] = $doc;
+                }
+                $pathmap[$path]['hit_count']++;
+            }
+        }
+
+        $results = [];
+        foreach ($pathmap as $entry) {
+            $doc = $entry['doc'];
+            $bonus = min($entry['hit_count'] - 1, 2) * 15;
+            $doc['score'] = $entry['best_score'] + $bonus;
+            $doc['exactbasenamehit'] = false;
+            foreach ($queries as $query) {
+                if ($this->has_exact_basename_hit($doc, $query)) {
+                    $doc['exactbasenamehit'] = true;
+                    break;
+                }
+            }
+            $results[] = $doc;
+        }
+
+        usort($results, static function (array $left, array $right): int {
+            $scorecompare = ((int)($right['score'] ?? 0)) <=> ((int)($left['score'] ?? 0));
+            if ($scorecompare !== 0) {
+                return $scorecompare;
+            }
+            return strcmp((string)($left['path'] ?? ''), (string)($right['path'] ?? ''));
+        });
+
+        return array_slice($results, 0, max(1, $limit));
+    }
+
+    /**
+     * Extract stable topic id from docs path.
+     *
+     * @param string $path
+     * @return string
+     */
+    private function extract_topic_id_from_path(string $path): string {
+        $path = trim(str_replace('\\', '/', $path));
+        if ($path === '' || strpos($path, '/') === false) {
+            return 'overview';
+        }
+
+        $parts = explode('/', $path);
+        $topic = trim((string)($parts[0] ?? ''));
+        return $topic !== '' ? $topic : 'overview';
+    }
+
+    /**
+     * Build display title from topic id.
+     *
+     * @param string $topicid
+     * @return string
+     */
+    private function build_topic_title(string $topicid): string {
+        if ($topicid === 'overview') {
+            return 'Overview';
+        }
+
+        $label = str_replace(['_', '-'], ' ', strtolower($topicid));
+        return ucwords(trim($label));
+    }
+
+    /**
+     * Derive a compact intent hint from the topic id.
+     *
+     * @param string $topicid
+     * @return string
+     */
+    private function detect_topic_intent(string $topicid): string {
+        $map = [
+            'actions_after_booking' => 'automation',
+            'campaigns' => 'configuration',
+            'conditions' => 'rules',
+            'shortcodes' => 'templating',
+            'subbookings' => 'scheduling',
+            'webservice' => 'integration',
+            'settings' => 'configuration',
+            'overview' => 'overview',
+        ];
+
+        return $map[$topicid] ?? 'documentation';
+    }
+
+    /**
+     * Collect candidate topic terms from a doc title/path/basename.
+     *
+     * @param array<string,mixed> $doc
+     * @return array<int,string>
+     */
+    private function extract_topic_terms(array $doc): array {
+        $raw = implode(' ', [
+            (string)($doc['title'] ?? ''),
+            (string)($doc['basename'] ?? ''),
+            (string)($doc['path'] ?? ''),
+        ]);
+
+        $tokens = $this->extract_query_tokens($raw);
+        return array_values(array_unique($tokens));
+    }
+
+    /**
+     * Score one topic entry against combined query tokens.
+     *
+     * @param array<string,mixed> $topic
+     * @param array<int,string> $tokens
+     * @param array<int,string> $queries
+     * @return int
+     */
+    private function score_topic(array $topic, array $tokens, array $queries): int {
+        $score = 0;
+
+        $topicid = strtolower((string)($topic['topic_id'] ?? ''));
+        $title = strtolower((string)($topic['title'] ?? ''));
+        $keywords = array_map('strtolower', (array)($topic['keywords'] ?? []));
+        $samplepaths = array_map('strtolower', (array)($topic['sample_paths'] ?? []));
+
+        foreach ($tokens as $token) {
+            if ($token === '') {
+                continue;
+            }
+            if (strpos($topicid, $token) !== false) {
+                $score += 55;
+            }
+            if (strpos($title, $token) !== false) {
+                $score += 35;
+            }
+            if (in_array($token, $keywords, true)) {
+                $score += 25;
+            }
+            foreach ($samplepaths as $path) {
+                if (strpos($path, $token) !== false) {
+                    $score += 12;
+                    break;
+                }
+            }
+        }
+
+        foreach ($queries as $query) {
+            $compact = preg_replace('/[^a-z0-9]+/', '', strtolower($query)) ?? '';
+            if ($compact !== '' && strpos($compact, str_replace('_', '', $topicid)) !== false) {
+                $score += 120;
+            }
+        }
+
+        return $score;
+    }
+
+    /**
+     * Apply targeted topic boosts for known docs-intent classes.
+     *
+     * @param string $topicid
+     * @param array<int,string> $querytokens
+     * @return int
+     */
+    private function score_topic_hints(string $topicid, array $querytokens): int {
+        $topicid = strtolower(trim($topicid));
+        if ($topicid === '' || empty($querytokens)) {
+            return 0;
+        }
+
+        $hasmessaginghint = false;
+        foreach ($querytokens as $token) {
+            if (in_array($token, self::MESSAGING_HINT_TOKENS, true)) {
+                $hasmessaginghint = true;
+                break;
+            }
+        }
+
+        if (!$hasmessaginghint) {
+            return 0;
+        }
+
+        if ($topicid === 'booking_rules') {
+            return 180;
+        }
+        if ($topicid === '00_booking_messages') {
+            return 120;
+        }
+        if ($topicid === 'actions_after_booking') {
+            return -40;
+        }
+
+        return 0;
     }
 
     /**

@@ -30,6 +30,12 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
     /** Task name constant. */
     public const TASK_NAME = 'booking.explain_docs_topic';
 
+    /** Minimum confidence required for topic-scoped retrieval. */
+    private const TOPIC_CONFIDENCE_THRESHOLD = 0.25;
+
+    /** Candidate pool size before final top-2 selection. */
+    private const DOC_CANDIDATE_POOL_LIMIT = 20;
+
     /**
      * Constructor.
      */
@@ -168,10 +174,46 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             2
         )));
         $allqueries = array_values(array_unique(array_filter(array_merge([$question], $extraqueries))));
+        $ismessagingquestion = $this->is_messaging_question($allqueries);
 
-        $docs = count($allqueries) > 1
-            ? $service->search_multi($allqueries, 2)
-            : $service->search($question, 2);
+        $topicselection = $service->detect_best_topic($question, $extraqueries);
+        $selectedtopicid = (string)($topicselection['topic_id'] ?? '');
+        $topicconfidence = (float)($topicselection['confidence'] ?? 0.0);
+        $retrievalmode = 'global';
+
+        $docs = [];
+        if ($selectedtopicid !== '' && $topicconfidence >= self::TOPIC_CONFIDENCE_THRESHOLD) {
+            $docs = $service->search_in_topic(
+                $selectedtopicid,
+                $question,
+                $extraqueries,
+                self::DOC_CANDIDATE_POOL_LIMIT
+            );
+            $retrievalmode = 'topic';
+        }
+
+        if (empty($docs)) {
+            $docs = count($allqueries) > 1
+                ? $service->search_multi($allqueries, self::DOC_CANDIDATE_POOL_LIMIT)
+                : $service->search($question, self::DOC_CANDIDATE_POOL_LIMIT);
+            $retrievalmode = 'global';
+        }
+
+        if ($ismessagingquestion && !$this->has_booking_rules_doc($docs)) {
+            $rulesfallbackqueries = array_values(array_unique(array_merge(
+                $allqueries,
+                [
+                    'booking rules notifications',
+                    'booking rules reminders',
+                    'booking rules email',
+                ]
+            )));
+            $rulesdocs = $service->search_multi($rulesfallbackqueries, self::DOC_CANDIDATE_POOL_LIMIT);
+            $docs = $this->merge_docs_by_path($docs, $rulesdocs);
+            $retrievalmode .= '+rules_fallback';
+        }
+
+        $docs = $this->prioritize_docs($docs, $ismessagingquestion);
 
         if (empty($docs)) {
             $nomatch = $this->localized_string('ai_docs_explain_no_match', null, $outputlang);
@@ -229,10 +271,122 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                 [
                     'Docs matched: ' . count($selecteddocs),
                     'Top doc: ' . (string)($firstdoc['path'] ?? ''),
+                    'Topic: ' . ($selectedtopicid !== '' ? $selectedtopicid : 'none'),
+                    'Topic confidence: ' . number_format($topicconfidence, 3, '.', ''),
+                    'Retrieval mode: ' . $retrievalmode,
                     'Queries used: ' . implode(' | ', $allqueries),
                 ]
             ),
         ];
+    }
+
+    /**
+     * Determine whether the query is about messaging/notifications.
+     *
+     * @param array $queries
+     * @return bool
+     */
+    private function is_messaging_question(array $queries): bool {
+        $haystack = mb_strtolower(implode(' ', array_map('strval', $queries)));
+        return (bool)preg_match(
+            '/benachrichtig|nachricht|notification|notifications|reminder|mail|email|message/',
+            $haystack
+        );
+    }
+
+    /**
+     * Whether the candidate set already contains a booking_rules doc.
+     *
+     * @param array $docs
+     * @return bool
+     */
+    private function has_booking_rules_doc(array $docs): bool {
+        foreach ($docs as $doc) {
+            $path = mb_strtolower((string)($doc['path'] ?? ''));
+            if (str_starts_with($path, 'booking_rules/')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Merge candidate docs by path while keeping the highest score per path.
+     *
+     * @param array $primary
+     * @param array $secondary
+     * @return array
+     */
+    private function merge_docs_by_path(array $primary, array $secondary): array {
+        $merged = [];
+
+        foreach (array_merge($primary, $secondary) as $doc) {
+            $path = (string)($doc['path'] ?? '');
+            if ($path === '') {
+                continue;
+            }
+            if (!isset($merged[$path])) {
+                $merged[$path] = $doc;
+                continue;
+            }
+
+            $existing = (int)($merged[$path]['score'] ?? 0);
+            $candidate = (int)($doc['score'] ?? 0);
+            if ($candidate > $existing) {
+                $merged[$path] = $doc;
+            }
+        }
+
+        return array_values($merged);
+    }
+
+    /**
+     * Apply deterministic domain prioritization before taking final top docs.
+     *
+     * @param array $docs
+     * @param bool $ismessagingquestion
+     * @return array
+     */
+    private function prioritize_docs(array $docs, bool $ismessagingquestion): array {
+        usort($docs, static function (array $left, array $right) use ($ismessagingquestion): int {
+            $leftscore = (int)($left['score'] ?? 0);
+            $rightscore = (int)($right['score'] ?? 0);
+
+            if ($ismessagingquestion) {
+                $leftscore += self::notification_priority_boost((string)($left['path'] ?? ''));
+                $rightscore += self::notification_priority_boost((string)($right['path'] ?? ''));
+            }
+
+            if ($rightscore !== $leftscore) {
+                return $rightscore <=> $leftscore;
+            }
+
+            return strcmp((string)($left['path'] ?? ''), (string)($right['path'] ?? ''));
+        });
+
+        return $docs;
+    }
+
+    /**
+     * Domain-specific path boost for notification/messaging questions.
+     *
+     * @param string $path
+     * @return int
+     */
+    private static function notification_priority_boost(string $path): int {
+        $path = mb_strtolower($path);
+
+        if ($path === 'booking_rules/readme.md') {
+            return 220;
+        }
+        if (str_starts_with($path, 'booking_rules/')) {
+            return 140;
+        }
+        if ($path === 'actions_after_booking/readme.md') {
+            return -120;
+        }
+
+        return 0;
     }
 
     /**
