@@ -48,16 +48,6 @@ final class slotbooking_form_test extends booking_advanced_testcase {
     }
 
     /**
-     * Cleanup.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Data provider for slot mode coverage.
      *
      * @return array[]

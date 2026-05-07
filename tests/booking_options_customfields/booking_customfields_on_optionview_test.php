@@ -42,16 +42,6 @@ final class booking_customfields_on_optionview_test extends booking_advanced_tes
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Ensure configured customfields are rendered in the optionview output.
      *
      * @covers \mod_booking\output\bookingoption_description::export_for_template

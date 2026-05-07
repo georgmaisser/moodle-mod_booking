@@ -62,16 +62,6 @@ final class condition_maxoptionsfromcategory_test extends booking_advanced_testc
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Test of booking options with max options from category.
      *
      * @covers \mod_booking\booking_bookit

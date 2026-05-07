@@ -61,16 +61,6 @@ final class rules_waitinglist_notification_test extends booking_advanced_testcas
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Create booking with bookingoption that contains price for some users, depending on profilefield.
      * Option is fully booked with waitinglist enabled. Some users on waitinglist need to pay, others don't.
      * Create rule to send interval messages.

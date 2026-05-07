@@ -56,16 +56,6 @@ final class rule_specifictime_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Testing of a new booking rule type rule_specifictime.
      * It allows users to choose time in seconds, minutes, hours, days and weeks (duration field)
      * and choose between "before" and "after".

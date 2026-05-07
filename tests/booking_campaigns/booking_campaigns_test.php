@@ -59,16 +59,6 @@ final class booking_campaigns_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Test campaign blockbooking.
      *
      * @covers \mod_booking\bo_availability\conditions\campaign_blockbooking::is_available

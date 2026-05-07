@@ -111,15 +111,6 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
         $this->maybe_register_live_ai_provider();
     }
 
-    /**
-     * Clean up singleton cache after each test.
-     */
-    protected function tearDown(): void {
-        parent::tearDown();
-        $this->gen->teardown();
-        singleton_service::destroy_instance();
-    }
-
     // -------------------------------------------------------------------------
     // AI provider registration.
 

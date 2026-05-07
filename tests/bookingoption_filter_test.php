@@ -74,16 +74,6 @@ final class bookingoption_filter_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Tests the application of custom field filters on booking options using the Wunderbyte table system.
      *
      * This test verifies that the {@see customfieldfilter} filters correctly apply

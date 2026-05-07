@@ -55,16 +55,6 @@ final class rules_responsiblecontact_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Test rules for "select_responsible_contact_in_bo" when option is booked.
      *
      * @covers \mod_booking\booking_rules\rules\rule_react_on_event

@@ -52,16 +52,6 @@ final class optionformconfig_info_test extends booking_advanced_testcase {
 
     /**
      * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
-     * Mandatory clean-up after each test.
      * @covers \mod_booking\settings\optionformconfig\optionformconfig_info
      */
     public function test_save_and_return_configured_fields(): void {

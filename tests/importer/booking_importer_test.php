@@ -55,16 +55,6 @@ final class booking_importer_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Test process_data of CSV import.
      *
      * @covers \mod_booking\importer\bookingoptionsimporter::execute_bookingoptions_csv_import

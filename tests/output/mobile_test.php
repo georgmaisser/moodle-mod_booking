@@ -41,16 +41,6 @@ final class mobile_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Ensure a single booked option is rendered in the mobile course view.
      *
      * @covers \mod_booking\output\mobile::mobile_course_view

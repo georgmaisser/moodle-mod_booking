@@ -50,16 +50,6 @@ final class booking_cohort_subscription_test extends booking_advanced_testcase {
         time_mock::set_mock_time(strtotime('now'));
         singleton_service::destroy_instance();
     }
-
-    /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
     /**
      * Validate cohort subscription booking logic used in the Behat scenario.
      *

@@ -54,16 +54,6 @@ final class rule_cancellation_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Testing of a cancellation of booking answer and entire booking option.
      * option has invisibily MOD_BOOKING_OPTION_VISIBLEWITHLINK, message is send not matter the setting
      * option has invisibily MOD_BOOKING_OPTION_INVISIBLE and setting 'sendmessagesforinvisibleoptions' 0, no message is send

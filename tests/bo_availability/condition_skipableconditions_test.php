@@ -59,16 +59,6 @@ final class condition_skipableconditions_test extends booking_advanced_testcase 
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Tests if the settings workes as intended and skipped conditions are checked during booking process.
      *
      * @covers \mod_booking\bo_availability\conditions\userprofilefield_2_custom::is_available

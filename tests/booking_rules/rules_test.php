@@ -61,17 +61,6 @@ final class rules_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     * @return void
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Test rules for "test if message is triggered on payment confirmation".
      *
      * @covers \mod_booking\bo_availability\conditions\alreadybooked::is_available

@@ -47,13 +47,6 @@ final class condition_previouslybooked_completion_test extends booking_advanced_
         singleton_service::destroy_instance();
     }
 
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
     /**
      * Verify that previouslybooked with requirecompletion blocks until completion is toggled.
      *

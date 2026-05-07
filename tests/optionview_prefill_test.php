@@ -73,9 +73,6 @@ final class optionview_prefill_test extends booking_advanced_testcase {
         $_POST = $this->originalpost;
         $_REQUEST = $this->originalrequest;
         parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
     }
 
     /**

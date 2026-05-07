@@ -211,9 +211,9 @@ class orchestrator {
      * - {{timezonename}}
      * - {{nowiso}}
      * - {{tasklist}}
-    * - {{schemajson}}
-    * - {{taskcatalogjson}}
-    * - {{fullschemajson}}
+     * - {{schemajson}}
+     * - {{taskcatalogjson}}
+     * - {{fullschemajson}}
      *
      * @return string
      */

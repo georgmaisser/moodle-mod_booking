@@ -61,16 +61,6 @@ final class waitinglist_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * This test verifies that an answer is immediately booked for the first user on the waiting list.
      *
      * The booking option has a price of 25 euros for the default category and 0 euros for the student category.

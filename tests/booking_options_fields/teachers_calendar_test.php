@@ -59,16 +59,6 @@ final class teachers_calendar_test extends booking_advanced_testcase {
     }
 
     /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
-    }
-
-    /**
      * Test creation and update of recurring options.
      *
      * @covers \mod_booking\option\fields\teachers::changes_collected_action

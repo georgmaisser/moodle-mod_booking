@@ -42,4 +42,15 @@ abstract class booking_advanced_testcase extends \advanced_testcase {
         time_mock::set_mock_time(strtotime('now', time()));
         singleton_service::destroy_instance();
     }
+
+    /**
+     * Common booking test teardown.
+     */
+    protected function tearDown(): void {
+        parent::tearDown();
+        /** @var \mod_booking_generator $plugingenerator */
+        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
+        $plugingenerator->teardown();
+        singleton_service::destroy_instance();
+    }
 }
