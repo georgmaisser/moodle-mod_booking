@@ -135,10 +135,24 @@ class orchestrator {
         $manager = di::get(ai_manager::class);
         $normalizedsteptype = $this->normalize_step_type($steptype);
 
-        $systemprompt = $this->build_system_prompt($cmid, $normalizedsteptype);
-        $messages     = $this->store->get_recent_messages($threadid, self::MAX_HISTORY_MESSAGES);
-        $prompt       = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype);
-        $actionclass  = $this->resolve_action_class_for_step($manager, $context, $normalizedsteptype);
+        $routing = $this->resolve_action_class_for_step($manager, $context, $normalizedsteptype);
+        $actionclass = (string)$routing['actionclass'];
+        $systemprompt = $this->build_system_prompt($cmid, $normalizedsteptype, $actionclass);
+        $messages = $this->store->get_recent_messages($threadid, self::MAX_HISTORY_MESSAGES);
+        $prompt = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype);
+        $historycount = count(array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype)));
+        $observationcount = count($observations);
+        $primaryprovider = $this->resolve_primary_provider_for_action($manager, $actionclass);
+        $debugsource = $this->build_orchestrator_debug_source(
+            $normalizedsteptype,
+            $actionclass,
+            (string)$routing['routepolicy'],
+            !empty($routing['routingfallback']),
+            $primaryprovider,
+            $historycount,
+            $observationcount,
+            false
+        );
 
         try {
             if ($actionclass === summarise_text::class) {
@@ -171,7 +185,7 @@ class orchestrator {
                 $threadid,
                 $cmid,
                 $userid,
-                'orchestrator.process.' . $normalizedsteptype . '.' . $action::get_basename(),
+                $debugsource,
                 $prompt,
                 $rawtext,
                 $providersuccess,
@@ -209,7 +223,16 @@ class orchestrator {
                 $threadid,
                 $cmid,
                 $userid,
-                'orchestrator.process.' . $normalizedsteptype . '.exception',
+                $this->build_orchestrator_debug_source(
+                    $normalizedsteptype,
+                    $actionclass,
+                    (string)$routing['routepolicy'],
+                    !empty($routing['routingfallback']),
+                    $primaryprovider,
+                    $historycount,
+                    $observationcount,
+                    true
+                ),
                 $prompt,
                 '',
                 false,
@@ -266,6 +289,68 @@ class orchestrator {
     }
 
     /**
+     * Return a slim default initial prompt template for a routed AI action.
+     *
+     * @param string $actionclass
+     * @return string
+     */
+    public static function get_default_initial_prompt_template_for_action(string $actionclass): string {
+        if ($actionclass === summarise_text::class) {
+            return <<<'PROMPT'
+You are a generic booking agent planner for the Moodle booking activity "{{bookingname}}".
+
+STRICT RULES:
+- Return only a valid JSON object.
+- "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
+- Never use a task name or trigger id as "response_type".
+- Keep instructions compact and action-oriented.
+- Use the task catalog and schema below. Do not invent tasks or fields.
+- Prefer one clear next step over broad narration.
+- For command-bearing output, use a "commands" array with items: {"task":"booking...", "version":1, "input":{...}}.
+- For read-only intents, answer directly or emit a single task_call.
+- If the user asks how a documented booking feature works, what it means,
+  or how to configure notifications/messages/rules, call booking.explain_docs_topic.
+- For booking.explain_docs_topic, pass the full user question as input.question.
+- If that docs question is not in English, also add up to 2 English search_queries.
+- Do not answer "I cannot help" for documented booking features before trying booking.explain_docs_topic.
+- For mutating intents, ask only for missing required data or return one confirmation_request.
+- If OBSERVATION blocks already contain sufficient information,
+  return response_type "clarification" with commands=[] and summarize the answer for the user.
+- Do not repeat the same read-only lookup task if an existing OBSERVATION already provides the needed answer.
+PROMPT;
+        }
+
+        if ($actionclass === explain_text::class) {
+            return <<<'PROMPT'
+You are a generic booking agent reasoning assistant for the Moodle booking activity "{{bookingname}}".
+
+STRICT RULES:
+- Return only a valid JSON object.
+- "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
+- Never use a task name or trigger id as "response_type".
+- Base your answer on the latest user message, observations, and assistant state.
+- Be concise, precise, and helpful.
+- Do not propose extra tool calls if the available context already answers the request.
+- If information is still missing for a mutating action, ask one focused clarification question.
+- In final reasoning mode, prefer a direct clarification answer with commands=[].
+PROMPT;
+        }
+
+        return <<<'PROMPT'
+You are a generic booking agent for the Moodle booking activity "{{bookingname}}".
+
+STRICT RULES:
+- Return only a valid JSON object.
+- "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
+- Never use a task name or trigger id as "response_type".
+- Use only the provided task catalog and schema.
+- Do not invent option ids, course ids, or unsupported actions.
+- For read-only intents, prefer direct task_call handling.
+- For mutating intents, ask only for missing required data before confirmation.
+PROMPT;
+    }
+
+    /**
      * Return absolute path to the default initial prompt markdown file.
      *
      * @return string
@@ -280,7 +365,11 @@ class orchestrator {
      * @param  int    $cmid
      * @return string System prompt text.
      */
-    private function build_system_prompt(int $cmid, string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE): string {
+    private function build_system_prompt(
+        int $cmid,
+        string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
+        string $actionclass = generate_text::class
+    ): string {
         $schemas = $this->registry->get_all_schemas();
         $taskcatalog = $this->registry->get_all_prompt_contracts();
         $tasklist = implode(', ', $this->registry->get_task_names());
@@ -303,13 +392,39 @@ class orchestrator {
         $cm = get_coursemodule_from_id('booking', $cmid);
         $bookingname = $cm ? format_string($cm->name) : 'this booking instance';
 
+        $legacydefault = trim(self::get_default_initial_prompt_template());
         $configkey = $this->get_initial_prompt_config_key($steptype);
-        $template = (string)(get_config('booking', $configkey) ?? '');
-        if (trim($template) === '' && $configkey !== 'aiinitialprompt') {
-            $template = (string)(get_config('booking', 'aiinitialprompt') ?? '');
+        $steptemplate = $this->normalize_config_prompt_template(
+            (string)(get_config('booking', $configkey) ?? ''),
+            $legacydefault
+        );
+        $actiontemplate = '';
+        $actionconfigkey = $this->get_action_initial_prompt_config_key($actionclass);
+        if ($actionconfigkey !== '') {
+            $actiontemplate = $this->normalize_config_prompt_template(
+                (string)(get_config('booking', $actionconfigkey) ?? ''),
+                $legacydefault
+            );
         }
-        if (trim($template) === '') {
-            $template = self::get_default_initial_prompt_template();
+        $globaltemplate = $this->normalize_config_prompt_template(
+            (string)(get_config('booking', 'aiinitialprompt') ?? ''),
+            $legacydefault
+        );
+
+        // Fallback order:
+        // 1) explicit step template (if custom),
+        // 2) explicit action template,
+        // 3) explicit global template,
+        // 4) built-in action-specific slim default.
+        $template = $steptemplate;
+        if ($template === '') {
+            $template = $actiontemplate;
+        }
+        if ($template === '') {
+            $template = $globaltemplate;
+        }
+        if ($template === '') {
+            $template = self::get_default_initial_prompt_template_for_action($actionclass);
         }
 
         $prompt = strtr($template, [
@@ -445,6 +560,25 @@ class orchestrator {
     }
 
     /**
+     * Resolve the admin config key for action-specific initial prompts.
+     *
+     * @param string $actionclass
+     * @return string
+     */
+    private function get_action_initial_prompt_config_key(string $actionclass): string {
+        if ($actionclass === summarise_text::class) {
+            return 'aiinitialprompt_summarise_text';
+        }
+        if ($actionclass === explain_text::class) {
+            return 'aiinitialprompt_explain_text';
+        }
+        if ($actionclass === generate_text::class) {
+            return 'aiinitialprompt_generate_text';
+        }
+        return '';
+    }
+
+    /**
      * Return history depth per prompt profile to reduce token usage.
      *
      * @param string $steptype
@@ -461,30 +595,75 @@ class orchestrator {
     }
 
     /**
+     * Treat empty or legacy full-template values as unset config for prompt fallback.
+     *
+     * @param string $template
+     * @param string $legacydefault
+     * @return string
+     */
+    private function normalize_config_prompt_template(string $template, string $legacydefault): string {
+        $trimmed = trim($template);
+        if ($trimmed === '') {
+            return '';
+        }
+        if ($trimmed === $legacydefault) {
+            return '';
+        }
+        return $template;
+    }
+
+    /**
      * Route to action classes by step profile for OpenAI providers, with fallback.
      *
      * @param ai_manager $manager
      * @param context_module $context
      * @param string $steptype
-     * @return string
+     * @return array{actionclass:string, routepolicy:string, routingfallback:bool}
      */
-    private function resolve_action_class_for_step(ai_manager $manager, context_module $context, string $steptype): string {
+    private function resolve_action_class_for_step(ai_manager $manager, context_module $context, string $steptype): array {
         if (!$this->should_use_openai_step_routing($manager)) {
-            return generate_text::class;
+            return [
+                'actionclass' => generate_text::class,
+                'routepolicy' => 'default',
+                'routingfallback' => false,
+            ];
         }
 
         if ($steptype === self::STEP_TYPE_FINAL_REASONING) {
-            if ($this->is_action_available_in_context($manager, $context, explain_text::class)) {
-                return explain_text::class;
+            if ($this->is_action_available_in_context($manager, $context, generate_text::class)) {
+                return [
+                    'actionclass' => generate_text::class,
+                    'routepolicy' => 'openai',
+                    'routingfallback' => false,
+                ];
             }
-            return generate_text::class;
+            if ($this->is_action_available_in_context($manager, $context, explain_text::class)) {
+                return [
+                    'actionclass' => explain_text::class,
+                    'routepolicy' => 'openai',
+                    'routingfallback' => true,
+                ];
+            }
+            return [
+                'actionclass' => generate_text::class,
+                'routepolicy' => 'openai',
+                'routingfallback' => true,
+            ];
         }
 
         if ($this->is_action_available_in_context($manager, $context, summarise_text::class)) {
-            return summarise_text::class;
+            return [
+                'actionclass' => summarise_text::class,
+                'routepolicy' => 'openai',
+                'routingfallback' => false,
+            ];
         }
 
-        return generate_text::class;
+        return [
+            'actionclass' => generate_text::class,
+            'routepolicy' => 'openai',
+            'routingfallback' => true,
+        ];
     }
 
     /**
@@ -505,6 +684,106 @@ class orchestrator {
         } catch (\Throwable $e) {
             return false;
         }
+    }
+
+    /**
+     * Resolve the primary enabled provider plugin for an action.
+     *
+     * @param ai_manager $manager
+     * @param string $actionclass
+     * @return string
+     */
+    private function resolve_primary_provider_for_action(ai_manager $manager, string $actionclass): string {
+        try {
+            $providers = $manager->get_providers_for_actions([$actionclass], true);
+            $list = (array)($providers[$actionclass] ?? []);
+            if (empty($list)) {
+                return '';
+            }
+            $primary = reset($list);
+            return (string)($primary->provider ?? '');
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * Build compact orchestrator telemetry in source field for booking_ai_llm_debug.
+     *
+     * @param string $steptype
+     * @param string $actionclass
+     * @param string $routepolicy
+     * @param bool $routingfallback
+     * @param string $primaryprovider
+     * @param int $historycount
+     * @param int $observationcount
+     * @param bool $exception
+     * @return string
+     */
+    private function build_orchestrator_debug_source(
+        string $steptype,
+        string $actionclass,
+        string $routepolicy,
+        bool $routingfallback,
+        string $primaryprovider,
+        int $historycount,
+        int $observationcount,
+        bool $exception
+    ): string {
+        $stepmap = [
+            self::STEP_TYPE_TOOL_CALL_PARSE => 'tcp',
+            self::STEP_TYPE_SIMPLE_RETRIEVAL => 'sr',
+            self::STEP_TYPE_FINAL_REASONING => 'fr',
+        ];
+        $actionmap = [
+            generate_text::class => 'gen',
+            summarise_text::class => 'sum',
+            explain_text::class => 'exp',
+        ];
+
+        $step = $stepmap[$steptype] ?? 'unk';
+        $action = $actionmap[$actionclass] ?? 'oth';
+        $route = ($routepolicy === 'openai') ? 'oa' : 'df';
+        $provider = $this->short_provider_for_debug($primaryprovider);
+
+        $source = 'orc'
+            . '|st=' . $step
+            . '|ac=' . $action
+            . '|rt=' . $route
+            . '|fb=' . ($routingfallback ? '1' : '0')
+            . '|pv=' . $provider
+            . '|hm=' . max(0, $historycount)
+            . '|ob=' . max(0, $observationcount)
+            . '|ex=' . ($exception ? '1' : '0');
+
+        if (core_text::strlen($source) > 100) {
+            return core_text::substr($source, 0, 100);
+        }
+
+        return $source;
+    }
+
+    /**
+     * Convert provider plugin names to short debug tokens.
+     *
+     * @param string $provider
+     * @return string
+     */
+    private function short_provider_for_debug(string $provider): string {
+        $value = trim(core_text::strtolower($provider));
+        if ($value === '') {
+            return 'na';
+        }
+        if ($value === 'aiprovider_openai') {
+            return 'oai';
+        }
+        if (str_starts_with($value, 'aiprovider_')) {
+            $value = substr($value, 11);
+        }
+        if ($value === '') {
+            return 'na';
+        }
+        return core_text::substr($value, 0, 10);
     }
 
     /**

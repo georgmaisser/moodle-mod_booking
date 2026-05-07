@@ -252,15 +252,16 @@ class interpreter implements agent_interpreter {
         $allowedtasks = $this->registry->get_task_names();
 
         $responsetype = (string)($parsed['response_type'] ?? '');
-        if ($responsetype !== '' && in_array($responsetype, $allowedtasks, true)) {
+        $responsereferencedtask = $this->resolve_task_name_alias($responsetype, $allowedtasks);
+        if ($responsereferencedtask !== null) {
             $input = is_array($parsed['input'] ?? null) ? $parsed['input'] : [];
-            $input = $this->hydrate_question_field($responsetype, $input, $lastusermessage);
+            $input = $this->hydrate_question_field($responsereferencedtask, $input, $lastusermessage);
             return [
                 'response_type' => 'task_call',
                 'message' => $this->safe_string($parsed['message'] ?? 'Executing.'),
                 'commands' => [
                     [
-                        'task' => $responsetype,
+                        'task' => $responsereferencedtask,
                         'version' => (int)($parsed['version'] ?? 1),
                         'input' => $input,
                     ],
@@ -292,15 +293,16 @@ class interpreter implements agent_interpreter {
         }
 
         $task = (string)($parsed['task'] ?? '');
-        if ($task !== '' && in_array($task, $allowedtasks, true)) {
+        $resolvedtask = $this->resolve_task_name_alias($task, $allowedtasks);
+        if ($resolvedtask !== null) {
             $input = is_array($parsed['input'] ?? null) ? $parsed['input'] : [];
-            $input = $this->hydrate_question_field($task, $input, $lastusermessage);
+            $input = $this->hydrate_question_field($resolvedtask, $input, $lastusermessage);
             return [
                 'response_type' => 'task_call',
                 'message' => $this->safe_string($parsed['message'] ?? 'Executing.'),
                 'commands' => [
                     [
-                        'task' => $task,
+                        'task' => $resolvedtask,
                         'version' => (int)($parsed['version'] ?? 1),
                         'input' => $input,
                     ],
@@ -308,6 +310,65 @@ class interpreter implements agent_interpreter {
             ];
         }
 
+        $commands = $parsed['commands'] ?? null;
+        if (is_array($commands) && !empty($commands)) {
+            $normalizedcommands = [];
+            foreach ($commands as $command) {
+                if (!is_array($command)) {
+                    continue;
+                }
+                $commandtask = $this->resolve_task_name_alias((string)($command['task'] ?? ''), $allowedtasks);
+                if ($commandtask === null) {
+                    continue;
+                }
+                $commandinput = is_array($command['input'] ?? null) ? $command['input'] : [];
+                $commandinput = $this->hydrate_question_field($commandtask, $commandinput, $lastusermessage);
+                $normalizedcommands[] = [
+                    'task' => $commandtask,
+                    'version' => (int)($command['version'] ?? 1),
+                    'input' => $commandinput,
+                ];
+            }
+            if (!empty($normalizedcommands)) {
+                return [
+                    'response_type' => 'task_call',
+                    'lang' => $this->safe_string($parsed['lang'] ?? ''),
+                    'user_lang' => $this->safe_string($parsed['user_lang'] ?? $parsed['userlang'] ?? ''),
+                    'used_triggers' => $this->extract_used_triggers($parsed),
+                    'message' => $this->safe_string($parsed['message'] ?? 'Executing.'),
+                    'commands' => $normalizedcommands,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve common task-name aliases to canonical task names.
+     *
+     * Accepts full names (booking.some_task) and unique short suffixes (some_task).
+     *
+     * @param string $candidate
+     * @param array $allowedtasks
+     * @return string|null
+     */
+    private function resolve_task_name_alias(string $candidate, array $allowedtasks): ?string {
+        $name = trim($candidate);
+        if ($name === '') {
+            return null;
+        }
+        if (in_array($name, $allowedtasks, true)) {
+            return $name;
+        }
+        if (strpos($name, '.') === false) {
+            $matches = array_values(array_filter($allowedtasks, static function (string $taskname) use ($name): bool {
+                return substr($taskname, strrpos($taskname, '.') + 1) === $name;
+            }));
+            if (count($matches) === 1) {
+                return $matches[0];
+            }
+        }
         return null;
     }
 

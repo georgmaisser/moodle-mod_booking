@@ -99,10 +99,12 @@ class activate_trial_context extends external_api {
         // 1) Enable AI tools at course level.
         $DB->set_field('course', 'enableaitools', 1, ['id' => $courseid]);
 
-        // 2) Enable AI tools and generate_text action in this module.
+        // 2) Enable AI tools and all text actions used by the booking orchestrator.
         $DB->set_field('course_modules', 'enableaitools', 1, ['id' => $cmid]);
         $DB->set_field('course_modules', 'enabledaiactions', json_encode((object) [
             'generate_text' => true,
+            'summarise_text' => true,
+            'explain_text' => true,
         ]), ['id' => $cmid]);
 
         \core_plugin_manager::reset_caches();

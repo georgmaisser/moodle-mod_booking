@@ -385,6 +385,12 @@ class task_registry {
                 $id = trim((string)($trigger['id'] ?? ''));
                 if ($id !== '') {
                     $map[$id] = $taskname;
+                    if (strpos($id, '.') !== false) {
+                        $shortid = substr($id, strrpos($id, '.') + 1);
+                        if ($shortid !== '' && !isset($map[$shortid])) {
+                            $map[$shortid] = $taskname;
+                        }
+                    }
                 }
             }
         }

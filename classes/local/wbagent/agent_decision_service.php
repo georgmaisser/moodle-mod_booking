@@ -183,8 +183,9 @@ class agent_decision_service {
             ];
         }
 
-        // 5b. Generic clarification recovery:
-        // If the model returned a dead-end clarification, attempt a task-agnostic
+        // 5b. Generic readonly recovery:
+        // If the model returned a dead-end clarification or readonly-style error,
+        // attempt a task-agnostic
         // trigger/schema-based readonly recovery BEFORE command routing so it can
         // execute in-process and does not leak as task_call to the frontend contract.
         $usermessage = $this->get_last_user_message($threadid);
@@ -1530,7 +1531,8 @@ class agent_decision_service {
         int $threadid,
         int $cmid
     ): array {
-        if ((string)($result['response_type'] ?? '') !== 'clarification') {
+        $responsetype = (string)($result['response_type'] ?? '');
+        if (!in_array($responsetype, ['clarification', 'error'], true)) {
             return $result;
         }
         if (!empty((array)($result['commands'] ?? [])) || !empty((array)($result['results'] ?? []))) {
@@ -1551,6 +1553,13 @@ class agent_decision_service {
                 continue;
             }
             $candidatetasks[$taskname] = true;
+        }
+
+        if (empty($candidatetasks) && $this->looks_like_docs_help_intent($usermessage)) {
+            $taskname = 'booking.explain_docs_topic';
+            if ($this->registry->is_read_only_task($taskname) && $this->registry->get_task($taskname) !== null) {
+                $candidatetasks[$taskname] = true;
+            }
         }
 
         // Generic diagnostic fallback: when wording indicates a diagnosis question,
@@ -1701,6 +1710,18 @@ class agent_decision_service {
         $hasoptionanchor = isset($properties['optionquery']) || isset($properties['optionid']);
         $hasuserquery = isset($properties['userquery']) && is_array($properties['userquery']);
 
+        if ($this->looks_like_docs_help_intent($usermessage)) {
+            if ($taskname === 'booking.explain_docs_topic') {
+                $score += 12;
+            }
+            if ($hasquestion) {
+                $score += 4;
+            }
+            if ($hasquery && !$hasquestion) {
+                $score -= 2;
+            }
+        }
+
         if ($this->looks_like_diagnostic_intent($usermessage)) {
             if ($hasquestion) {
                 $score += 6;
@@ -1719,6 +1740,26 @@ class agent_decision_service {
         }
 
         return $score;
+    }
+
+    /**
+     * Heuristic detector for docs/help intent in user text.
+     *
+     * @param string $message
+     * @return bool
+     */
+    private function looks_like_docs_help_intent(string $message): bool {
+        $normalized = core_text::strtolower(trim((string)preg_replace('/\s+/', ' ', $message)));
+        if ($normalized === '') {
+            return false;
+        }
+
+        $pattern = '/('
+            . '\bhow\b|\bwhat\s+is\b|\bexplain\b|\bdocumentation\b|'
+            . '\bwie\b|\bwas\s+ist\b|\berkl[aä]re\b|\berklaere\b|'
+            . '\bbenachrichtig|\bnotification|\bmessage|\bregel|\brule'
+            . ')/u';
+        return (bool)preg_match($pattern, $normalized);
     }
 
     /**
