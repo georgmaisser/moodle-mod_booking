@@ -536,8 +536,8 @@ final class booking_action_bookotheroption_test extends advanced_testcase {
             ],
             'option' => [
                 'text' => 'Test option1',
-                'coursestarttime_0' => strtotime('now + 2 day'),
-                'courseendtime_0' => strtotime('now + 3 day'),
+                'coursestarttime_0' => strtotime('now + 2 day', time()),
+                'courseendtime_0' => strtotime('now + 3 day', time()),
                 'optiondateid_0' => 0,
                 'daystonotify_0' => 0,
                 'importing' => 1,

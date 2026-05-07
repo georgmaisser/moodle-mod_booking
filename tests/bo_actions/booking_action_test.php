@@ -332,8 +332,8 @@ final class booking_action_test extends advanced_testcase {
                     ],
                     'userssettings' => [
                         'student1' => [
-                            'profile_field_booking_field' => userdate(strtotime('today + 1 day'))
-                            . " - " . userdate(strtotime('today + 2 day')),
+                            'profile_field_booking_field' => userdate(strtotime('today + 1 day', time()))
+                            . " - " . userdate(strtotime('today + 2 day', time())),
                         ],
                     ],
                     'actiontype' => 'userprofilefield',
@@ -344,10 +344,10 @@ final class booking_action_test extends advanced_testcase {
                 ],
                 [
                     'bookitresult' => MOD_BOOKING_BO_COND_CONFIRMBOOKIT,
-                    'defaultprofilefieldvalue' => userdate(strtotime('today + 1 day'))
-                        . " - " . userdate(strtotime('today + 2 day')),
-                    'resultprofilefieldvalue' => userdate(strtotime('today + 1 day'))
-                        . " - " . userdate(strtotime('today + 2 day + 1 week')),
+                    'defaultprofilefieldvalue' => userdate(strtotime('today + 1 day', time()))
+                        . " - " . userdate(strtotime('today + 2 day', time())),
+                    'resultprofilefieldvalue' => userdate(strtotime('today + 1 day', time()))
+                        . " - " . userdate(strtotime('today + 2 day + 1 week', time())),
                 ],
             ],
             'Cancel booking' => [
@@ -398,8 +398,8 @@ final class booking_action_test extends advanced_testcase {
             ],
             'option' => [
                 'text' => 'Test option1',
-                'coursestarttime_0' => strtotime('now + 1 day'),
-                'courseendtime_0' => strtotime('now + 2 day'),
+                'coursestarttime_0' => strtotime('now + 1 day', time()),
+                'courseendtime_0' => strtotime('now + 2 day', time()),
                 'optiondateid_0' => 0,
                 'daystonotify_0' => 0,
                 'importing' => 1,
