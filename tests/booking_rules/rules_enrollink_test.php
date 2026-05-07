@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use stdClass;
 use mod_booking\teachers_handler;
 use mod_booking\booking_rules\booking_rules;
@@ -48,14 +48,13 @@ use tool_mocktesttime\time_mock;
  *
  * @runTestsInSeparateProcesses
  */
-final class rules_enrollink_test extends advanced_testcase {
+final class rules_enrollink_test extends booking_advanced_testcase {
     /**
      * Tests set up.
      */
     public function setUp(): void {
         parent::setUp();
         $this->resetAfterTest();
-        time_mock::init();
         time_mock::set_mock_time(strtotime('now'));
         singleton_service::destroy_instance();
     }

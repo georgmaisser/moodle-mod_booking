@@ -33,7 +33,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\ai_error_classifier;
 use mod_booking\local\wbagent\privacy_anonymizer;
 use mod_booking\local\wbagent\result_payload_summarizer;
@@ -47,7 +47,7 @@ use mod_booking\local\wbagent\result_payload_summarizer;
  * @covers \mod_booking\local\wbagent\result_payload_summarizer
  * @covers \mod_booking\local\wbagent\privacy_anonymizer
  */
-final class agent_decision_service_test extends advanced_testcase {
+final class agent_decision_service_test extends booking_advanced_testcase {
     // -------------------------------------------------------------------------
     // AI error classifier: classify_from_response.
 

@@ -25,14 +25,14 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 
 /**
  * Enforces a minimum inventory baseline so critical tests/features cannot disappear unnoticed.
  *
  * @coversNothing
  */
-final class agent_inventory_contract_test extends advanced_testcase {
+final class agent_inventory_contract_test extends booking_advanced_testcase {
     /**
      * Critical agent phpunit files must remain present.
      */

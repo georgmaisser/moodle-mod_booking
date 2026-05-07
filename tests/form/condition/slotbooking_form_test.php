@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\form\condition\slotbooking_form;
 
 defined('MOODLE_INTERNAL') || die();
@@ -37,14 +37,13 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  *
  * @covers \mod_booking\form\condition\slotbooking_form
  */
-final class slotbooking_form_test extends advanced_testcase {
+final class slotbooking_form_test extends booking_advanced_testcase {
     /**
      * Setup.
      */
     public function setUp(): void {
         parent::setUp();
         $this->resetAfterTest();
-        singleton_service::destroy_instance();
         $this->setAdminUser();
     }
 

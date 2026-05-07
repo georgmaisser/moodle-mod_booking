@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\conversation_store;
 
 /**
@@ -37,7 +37,7 @@ use mod_booking\local\wbagent\conversation_store;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class agent_conversation_store_test extends advanced_testcase {
+final class agent_conversation_store_test extends booking_advanced_testcase {
     /**
      * Test thread creation and retrieval.
      */

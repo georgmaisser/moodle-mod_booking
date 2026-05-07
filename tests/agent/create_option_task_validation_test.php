@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\booking\tasks\create_option_task;
 
 /**
@@ -37,7 +37,7 @@ use mod_booking\local\wbagent\booking\tasks\create_option_task;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class create_option_task_validation_test extends advanced_testcase {
+final class create_option_task_validation_test extends booking_advanced_testcase {
     /** @var int */
     private int $cmid;
 

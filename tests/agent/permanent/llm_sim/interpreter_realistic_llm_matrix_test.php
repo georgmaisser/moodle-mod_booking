@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\interpreter;
 use mod_booking\local\wbagent\task_registry;
 
@@ -34,7 +34,7 @@ use mod_booking\local\wbagent\task_registry;
  *
  * @coversNothing
  */
-final class interpreter_realistic_llm_matrix_test extends advanced_testcase {
+final class interpreter_realistic_llm_matrix_test extends booking_advanced_testcase {
     /** @var int */
     private int $cmid;
 

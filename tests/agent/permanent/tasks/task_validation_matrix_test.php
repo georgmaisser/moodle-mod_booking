@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\task_registry;
 
 /**
@@ -33,7 +33,7 @@ use mod_booking\local\wbagent\task_registry;
  *
  * @coversNothing
  */
-final class task_validation_matrix_test extends advanced_testcase {
+final class task_validation_matrix_test extends booking_advanced_testcase {
     /** @var int */
     private int $cmid;
 

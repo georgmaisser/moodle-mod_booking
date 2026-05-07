@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\booking\tasks\create_option_task;
 use mod_booking\local\wbagent\interpreter;
 use mod_booking\local\wbagent\interfaces\task_interface;
@@ -41,7 +41,7 @@ use mod_booking\local\wbagent\task_registry;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class agent_interpreter_test extends advanced_testcase {
+final class agent_interpreter_test extends booking_advanced_testcase {
     /** @var task_registry */
     private task_registry $registry;
 

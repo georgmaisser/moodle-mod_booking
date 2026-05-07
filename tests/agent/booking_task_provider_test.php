@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\booking\booking_task_provider;
 
 /**
@@ -37,7 +37,7 @@ use mod_booking\local\wbagent\booking\booking_task_provider;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class booking_task_provider_test extends advanced_testcase {
+final class booking_task_provider_test extends booking_advanced_testcase {
     /** @var booking_task_provider */
     private booking_task_provider $provider;
 

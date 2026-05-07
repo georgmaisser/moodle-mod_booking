@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\booking\tasks\bulk_update_options_task;
 use mod_booking\local\wbagent\booking\tasks\create_option_task;
 use mod_booking\local\wbagent\booking\tasks\get_current_user_task;
@@ -43,7 +43,7 @@ use mod_booking\local\wbagent\booking\tasks\update_option_task;
  * @category   test
  * @coversNothing
  */
-final class booking_task_class_ownership_test extends advanced_testcase {
+final class booking_task_class_ownership_test extends booking_advanced_testcase {
     /**
      * Data provider for tasks expected to declare get_schema() directly.
      *

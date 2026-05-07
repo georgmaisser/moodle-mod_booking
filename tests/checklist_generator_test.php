@@ -18,7 +18,7 @@ namespace mod_booking;
 
 use mod_booking\checklist\checklist_generator;
 use mod_booking\booking_option;
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use ReflectionClass;
 use tool_mocktesttime\time_mock;
 
@@ -30,11 +30,10 @@ use tool_mocktesttime\time_mock;
  * @copyright 2025 Wunderbyte GmbH
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class checklist_generator_test extends advanced_testcase {
+final class checklist_generator_test extends booking_advanced_testcase {
     protected function setUp(): void {
         parent::setUp();
         $this->resetAfterTest(true);
-        time_mock::init();
         time_mock::set_mock_time(strtotime('now'));
         singleton_service::destroy_instance();
     }

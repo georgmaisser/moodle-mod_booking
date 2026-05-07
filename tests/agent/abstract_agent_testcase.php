@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use core_ai\aiactions\generate_text;
 use mod_booking\local\wbagent\agent_runtime;
 use mod_booking\local\wbagent\authorization_service;
@@ -50,7 +50,7 @@ use stdClass;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-abstract class abstract_agent_testcase extends advanced_testcase {
+abstract class abstract_agent_testcase extends booking_advanced_testcase {
     /** @var stdClass Course record. */
     protected stdClass $course;
 
@@ -88,7 +88,6 @@ abstract class abstract_agent_testcase extends advanced_testcase {
     protected function setUp(): void {
         parent::setUp();
         $this->resetAfterTest();
-        singleton_service::destroy_instance();
 
         $this->course  = $this->getDataGenerator()->create_course();
         $this->booking = $this->getDataGenerator()->create_module('booking', [

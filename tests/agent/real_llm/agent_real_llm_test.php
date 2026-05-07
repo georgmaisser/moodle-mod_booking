@@ -28,7 +28,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use core_ai\aiactions\generate_text;
 use mod_booking\external\ai_confirm_run;
 use mod_booking\external\ai_poll_run_status;
@@ -44,7 +44,7 @@ use mod_booking\local\wbagent\conversation_store;
  * @coversNothing
  * @runTestsInSeparateProcesses
  */
-final class agent_real_llm_test extends advanced_testcase {
+final class agent_real_llm_test extends booking_advanced_testcase {
     /** @var \stdClass */
     private $course;
 

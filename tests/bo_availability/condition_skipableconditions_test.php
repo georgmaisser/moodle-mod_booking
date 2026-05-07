@@ -26,7 +26,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use coding_exception;
 use context_module;
 use mod_booking_generator;
@@ -46,7 +46,7 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @copyright 2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class condition_skipableconditions_test extends advanced_testcase {
+final class condition_skipableconditions_test extends booking_advanced_testcase {
     /**
      * Tests set up.
      */
@@ -54,7 +54,6 @@ final class condition_skipableconditions_test extends advanced_testcase {
         parent::setUp();
         $this->resetAfterTest();
         $this->preventResetByRollback();
-        time_mock::init();
         time_mock::set_mock_time(strtotime('now'));
         singleton_service::destroy_instance();
     }

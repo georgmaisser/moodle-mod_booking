@@ -26,7 +26,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\bo_availability\bo_info;
 use mod_booking\local\override_user_field;
 use stdClass;
@@ -45,15 +45,13 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  *
  */
-final class circumvent_userprofilecondition_test extends advanced_testcase {
+final class circumvent_userprofilecondition_test extends booking_advanced_testcase {
     /** @var stdClass $user */
     protected $user;
 
     protected function setUp(): void {
         $this->resetAfterTest(true);
-        time_mock::init();
         time_mock::set_mock_time(strtotime('now'));
-        singleton_service::destroy_instance();
 
         // Create a test user.
         $this->user = $this->getDataGenerator()->create_user([

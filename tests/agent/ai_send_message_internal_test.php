@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\external\ai_send_message;
 
 /**
@@ -37,7 +37,7 @@ use mod_booking\external\ai_send_message;
  * @package    mod_booking
  * @category   test
  */
-final class ai_send_message_internal_test extends advanced_testcase {
+final class ai_send_message_internal_test extends booking_advanced_testcase {
     /**
      * execute_parameters exposes the required input fields.
      */

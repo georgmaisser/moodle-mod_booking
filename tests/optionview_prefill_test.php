@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\customform_prefill;
 use mod_booking\local\mobile\customformstore;
 use mod_booking_generator;
@@ -41,7 +41,7 @@ use tool_mocktesttime\time_mock;
  * @copyright 2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class optionview_prefill_test extends advanced_testcase {
+final class optionview_prefill_test extends booking_advanced_testcase {
     /** @var array */
     private $originalget = [];
 
@@ -61,7 +61,6 @@ final class optionview_prefill_test extends advanced_testcase {
         $this->originalget = $_GET;
         $this->originalpost = $_POST;
         $this->originalrequest = $_REQUEST;
-        time_mock::init();
         time_mock::set_mock_time(strtotime('now'));
         singleton_service::destroy_instance();
     }

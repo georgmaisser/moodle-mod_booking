@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\agent_runtime;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
@@ -39,7 +39,7 @@ use mod_booking\local\wbagent\task_registry;
  *
  * @coversNothing
  */
-final class agent_architecture_contract_test extends advanced_testcase {
+final class agent_architecture_contract_test extends booking_advanced_testcase {
     /**
      * Core response types must remain available in interpreter output contract.
      */

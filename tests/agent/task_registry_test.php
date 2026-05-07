@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\interfaces\task_interface;
 use mod_booking\local\wbagent\interfaces\task_provider_interface;
 use mod_booking\local\wbagent\task_registry;
@@ -39,7 +39,7 @@ use mod_booking\local\wbagent\task_registry;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class task_registry_test extends advanced_testcase {
+final class task_registry_test extends booking_advanced_testcase {
     /**
      * Duplicate task names should not throw and should keep the first registered task.
      */

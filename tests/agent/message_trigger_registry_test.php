@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\booking\tasks\add_price_category_task;
 use mod_booking\local\wbagent\booking\tasks\bulk_update_options_task;
 use mod_booking\local\wbagent\booking\tasks\create_option_task;
@@ -45,7 +45,7 @@ use mod_booking\local\wbagent\booking\tasks\update_option_task;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class message_trigger_registry_test extends advanced_testcase {
+final class message_trigger_registry_test extends booking_advanced_testcase {
     /**
      * Unknown trigger ids returned by the LLM must be dropped.
      *
