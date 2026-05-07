@@ -262,27 +262,51 @@ class result_payload_summarizer {
      * @return string
      */
     private static function describe_docs_entry(array $docs): string {
-        $maxobservation  = 2000;
-        $maxexcerpt      = 500;
+        // Prefer chunk-based reading payloads; keep enough budget for one or two chunks.
+        $hasrichcontent = !empty(array_filter(
+            $docs,
+            static fn(array $d): bool => trim((string)($d['chunk_content'] ?? $d['full_content'] ?? '')) !== ''
+        ));
+        $maxobservation  = $hasrichcontent ? 4500 : 2000;
+        $maxperdoc       = $hasrichcontent ? 2500 : 500;
         $parts           = [];
         $linklines       = [];
 
         foreach ($docs as $doc) {
-            $title   = trim((string)($doc['title'] ?? ''));
-            $excerpt = trim((string)($doc['excerpt'] ?? ''));
-            $url     = trim((string)($doc['url'] ?? ''));
+            $title       = trim((string)($doc['title'] ?? ''));
+            $chunkcontent = trim((string)($doc['chunk_content'] ?? ''));
+            $fullcontent = trim((string)($doc['full_content'] ?? ''));
+            $excerpt     = trim((string)($doc['excerpt'] ?? ''));
+            $url         = trim((string)($doc['url'] ?? ''));
+            $hasmore     = !empty($doc['has_more']);
+            $nextline    = (int)($doc['next_line_start'] ?? 0);
+            $chunklinks  = array_values(array_filter(array_map(
+                static fn($item): string => trim((string)$item),
+                (array)($doc['chunk_links'] ?? [])
+            )));
 
-            if ($excerpt !== '') {
+            // Prefer current chunk text; keep fallback compatibility.
+            $body = $chunkcontent !== '' ? $chunkcontent : ($fullcontent !== '' ? $fullcontent : $excerpt);
+
+            if ($body !== '') {
                 $block = '';
                 if ($title !== '') {
                     $block .= "## {$title}\n";
                 }
-                if (mb_strlen($excerpt) > $maxexcerpt) {
-                    $block .= mb_substr($excerpt, 0, $maxexcerpt) . '[...]';
+                if (mb_strlen($body) > $maxperdoc) {
+                    $block .= mb_substr($body, 0, $maxperdoc) . '[...]';
                 } else {
-                    $block .= $excerpt;
+                    $block .= $body;
                 }
                 $parts[] = $block;
+            }
+
+            if ($hasmore && $nextline > 0) {
+                $parts[] = 'Continue this document from line ' . $nextline . ' if more detail is needed.';
+            }
+
+            if (!empty($chunklinks)) {
+                $parts[] = 'Linked docs in this section: ' . implode(', ', array_slice($chunklinks, 0, 4));
             }
 
             if ($url !== '') {
@@ -300,7 +324,7 @@ class result_payload_summarizer {
         }
 
         if ($body === '') {
-            return 'Retrieved ' . count($docs) . ' documentation excerpt(s) (no text available).';
+            return 'Retrieved ' . count($docs) . ' documentation chunk(s) (no text available).';
         }
 
         // Hard truncation to stay within max observation budget.

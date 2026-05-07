@@ -685,6 +685,78 @@ class docs_lookup_service {
     }
 
     /**
+     * Read a single documentation file by path and return one chunk.
+     *
+     * Path traversal is prevented by stripping ".." segments.
+     * Returns null when the file does not exist or is not a markdown file.
+     *
+     * @param  string $path       Relative path within docs root, e.g. booking_rules/overview.md.
+     * @param  int    $linestart  1-based start line of the requested chunk.
+     * @param  int    $linecount  Number of lines to return in the chunk.
+     * @return array<string,mixed>|null
+     */
+    public function read_doc_by_path(string $path, int $linestart = 1, int $linecount = 80): ?array {
+        // Normalise and reject path traversal attempts.
+        $safepath = str_replace('\\', '/', $path);
+        $safepath = implode('/', array_filter(
+            explode('/', $safepath),
+            static fn(string $segment): bool => $segment !== '..' && $segment !== '.'
+        ));
+        $safepath = ltrim($safepath, '/');
+
+        if ($safepath === '') {
+            return null;
+        }
+
+        $fullpath = $this->docsroot . '/' . $safepath;
+
+        if (!is_file($fullpath) || strtolower(pathinfo($fullpath, PATHINFO_EXTENSION)) !== 'md') {
+            return null;
+        }
+
+        $content = @file_get_contents($fullpath);
+        if (!is_string($content) || $content === '') {
+            return null;
+        }
+
+        $linecount = max(20, min(200, $linecount));
+        $linestart = max(1, $linestart);
+
+        $normalizedcontent = str_replace(["\r\n", "\r"], "\n", $content);
+        $lines = explode("\n", $normalizedcontent);
+        $totallines = count($lines);
+
+        if ($totallines === 0) {
+            return null;
+        }
+
+        $startindex = min(max(0, $linestart - 1), max(0, $totallines - 1));
+        $chunklines = array_slice($lines, $startindex, $linecount);
+        $lineend = $startindex + count($chunklines);
+        $chunkcontent = implode("\n", $chunklines);
+        $hasmore = $lineend < $totallines;
+        $nextlinestart = $hasmore ? $lineend + 1 : null;
+
+        $basename = pathinfo($fullpath, PATHINFO_FILENAME);
+        $links = $this->extract_markdown_links_from_text($chunkcontent, $safepath);
+
+        return [
+            'path'     => $safepath,
+            'title'    => $this->extract_title($content, $basename),
+            'excerpt'  => $this->extract_excerpt($content),
+            'basename' => $basename,
+            'content'  => $content,
+            'chunk_content' => $chunkcontent,
+            'line_start' => $startindex + 1,
+            'line_end' => $lineend,
+            'total_lines' => $totallines,
+            'has_more' => $hasmore,
+            'next_line_start' => $nextlinestart,
+            'chunk_links' => $links,
+        ];
+    }
+
+    /**
      * Build a concise user-facing explanation from a matched doc.
      *
      * @param array $doc
@@ -870,41 +942,121 @@ class docs_lookup_service {
      * @return string
      */
     private function extract_excerpt(string $content): string {
-        $section = '';
-        if (preg_match('/^##\s+What it does\s*$([\s\S]*?)(?=^##\s+|\z)/mi', $content, $matches)) {
-            $section = trim($matches[1]);
-        }
-
-        $source = $section !== '' ? $section : $content;
-        $lines = preg_split('/\R/', $source) ?: [];
-        $paragraph = [];
-        $started = false;
+        $normalized = str_replace(["\r\n", "\r"], "\n", $content);
+        $lines = explode("\n", $normalized);
+        $headlines = [];
 
         foreach ($lines as $line) {
             $trimmed = trim($line);
             if ($trimmed === '') {
-                if ($started) {
-                    break;
-                }
                 continue;
             }
 
-            if (str_starts_with($trimmed, '#') || str_starts_with($trimmed, '|') || str_starts_with($trimmed, '- ')) {
-                if ($started) {
-                    break;
-                }
+            $headlines[] = $trimmed;
+            if (count($headlines) >= 18) {
+                break;
+            }
+        }
+
+        if (empty($headlines)) {
+            return '';
+        }
+
+        $snippet = $this->strip_markdown(implode(' ', $headlines));
+
+        // Collapse repeated spaces without regex.
+        while (strpos($snippet, '  ') !== false) {
+            $snippet = str_replace('  ', ' ', $snippet);
+        }
+
+        return mb_substr(trim($snippet), 0, 600);
+    }
+
+    /**
+     * Extract markdown links from a text chunk and resolve relative paths.
+     *
+     * @param string $text
+     * @param string $currentpath
+     * @return array<int,string>
+     */
+    private function extract_markdown_links_from_text(string $text, string $currentpath): array {
+        $links = [];
+        $offset = 0;
+
+        while (true) {
+            $open = strpos($text, '[', $offset);
+            if ($open === false) {
+                break;
+            }
+
+            $labelend = strpos($text, '](', $open);
+            if ($labelend === false) {
+                break;
+            }
+
+            $urlstart = $labelend + 2;
+            $urlend = strpos($text, ')', $urlstart);
+            if ($urlend === false) {
+                break;
+            }
+
+            $rawtarget = trim(substr($text, $urlstart, $urlend - $urlstart));
+            $offset = $urlend + 1;
+            if ($rawtarget === '' || str_starts_with($rawtarget, '#') || str_contains($rawtarget, '://')) {
                 continue;
             }
 
-            $paragraph[] = $trimmed;
-            $started = true;
+            $resolved = $this->resolve_relative_doc_link($currentpath, $rawtarget);
+            if ($resolved === '' || !str_ends_with(strtolower($resolved), '.md')) {
+                continue;
+            }
+
+            $links[] = $resolved;
         }
 
-        if (!empty($paragraph)) {
-            return trim(implode(' ', $paragraph));
+        return array_values(array_unique($links));
+    }
+
+    /**
+     * Resolve a markdown link against the current doc path.
+     *
+     * @param string $currentpath
+     * @param string $target
+     * @return string
+     */
+    private function resolve_relative_doc_link(string $currentpath, string $target): string {
+        $target = explode('#', $target, 2)[0];
+        $target = explode('?', $target, 2)[0];
+        $target = str_replace('\\', '/', trim($target));
+        if ($target === '') {
+            return '';
         }
 
-        return trim($this->strip_markdown(substr($content, 0, 240)));
+        $currentdir = dirname($currentpath);
+        if ($currentdir === '.') {
+            $currentdir = '';
+        }
+
+        if (str_starts_with($target, '/')) {
+            $rawpath = ltrim($target, '/');
+        } else {
+            $rawpath = ($currentdir !== '' ? $currentdir . '/' : '') . $target;
+        }
+
+        $segments = explode('/', $rawpath);
+        $normalized = [];
+        foreach ($segments as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($normalized);
+                continue;
+            }
+            $normalized[] = $segment;
+        }
+
+        return implode('/', $normalized);
     }
 
     /**

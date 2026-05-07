@@ -36,6 +36,9 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
     /** Candidate pool size before final top-2 selection. */
     private const DOC_CANDIDATE_POOL_LIMIT = 20;
 
+    /** Default line window per docs read step. */
+    private const DEFAULT_LINE_COUNT = 80;
+
     /**
      * Constructor.
      */
@@ -82,6 +85,25 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                         . 'Keep booking domain terms (e.g. booking rules, placeholders, shortcodes) unchanged.',
                     'required' => false,
                 ],
+                'doc_path' => [
+                    'type' => 'string',
+                    'description' => 'Optional relative path of a specific documentation file to read directly '
+                        . '(e.g. "booking_rules/overview.md"). '
+                        . 'When provided the keyword search is skipped and only one line window is returned. '
+                        . 'Use this when the user refers to a document that is currently visible or previously mentioned.',
+                    'required' => false,
+                ],
+                'line_start' => [
+                    'type' => 'integer',
+                    'description' => 'Optional 1-based start line for docs reading (default 1). '
+                        . 'Use next_line_start from prior results to continue reading in steps.',
+                    'required' => false,
+                ],
+                'line_count' => [
+                    'type' => 'integer',
+                    'description' => 'Optional number of lines to read per step (default 80; clamped to 20..200).',
+                    'required' => false,
+                ],
             ],
         ];
     }
@@ -123,6 +145,10 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                     '- If the user asks for an explanation of a documented booking feature, use booking.explain_docs_topic.',
                     '- Prefer this task over guessing from internal class names when booking/docs contains the answer.',
                     '- Return a brief explanation grounded in the matched markdown file(s).',
+                    '- Docs are read in chunks: if the current chunk is not enough, call booking.explain_docs_topic '
+                        . 'again with the same doc_path and line_start=next_line_start.',
+                    '- If chunk_links contains a more relevant doc, follow that link by calling '
+                        . 'booking.explain_docs_topic with doc_path set to the linked path.',
                 ],
             ],
         ];
@@ -164,8 +190,20 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
 
         $question = trim((string)($input['question'] ?? ''));
         $outputlang = $this->get_output_language($input);
+        $docpath = trim((string)($input['doc_path'] ?? ''));
+        $linestart = $this->normalize_line_start((int)($input['line_start'] ?? 1));
+        $linecount = $this->normalize_line_count((int)($input['line_count'] ?? self::DEFAULT_LINE_COUNT));
 
         $service = $this->create_docs_lookup_service();
+
+        // Fast path: caller supplied a concrete doc path — skip search entirely.
+        if ($docpath !== '') {
+            $directdoc = $service->read_doc_by_path($docpath, $linestart, $linecount);
+            if ($directdoc !== null) {
+                return $this->build_direct_doc_result($directdoc, $question, $service);
+            }
+            // Path not found — fall through to keyword search.
+        }
 
         // Build query list: original question + up to 2 optional alternative search phrases.
         $extraqueries = array_values(array_filter(array_slice(
@@ -248,15 +286,13 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
         $structureddocs = [];
         foreach ($selecteddocs as $doc) {
             $path = (string)($doc['path'] ?? '');
-            $structureddocs[] = [
-                'path' => $path,
-                'url' => $path !== ''
-                    ? rtrim($CFG->wwwroot, '/') . '/mod/booking/docs/' . str_replace('%2F', '/', rawurlencode($path))
-                    : '',
-                'title' => (string)($doc['title'] ?? ''),
-                'excerpt' => (string)($doc['excerpt'] ?? ''),
-                'score' => (int)($doc['score'] ?? 0),
-            ];
+            $readdoc = $path !== '' ? $service->read_doc_by_path($path, $linestart, $linecount) : null;
+            $docpayload = is_array($readdoc) ? array_merge($doc, $readdoc) : $doc;
+            $structureddocs[] = $this->build_structured_doc_payload(
+                $docpayload,
+                rtrim($CFG->wwwroot, '/'),
+                (int)($doc['score'] ?? 0)
+            );
         }
 
         return [
@@ -274,6 +310,7 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                     'Topic: ' . ($selectedtopicid !== '' ? $selectedtopicid : 'none'),
                     'Topic confidence: ' . number_format($topicconfidence, 3, '.', ''),
                     'Retrieval mode: ' . $retrievalmode,
+                    'Line window: start=' . $linestart . ' count=' . $linecount,
                     'Queries used: ' . implode(' | ', $allqueries),
                 ]
             ),
@@ -396,5 +433,105 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
      */
     protected function create_docs_lookup_service(): docs_lookup_service {
         return new docs_lookup_service();
+    }
+
+    /**
+     * Build the task result for a directly-addressed doc (doc_path fast path).
+     *
+     * Returns one line window so the LLM can decide whether to answer now,
+     * continue with the next chunk, or follow a linked doc.
+     *
+     * @param  array             $doc         Doc array from read_doc_by_path().
+     * @param  string            $question    Original user question.
+     * @param  docs_lookup_service $service   Service instance (used for URL building).
+     * @return array
+     */
+    private function build_direct_doc_result(
+        array $doc,
+        string $question,
+        docs_lookup_service $service
+    ): array {
+        global $CFG;
+        $wwwroot = rtrim($CFG->wwwroot, '/');
+
+        $path = (string)($doc['path'] ?? '');
+        $url = $path !== '' ? $wwwroot . '/mod/booking/docs/' . str_replace('%2F', '/', rawurlencode($path)) : '';
+
+        $usermessage = $service->build_summary($doc);
+        if ($url !== '') {
+            $usermessage .= "\n" . $url;
+        }
+
+        $structureddoc = $this->build_structured_doc_payload($doc, $wwwroot, 0);
+
+        return [
+            'status'       => 'executed',
+            'detail'       => $usermessage,
+            'usermessage'  => $usermessage,
+            'resultid'     => null,
+            'docs'         => [$structureddoc],
+            'debugmessage' => $this->build_task_debug_message(
+                self::TASK_NAME,
+                ['question' => $question, 'doc_path' => $path],
+                [
+                    'Mode: direct_path_read',
+                    'Path: ' . $path,
+                    'Line window: start=' . (int)($structureddoc['line_start'] ?? 1)
+                        . ' count=' . max(0, (int)($structureddoc['line_end'] ?? 0)
+                            - (int)($structureddoc['line_start'] ?? 1) + 1),
+                ]
+            ),
+        ];
+    }
+
+    /**
+     * Normalize requested 1-based docs start line.
+     *
+     * @param int $linestart
+     * @return int
+     */
+    private function normalize_line_start(int $linestart): int {
+        return max(1, $linestart);
+    }
+
+    /**
+     * Normalize requested docs line count.
+     *
+     * @param int $linecount
+     * @return int
+     */
+    private function normalize_line_count(int $linecount): int {
+        return max(20, min(200, $linecount > 0 ? $linecount : self::DEFAULT_LINE_COUNT));
+    }
+
+    /**
+     * Build the docs payload consumed by the generic observation summarizer.
+     *
+     * @param array $doc
+     * @param string $wwwroot
+     * @param int $score
+     * @return array
+     */
+    private function build_structured_doc_payload(array $doc, string $wwwroot, int $score): array {
+        $path = (string)($doc['path'] ?? '');
+        $chunklinks = array_values(array_filter(array_map(
+            static fn($item): string => trim((string)$item),
+            (array)($doc['chunk_links'] ?? [])
+        )));
+
+        return [
+            'path' => $path,
+            'url' => $path !== '' ? $wwwroot . '/mod/booking/docs/' . str_replace('%2F', '/', rawurlencode($path)) : '',
+            'title' => (string)($doc['title'] ?? ''),
+            'excerpt' => (string)($doc['excerpt'] ?? ''),
+            'chunk_content' => (string)($doc['chunk_content'] ?? ''),
+            'line_start' => (int)($doc['line_start'] ?? 1),
+            'line_end' => (int)($doc['line_end'] ?? 1),
+            'total_lines' => (int)($doc['total_lines'] ?? 0),
+            'has_more' => !empty($doc['has_more']),
+            'next_line_start' => isset($doc['next_line_start']) ? (int)$doc['next_line_start'] : null,
+            'chunk_links' => $chunklinks,
+            'score' => $score,
+        ];
     }
 }
