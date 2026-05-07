@@ -900,7 +900,10 @@ class agent_runtime {
         $triggerregistry = new message_trigger_registry($this->registry);
 
         // Plan: call the LLM once, passing any accumulated observations.
-        $result = $this->orchestrator->process($threadid, $cmid, $userid, $observations);
+        $steptype = empty($observations)
+            ? orchestrator::STEP_TYPE_TOOL_CALL_PARSE
+            : orchestrator::STEP_TYPE_SIMPLE_RETRIEVAL;
+        $result = $this->orchestrator->process($threadid, $cmid, $userid, $observations, $steptype);
 
         $outputlang = $this->resolve_output_language($threadid, $result);
         $this->store->set_thread_metadata_value($threadid, 'last_output_lang', $outputlang);
@@ -1067,7 +1070,13 @@ class agent_runtime {
             . 'Do NOT call tools again. Return response_type=clarification, commands=[], '
             . 'and summarize the latest findings for the user in plain language.';
 
-        $narration = $this->orchestrator->process($threadid, $cmid, $userid, $observations);
+        $narration = $this->orchestrator->process(
+            $threadid,
+            $cmid,
+            $userid,
+            $observations,
+            orchestrator::STEP_TYPE_FINAL_REASONING
+        );
         if ($this->is_final_clarification_without_commands($narration)) {
             $narrationlang = $this->resolve_output_language($threadid, $narration);
             return [

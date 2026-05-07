@@ -275,6 +275,42 @@ if ($ADMIN->fulltree) {
     );
 
     $settings->add(
+        new admin_setting_configtextarea(
+            'booking/aiinitialprompt_tool_call_parse',
+            get_string('aiinitialprompt_tool_call_parse', 'mod_booking'),
+            get_string('aiinitialprompt_tool_call_parse_desc', 'mod_booking'),
+            orchestrator::get_default_initial_prompt_template(),
+            PARAM_RAW,
+            18,
+            120
+        )
+    );
+
+    $settings->add(
+        new admin_setting_configtextarea(
+            'booking/aiinitialprompt_simple_retrieval',
+            get_string('aiinitialprompt_simple_retrieval', 'mod_booking'),
+            get_string('aiinitialprompt_simple_retrieval_desc', 'mod_booking'),
+            orchestrator::get_default_initial_prompt_template(),
+            PARAM_RAW,
+            18,
+            120
+        )
+    );
+
+    $settings->add(
+        new admin_setting_configtextarea(
+            'booking/aiinitialprompt_final_reasoning',
+            get_string('aiinitialprompt_final_reasoning', 'mod_booking'),
+            get_string('aiinitialprompt_final_reasoning_desc', 'mod_booking'),
+            orchestrator::get_default_initial_prompt_template(),
+            PARAM_RAW,
+            18,
+            120
+        )
+    );
+
+    $settings->add(
         new admin_setting_configselect(
             'booking/aiexecutionmode',
             get_string('aiexecutionmode', 'mod_booking'),

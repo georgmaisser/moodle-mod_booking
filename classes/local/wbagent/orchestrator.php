@@ -26,7 +26,9 @@ namespace mod_booking\local\wbagent;
 
 use context_module;
 use core_ai\manager as ai_manager;
+use core_ai\aiactions\explain_text;
 use core_ai\aiactions\generate_text;
+use core_ai\aiactions\summarise_text;
 use core\di;
 use core_text;
 use mod_booking\local\wbagent\interfaces\agent_interpreter;
@@ -47,6 +49,15 @@ use mod_booking\local\wbagent\result_payload_summarizer;
 class orchestrator {
     /** Maximum number of recent messages to include in the prompt. */
     public const MAX_HISTORY_MESSAGES = 20;
+
+    /** Compact prompt profile for initial tool-call parsing. */
+    public const STEP_TYPE_TOOL_CALL_PARSE = 'tool_call_parse';
+
+    /** Compact prompt profile for iterative retrieval turns with observations. */
+    public const STEP_TYPE_SIMPLE_RETRIEVAL = 'simple_retrieval';
+
+    /** Richer prompt profile for final narration/reasoning turns. */
+    public const STEP_TYPE_FINAL_REASONING = 'final_reasoning';
 
     /** @var task_registry */
     private task_registry $registry;
@@ -113,20 +124,43 @@ class orchestrator {
      *                                before producing its next response.  Never persisted to the DB.
      * @return array  Interpreter result.
      */
-    public function process(int $threadid, int $cmid, int $userid, array $observations = []): array {
+    public function process(
+        int $threadid,
+        int $cmid,
+        int $userid,
+        array $observations = [],
+        string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE
+    ): array {
         $context = context_module::instance($cmid);
+        $manager = di::get(ai_manager::class);
+        $normalizedsteptype = $this->normalize_step_type($steptype);
 
-        $systemprompt = $this->build_system_prompt($cmid);
+        $systemprompt = $this->build_system_prompt($cmid, $normalizedsteptype);
         $messages     = $this->store->get_recent_messages($threadid, self::MAX_HISTORY_MESSAGES);
-        $prompt       = $this->build_prompt($systemprompt, $messages, $observations);
+        $prompt       = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype);
+        $actionclass  = $this->resolve_action_class_for_step($manager, $context, $normalizedsteptype);
 
         try {
-            $action   = new generate_text(
-                contextid: $context->id,
-                userid: $userid,
-                prompttext: $prompt,
-            );
-            $manager = di::get(ai_manager::class);
+            if ($actionclass === summarise_text::class) {
+                $action = new summarise_text(
+                    contextid: $context->id,
+                    userid: $userid,
+                    prompttext: $prompt,
+                );
+            } else if ($actionclass === explain_text::class) {
+                $action = new explain_text(
+                    contextid: $context->id,
+                    userid: $userid,
+                    prompttext: $prompt,
+                );
+            } else {
+                $action = new generate_text(
+                    contextid: $context->id,
+                    userid: $userid,
+                    prompttext: $prompt,
+                );
+            }
+
             $response = $manager->process_action($action);
 
             $rawtext = (string)($response->get_response_data()['generatedcontent'] ?? '');
@@ -137,7 +171,7 @@ class orchestrator {
                 $threadid,
                 $cmid,
                 $userid,
-                'orchestrator.process',
+                'orchestrator.process.' . $normalizedsteptype . '.' . $action::get_basename(),
                 $prompt,
                 $rawtext,
                 $providersuccess,
@@ -175,7 +209,7 @@ class orchestrator {
                 $threadid,
                 $cmid,
                 $userid,
-                'orchestrator.process',
+                'orchestrator.process.' . $normalizedsteptype . '.exception',
                 $prompt,
                 '',
                 false,
@@ -241,12 +275,12 @@ class orchestrator {
     }
 
     /**
-    * Build the state-based system prompt with compact task metadata embedded.
+     * Build the state-based system prompt with compact task metadata embedded.
      *
      * @param  int    $cmid
      * @return string System prompt text.
      */
-    private function build_system_prompt(int $cmid): string {
+    private function build_system_prompt(int $cmid, string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE): string {
         $schemas = $this->registry->get_all_schemas();
         $taskcatalog = $this->registry->get_all_prompt_contracts();
         $tasklist = implode(', ', $this->registry->get_task_names());
@@ -269,7 +303,11 @@ class orchestrator {
         $cm = get_coursemodule_from_id('booking', $cmid);
         $bookingname = $cm ? format_string($cm->name) : 'this booking instance';
 
-        $template = (string)(get_config('booking', 'aiinitialprompt') ?? '');
+        $configkey = $this->get_initial_prompt_config_key($steptype);
+        $template = (string)(get_config('booking', $configkey) ?? '');
+        if (trim($template) === '' && $configkey !== 'aiinitialprompt') {
+            $template = (string)(get_config('booking', 'aiinitialprompt') ?? '');
+        }
         if (trim($template) === '') {
             $template = self::get_default_initial_prompt_template();
         }
@@ -319,13 +357,26 @@ class orchestrator {
      * @param  string[]    $observations  Structured observation strings (may be empty).
      * @return string
      */
-    private function build_prompt(string $systemprompt, array $messages, array $observations = []): string {
-        $contextualguidance = $this->build_contextual_guidance($messages);
-        if ($contextualguidance !== '') {
-            $systemprompt .= "\n\nCONTEXT-SPECIFIC GUIDANCE:\n" . $contextualguidance;
+    private function build_prompt(
+        string $systemprompt,
+        array $messages,
+        array $observations = [],
+        string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE
+    ): string {
+        $normalizedsteptype = $this->normalize_step_type($steptype);
+        $trimmedmessages = array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype));
+
+        if ($normalizedsteptype === self::STEP_TYPE_FINAL_REASONING) {
+            $contextualguidance = $this->build_contextual_guidance($trimmedmessages);
+            if ($contextualguidance !== '') {
+                $systemprompt .= "\n\nCONTEXT-SPECIFIC GUIDANCE:\n" . $contextualguidance;
+            }
         }
 
-        $assistantstateblocks = $this->build_assistant_state_blocks($messages);
+        $assistantstateblocks = [];
+        if ($normalizedsteptype === self::STEP_TYPE_FINAL_REASONING) {
+            $assistantstateblocks = $this->build_assistant_state_blocks($trimmedmessages);
+        }
         if (!empty($assistantstateblocks)) {
             $systemprompt .= "\n\nFOLLOW-UP STATE POLICY:\n"
                 . "- Use ASSISTANT_STATE blocks as factual memory for follow-up questions.\n"
@@ -338,7 +389,7 @@ class orchestrator {
 
         $parts = ["[SYSTEM]\n{$systemprompt}"];
 
-        foreach ($messages as $msg) {
+        foreach ($trimmedmessages as $msg) {
             $role    = strtoupper($msg->role ?? 'user');
             $content = $msg->content ?? '';
             $parts[] = "[{$role}]\n{$content}";
@@ -358,6 +409,120 @@ class orchestrator {
 
         $parts[] = '[ASSISTANT]';
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * Normalize orchestrator step type values to supported profiles.
+     *
+     * @param string $steptype
+     * @return string
+     */
+    private function normalize_step_type(string $steptype): string {
+        $normalized = trim(core_text::strtolower($steptype));
+        if ($normalized === self::STEP_TYPE_FINAL_REASONING) {
+            return self::STEP_TYPE_FINAL_REASONING;
+        }
+        if ($normalized === self::STEP_TYPE_SIMPLE_RETRIEVAL) {
+            return self::STEP_TYPE_SIMPLE_RETRIEVAL;
+        }
+        return self::STEP_TYPE_TOOL_CALL_PARSE;
+    }
+
+    /**
+     * Resolve admin setting key for initial prompt templates per step profile.
+     *
+     * @param string $steptype
+     * @return string
+     */
+    private function get_initial_prompt_config_key(string $steptype): string {
+        if ($steptype === self::STEP_TYPE_FINAL_REASONING) {
+            return 'aiinitialprompt_final_reasoning';
+        }
+        if ($steptype === self::STEP_TYPE_SIMPLE_RETRIEVAL) {
+            return 'aiinitialprompt_simple_retrieval';
+        }
+        return 'aiinitialprompt_tool_call_parse';
+    }
+
+    /**
+     * Return history depth per prompt profile to reduce token usage.
+     *
+     * @param string $steptype
+     * @return int
+     */
+    private function get_history_limit_for_step(string $steptype): int {
+        if ($steptype === self::STEP_TYPE_FINAL_REASONING) {
+            return 14;
+        }
+        if ($steptype === self::STEP_TYPE_SIMPLE_RETRIEVAL) {
+            return 10;
+        }
+        return 8;
+    }
+
+    /**
+     * Route to action classes by step profile for OpenAI providers, with fallback.
+     *
+     * @param ai_manager $manager
+     * @param context_module $context
+     * @param string $steptype
+     * @return string
+     */
+    private function resolve_action_class_for_step(ai_manager $manager, context_module $context, string $steptype): string {
+        if (!$this->should_use_openai_step_routing($manager)) {
+            return generate_text::class;
+        }
+
+        if ($steptype === self::STEP_TYPE_FINAL_REASONING) {
+            if ($this->is_action_available_in_context($manager, $context, explain_text::class)) {
+                return explain_text::class;
+            }
+            return generate_text::class;
+        }
+
+        if ($this->is_action_available_in_context($manager, $context, summarise_text::class)) {
+            return summarise_text::class;
+        }
+
+        return generate_text::class;
+    }
+
+    /**
+     * Use step-based action routing only when OpenAI provider is active for text actions.
+     *
+     * @param ai_manager $manager
+     * @return bool
+     */
+    private function should_use_openai_step_routing(ai_manager $manager): bool {
+        try {
+            $providers = $manager->get_providers_for_actions([generate_text::class], true);
+            $forgenerate = (array)($providers[generate_text::class] ?? []);
+            if (empty($forgenerate)) {
+                return false;
+            }
+            $primary = reset($forgenerate);
+            return (string)($primary->provider ?? '') === 'aiprovider_openai';
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Check action availability with context and global provider state.
+     *
+     * @param ai_manager $manager
+     * @param context_module $context
+     * @param string $actionclass
+     * @return bool
+     */
+    private function is_action_available_in_context(ai_manager $manager, context_module $context, string $actionclass): bool {
+        if (!$manager->is_action_available($actionclass)) {
+            return false;
+        }
+        if (!method_exists($manager, 'is_action_enabled_in_context')) {
+            return true;
+        }
+        return $manager->is_action_enabled_in_context($context, $actionclass);
     }
 
     /**
