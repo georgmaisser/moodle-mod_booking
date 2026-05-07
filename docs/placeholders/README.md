@@ -11,6 +11,15 @@ Each placeholder maps to a PHP class under `classes/placeholders/placeholders/`.
 
 ---
 
+## Quick setup path
+
+1. Open booking rules editor: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
+2. Edit the mail action template text.
+3. Insert placeholders from this page.
+4. Send a test message and verify placeholder output.
+
+---
+
 ## Table of Contents
 
 1. [User fields](#1-user-fields)
@@ -219,11 +228,3 @@ Only placeholders where `for_pollurl()` returns `true` (such as `{firstname}`, `
 
 - [Booking rules — Actions: Placeholders](../booking_rules/actions.md#6-placeholders-available-in-email-templates) — Short reference table used within rule emails
 - [Booking rules — Overview](../booking_rules/README.md)
-
-
-## Quick setup path
-
-1. Open booking rules editor: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
-2. Edit the mail action template text.
-3. Insert placeholders from this page.
-4. Send a test message and verify placeholder output.

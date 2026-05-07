@@ -4,6 +4,15 @@ The **Moodle course** section (header: *Moodle course*) lets you connect a booki
 
 ---
 
+## Quick setup path
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open the feature-specific page from this document and apply the settings.
+4. Save and verify with one test booking.
+
+---
+
 ## Table of Contents
 
 1. [Course connection modes](#1-course-connection-modes)
@@ -98,11 +107,3 @@ If the admin has enabled the **Duplicate Moodle courses** setting, copying a boo
 - [Teachers and responsible contact](03-teachers-and-contact.md) — Assigning roles in the course
 - [General settings](01-general.md) — Option title used when creating a new course
 - [CSV Import](../CSV_IMPORT_USER_GUIDE.md#11-linked-moodle-course)
-
-
-## Quick setup path
-
-1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
-2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
-3. Open the feature-specific page from this document and apply the settings.
-4. Save and verify with one test booking.

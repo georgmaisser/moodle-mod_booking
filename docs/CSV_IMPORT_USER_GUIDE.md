@@ -4,6 +4,15 @@ This guide explains how to import or update booking options in bulk using a CSV 
 
 ---
 
+## Quick setup path
+
+1. Prepare your CSV file based on the examples in docs/examples/.
+2. Open the import UI in booking option administration.
+3. Upload CSV, map fields, and run a dry run.
+4. Execute import and validate one imported option.
+
+---
+
 ## Table of Contents
 
 1. [How to import](#1-how-to-import)
@@ -368,11 +377,3 @@ Ready-to-use example CSV files are located in the `examples/` subfolder:
 | [examples/import_minimal.csv](examples/import_minimal.csv) | Minimal import: title, identifier, and one date |
 | [examples/import_with_dates_and_prices.csv](examples/import_with_dates_and_prices.csv) | Full example with dates, capacity, teacher, and prices |
 | [examples/import_users_and_teachers.csv](examples/import_users_and_teachers.csv) | Assigning teachers and pre-booking users |
-
-
-## Quick setup path
-
-1. Prepare your CSV file based on the examples in docs/examples/.
-2. Open the import UI in booking option administration.
-3. Upload CSV, map fields, and run a dry run.
-4. Execute import and validate one imported option.

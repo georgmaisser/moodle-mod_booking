@@ -4,6 +4,15 @@ The **Demand confirmation** section (header: *Demand confirmation*) allows you t
 
 ---
 
+## Quick setup path
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open the feature-specific page from this document and apply the settings.
+4. Save and verify with one test booking.
+
+---
+
 ## Table of Contents
 
 1. [Confirmation modes](#1-confirmation-modes)
@@ -72,11 +81,3 @@ This mode is useful when you want to auto-confirm early registrations but manual
 - [General settings](01-general.md) — Capacity (`maxanswers`, `maxoverbooking`)
 - [Advanced options](07-advanced.md) — Cancel settings (`disablecancel`, `canceluntil`)
 - [Availability conditions](04-availability.md) — Booking window
-
-
-## Quick setup path
-
-1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
-2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
-3. Open the feature-specific page from this document and apply the settings.
-4. Save and verify with one test booking.

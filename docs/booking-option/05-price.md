@@ -4,6 +4,15 @@ The **Price** section (header: *Price*) allows you to attach a price to a bookin
 
 ---
 
+## Quick setup path
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open the feature-specific page from this document and apply the settings.
+4. Save and verify with one test booking.
+
+---
+
 ## Table of Contents
 
 1. [Enable pricing](#1-enable-pricing)
@@ -92,11 +101,3 @@ If the shopping cart plugin supports instalments, an additional checkbox appears
 - [General settings](01-general.md) — Option title and capacity
 - [Availability conditions](04-availability.md) — Conditions that may interact with price categories
 - [CSV Import — Pricing](../CSV_IMPORT_USER_GUIDE.md#10-pricing)
-
-
-## Quick setup path
-
-1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
-2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
-3. Open the feature-specific page from this document and apply the settings.
-4. Save and verify with one test booking.

@@ -4,6 +4,15 @@ This page describes how to build a `bookingextension_*` subplugin for mod_bookin
 
 ---
 
+## Quick setup path
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open the feature-specific page from this document and apply the settings.
+4. Save and verify with one test booking.
+
+---
+
 ## Table of Contents
 
 1. [Plugin type and directory structure](#1-plugin-type-and-directory-structure)
@@ -199,11 +208,3 @@ public function load_settings(\part_of_admin_tree $adminroot, $parentnodename, $
 - [Booking extensions overview](README.md)
 - [Developer guides — Booking Extensions API](../developer-guides/BOOKING_EXTENSIONS_API.md)
 - [Booking rules — Rule types](../booking_rules/rule-types.md) — How custom events integrate with rules
-
-
-## Quick setup path
-
-1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
-2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
-3. Open the feature-specific page from this document and apply the settings.
-4. Save and verify with one test booking.

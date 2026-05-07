@@ -22,6 +22,15 @@ Sub-bookings are a **PRO feature** of mod_booking.
 
 ---
 
+## Quick setup path
+
+1. Open this page and start with the matching section for your use case.
+2. Follow the linked detailed pages from the table of contents for configuration details.
+3. Apply the configuration in Booking and save your changes.
+4. Test with one realistic scenario before rollout.
+
+---
+
 ## Table of Contents
 
 1. [How sub-bookings work](#1-how-sub-bookings-work)

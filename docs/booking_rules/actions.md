@@ -4,6 +4,26 @@ An **action** defines *what happens* when a rule fires and its condition is sati
 Every rule must have exactly one action.
 
 ---
+## Quick setup path
+
+### Send a confirmation email when a user books
+
+1. Open **Booking Rules**: `/mod/booking/edit_rules.php?contextid=1`
+2. Click **Add rule** → **Rule type**: *React on event* → **Event**: `bookingoption_booked`.
+3. **Condition**: *Select user from event*.
+4. **Action**: *Send email* (`send_mail`).
+5. Fill in **Subject** (e.g. `Booking confirmed: {coursename}`) and **Message** (use `{bookingdetails}` for all details).
+6. **Save**. The email is sent immediately after the booking.
+
+### Send a reminder email N days before a course
+
+1. Open **Booking Rules**: `/mod/booking/edit_rules.php?contextid=1`
+2. Click **Add rule** → **Rule type**: *Trigger n days…* → **Days**: `3`, **Date field**: `coursestarttime`.
+3. **Condition**: *Select users of a booking option* → status **Booked**.
+4. **Action**: *Send email* (`send_mail`) — write Subject and Message.
+5. **Save**.
+
+---
 
 ## Table of Contents
 
@@ -156,11 +176,3 @@ Commonly used placeholders:
 The full list of available placeholders is shown dynamically inside the rule editor form, just above the subject field. Custom user profile fields and custom booking option fields can also be used by their shortname (e.g., `{profile_field_department}`).
 
 > **Tip:** Click the *"Show placeholders"* link in the rule editor to expand the complete list for your site.
-
-
-## Quick setup path
-
-1. Open booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
-2. Click Add rule or edit an existing rule.
-3. Apply the configuration from this page.
-4. Save, activate, and test with one booking event.

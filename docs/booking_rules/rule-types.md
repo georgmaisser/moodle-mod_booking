@@ -3,6 +3,23 @@
 A **rule type** defines *when* a booking rule is triggered. Currently three rule types are available.
 
 ---
+## Quick setup path
+
+### React immediately when a user books (event-based)
+
+1. Open **Booking Rules**: `/mod/booking/edit_rules.php?contextid=1`
+2. Click **Add rule** → **Rule type**: *React on event*.
+3. **Event**: select `bookingoption_booked` (fires when a user books a booking option).
+4. Complete the Condition and Action, then **Save**.
+
+### Remind participants N days before a course starts (date-based)
+
+1. Open **Booking Rules**: `/mod/booking/edit_rules.php?contextid=1`
+2. Click **Add rule** → **Rule type**: *Trigger n days in relation to a certain date*.
+3. **Days**: e.g. `3`; **Date field**: `coursestarttime`.
+4. Complete the Condition and Action, then **Save**.
+
+---
 
 ## Table of Contents
 
@@ -141,11 +158,3 @@ Not all conditions can be used with every rule type. The following matrix shows 
 | select_deputy_of_supervisor | ✗ | ✗ | ✓ |
 
 The event-specific conditions (`select_user_from_event`, `select_user_shopping_cart`, `select_users_from_userfield_of_eventuser`, `select_deputy_of_supervisor`) require event data that is not available for time-based triggers, so they can only be combined with `rule_react_on_event`.
-
-
-## Quick setup path
-
-1. Open booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
-2. Click Add rule or edit an existing rule.
-3. Apply the configuration from this page.
-4. Save, activate, and test with one booking event.

@@ -4,6 +4,15 @@ The **Override user field** feature lets you generate a special URL that tempora
 
 ---
 
+## Quick setup path
+
+1. Open the booking option and identify required profile field checks.
+2. Build an override URL as described on this page.
+3. Test URL with one user that should bypass and one that should not.
+4. Roll out URL only to trusted users.
+
+---
+
 ## Table of Contents
 
 1. [What it does](#1-what-it-does)
@@ -139,11 +148,3 @@ Key methods:
 - [User profile field condition (standard)](../booking_conditions/user_profile_field.md)
 - [User profile field condition (custom)](../booking_conditions/user_profile_field_custom.md)
 - [Capabilities](../capabilities/README.md) — `updatebooking` capability
-
-
-## Quick setup path
-
-1. Open the booking option and identify required profile field checks.
-2. Build an override URL as described on this page.
-3. Test URL with one user that should bypass and one that should not.
-4. Roll out URL only to trusted users.

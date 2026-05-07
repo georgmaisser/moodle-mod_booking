@@ -4,6 +4,15 @@ This guide explains how to add custom rule types (triggers), conditions, and act
 
 ---
 
+## Quick setup path
+
+1. Open this page and start with the matching section for your use case.
+2. Follow the linked detailed pages from the table of contents for configuration details.
+3. Apply the configuration in Booking and save your changes.
+4. Test with one realistic scenario before rollout.
+
+---
+
 ## Table of Contents
 
 1. [Overview of the rules system](#1-overview-of-the-rules-system)

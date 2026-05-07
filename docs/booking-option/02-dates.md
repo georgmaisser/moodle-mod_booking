@@ -4,6 +4,15 @@ The **Dates** section lets you define when a booking option takes place. Options
 
 ---
 
+## Quick setup path
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open the feature-specific page from this document and apply the settings.
+4. Save and verify with one test booking.
+
+---
+
 ## Table of Contents
 
 1. [Single and multiple sessions](#1-single-and-multiple-sessions)
@@ -84,11 +93,3 @@ This setting can be **locked** by an admin for the whole installation so that it
 - [General settings](01-general.md) — Title, capacity
 - [Availability conditions](04-availability.md) — Booking window (open/close times)
 - [CSV Import — Dates](../CSV_IMPORT_USER_GUIDE.md#5-dates-and-scheduling) — How to set dates via CSV
-
-
-## Quick setup path
-
-1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
-2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
-3. Open the feature-specific page from this document and apply the settings.
-4. Save and verify with one test booking.

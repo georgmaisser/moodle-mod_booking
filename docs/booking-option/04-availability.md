@@ -4,6 +4,15 @@ The **Availability conditions** section (header: *Availability conditions*) cont
 
 ---
 
+## Quick setup path
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Open the feature-specific page from this document and apply the settings.
+4. Save and verify with one test booking.
+
+---
+
 ## Table of Contents
 
 1. [Booking window — opening and closing time](#1-booking-window--opening-and-closing-time)
@@ -129,11 +138,3 @@ Within a booking option you can override which rules apply:
 - [Advanced options](07-advanced.md) — Cancellation settings
 - [Demand confirmation](08-confirmation.md) — Manual approval workflow
 - [CSV Import — Availability restrictions](../CSV_IMPORT_USER_GUIDE.md#12-availability-restrictions)
-
-
-## Quick setup path
-
-1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
-2. Open option administration: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
-3. Open the feature-specific page from this document and apply the settings.
-4. Save and verify with one test booking.
