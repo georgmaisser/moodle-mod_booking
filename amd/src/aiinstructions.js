@@ -743,14 +743,65 @@ const loadUrlInSidePreview = (url) => {
 };
 
 /**
+ * Escape a string for use in querySelector id selector.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+const escapeCssIdentifier = (value) => {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+        return window.CSS.escape(String(value || ''));
+    }
+    return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+};
+
+/**
+ * Scroll the side preview to a fragment id after doc content is rendered.
+ *
+ * @param {string} fragment
+ */
+const scrollPreviewToFragment = (fragment) => {
+    const raw = String(fragment || '').trim().replace(/^#/, '');
+    if (raw === '') {
+        return;
+    }
+
+    const preview = document.getElementById('booking-ai-side-preview');
+    if (!preview) {
+        return;
+    }
+
+    const decoded = (() => {
+        try {
+            return decodeURIComponent(raw);
+        } catch (e) {
+            return raw;
+        }
+    })();
+
+    const candidates = [raw, decoded, `doc-${raw}`, `doc-${decoded}`];
+    const uniqueCandidates = [...new Set(candidates.map((id) => String(id || '').trim()).filter((id) => id !== ''))];
+
+    for (const candidate of uniqueCandidates) {
+        const selector = `#${escapeCssIdentifier(candidate)}`;
+        const target = preview.querySelector(selector);
+        if (target instanceof HTMLElement) {
+            target.scrollIntoView({behavior: 'smooth', block: 'start'});
+            return;
+        }
+    }
+};
+
+/**
  * Load a booking/docs markdown file into the side preview via the webservice renderer.
  *
  * Falls back to loadUrlInSidePreview() when the webservice call fails.
  *
  * @param {string} docpath  Relative path inside booking/docs, e.g. "booking_rules/README.md".
  * @param {string} fallbackUrl  Optional bare URL to use as iframe fallback.
+ * @param {string} fragment Optional fragment id (without #) to scroll to after load.
  */
-const loadDocInPreview = (docpath, fallbackUrl = '') => {
+const loadDocInPreview = (docpath, fallbackUrl = '', fragment = '') => {
     const safePath = String(docpath || '').trim();
     if (safePath === '') {
         if (fallbackUrl !== '') {
@@ -776,6 +827,9 @@ const loadDocInPreview = (docpath, fallbackUrl = '') => {
                 + String(resp.html)
                 + '</div>'
             );
+            if (String(fragment || '').trim() !== '') {
+                window.requestAnimationFrame(() => scrollPreviewToFragment(fragment));
+            }
         } else if (fallbackUrl !== '') {
             loadUrlInSidePreview(fallbackUrl);
         } else {
@@ -1966,9 +2020,10 @@ export const init = (config = null) => {
                 return;
             }
             const docpath = String(anchor.getAttribute('data-docpath') || '').trim();
+            const docfragment = String(anchor.getAttribute('data-docfragment') || '').trim();
             if (docpath !== '') {
                 event.preventDefault();
-                loadDocInPreview(docpath, '');
+                loadDocInPreview(docpath, '', docfragment);
             }
         });
     }

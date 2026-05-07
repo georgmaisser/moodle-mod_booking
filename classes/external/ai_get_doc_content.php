@@ -104,7 +104,8 @@ class ai_get_doc_content extends external_api {
             $title = trim($m[1]);
         }
 
-        $html = self::markdown_to_html($markdown, $docsroot, $params['cmid']);
+        $relativepath = ltrim(str_replace('\\', '/', substr($requested, strlen($docsroot))), '/');
+        $html = self::markdown_to_html($markdown, $relativepath, $params['cmid']);
 
         return ['success' => true, 'html' => $html, 'title' => $title, 'error' => ''];
     }
@@ -141,11 +142,13 @@ class ai_get_doc_content extends external_api {
      * raw markdown content can never inject script tags.
      *
      * @param  string $markdown
-     * @param  string $docsroot  Absolute path to the docs directory (unused here, kept for future extensions).
+     * @param  string $currentpath Relative path of the currently rendered markdown doc.
      * @param  int    $cmid
      * @return string  Safe HTML.
      */
-    private static function markdown_to_html(string $markdown, string $docsroot, int $cmid): string {
+    private static function markdown_to_html(string $markdown, string $currentpath, int $cmid): string {
+        $basedir = trim(str_replace('\\', '/', dirname($currentpath)), '/.');
+
         // Normalise line endings.
         $text = str_replace(["\r\n", "\r"], "\n", $markdown);
 
@@ -191,7 +194,7 @@ class ai_get_doc_content extends external_api {
                     $tag = $isfirst ? 'th' : 'td';
                     $tablehtml .= '<tr>';
                     foreach ($cells as $cell) {
-                        $tablehtml .= "<{$tag}>" . self::inline_format($cell, $cmid) . "</{$tag}>";
+                        $tablehtml .= "<{$tag}>" . self::inline_format($cell, $cmid, $basedir) . "</{$tag}>";
                     }
                     $tablehtml .= '</tr>' . "\n";
                     $isfirst = false;
@@ -204,7 +207,7 @@ class ai_get_doc_content extends external_api {
             // Headings.
             if (preg_match('/^(#{1,4})\s+(.+)$/', $line, $m)) {
                 $level   = strlen($m[1]);
-                $content = self::inline_format($m[2], $cmid);
+                $content = self::inline_format($m[2], $cmid, $basedir);
                 $id      = 'doc-' . preg_replace('/[^a-z0-9]+/', '-', strtolower(strip_tags($content)));
                 $html   .= "<h{$level} id=\"{$id}\" class=\"booking-doc-h{$level}\">{$content}</h{$level}>\n";
                 $i++;
@@ -222,7 +225,7 @@ class ai_get_doc_content extends external_api {
             if (preg_match('/^(\s*)([-*])\s+(.+)$/', $line, $m)) {
                 $html .= "<ul class=\"booking-doc-list\">\n";
                 while ($i < $total && preg_match('/^(\s*)([-*])\s+(.+)$/', $lines[$i], $m)) {
-                    $html .= '<li>' . self::inline_format($m[3], $cmid) . '</li>' . "\n";
+                    $html .= '<li>' . self::inline_format($m[3], $cmid, $basedir) . '</li>' . "\n";
                     $i++;
                 }
                 $html .= "</ul>\n";
@@ -233,7 +236,7 @@ class ai_get_doc_content extends external_api {
             if (preg_match('/^\d+\.\s+(.+)$/', $line, $m)) {
                 $html .= "<ol class=\"booking-doc-list\">\n";
                 while ($i < $total && preg_match('/^\d+\.\s+(.+)$/', $lines[$i], $m)) {
-                    $html .= '<li>' . self::inline_format($m[1], $cmid) . '</li>' . "\n";
+                    $html .= '<li>' . self::inline_format($m[1], $cmid, $basedir) . '</li>' . "\n";
                     $i++;
                 }
                 $html .= "</ol>\n";
@@ -257,7 +260,7 @@ class ai_get_doc_content extends external_api {
                 $i++;
             }
             if ($para !== '') {
-                $html .= '<p class="booking-doc-p">' . self::inline_format($para, $cmid) . "</p>\n";
+                $html .= '<p class="booking-doc-p">' . self::inline_format($para, $cmid, $basedir) . "</p>\n";
             }
         }
 
@@ -273,25 +276,38 @@ class ai_get_doc_content extends external_api {
      *
      * @param  string $text
      * @param  int    $cmid
+     * @param  string $basedir Relative docs directory of the current document.
      * @return string HTML
      */
-    private static function inline_format(string $text, int $cmid): string {
+    private static function inline_format(string $text, int $cmid, string $basedir = ''): string {
         // Links [text](url) — must run before escaping.
         $text = preg_replace_callback(
             '/\[([^\]]+)\]\(([^)]+)\)/',
-            static function (array $m) use ($cmid): string {
+            static function (array $m) use ($cmid, $basedir): string {
                 $label = htmlspecialchars(trim($m[1]), ENT_QUOTES, 'UTF-8');
                 $href  = trim($m[2]);
 
-                // Relative .md path → render via webservice (data-docpath attribute).
-                if (!preg_match('/^https?:\/\//', $href)) {
-                    $safepath = htmlspecialchars($href, ENT_QUOTES, 'UTF-8');
-                    return '<a href="#" class="booking-doc-link" data-docpath="' . $safepath . '" '
-                        . 'data-cmid="' . (int)$cmid . '">' . $label . '</a>';
+                if (preg_match('/^https?:\/\//i', $href)) {
+                    $safeurl = htmlspecialchars($href, ENT_QUOTES, 'UTF-8');
+                    return '<a href="' . $safeurl . '" target="_blank" rel="noopener noreferrer">' . $label . '</a>';
                 }
 
-                $safeurl = htmlspecialchars($href, ENT_QUOTES, 'UTF-8');
-                return '<a href="' . $safeurl . '" target="_blank" rel="noopener noreferrer">' . $label . '</a>';
+                $resolved = self::resolve_internal_doc_link($href, $basedir);
+                if ($resolved !== null) {
+                    $safepath = htmlspecialchars($resolved['path'], ENT_QUOTES, 'UTF-8');
+                    $fragmentattr = '';
+                    if ($resolved['fragment'] !== '') {
+                        $fragmentattr = ' data-docfragment="'
+                            . htmlspecialchars($resolved['fragment'], ENT_QUOTES, 'UTF-8') . '"';
+                    }
+
+                    return '<a href="#" class="booking-doc-link" data-docpath="' . $safepath . '"'
+                        . $fragmentattr . ' data-cmid="' . (int)$cmid . '">' . $label . '</a>';
+                }
+
+                // Keep non-doc relative links untouched (e.g. /mod/booking/view.php?id=...).
+                $safehref = htmlspecialchars($href, ENT_QUOTES, 'UTF-8');
+                return '<a href="' . $safehref . '">' . $label . '</a>';
             },
             $text
         ) ?? $text;
@@ -317,5 +333,82 @@ class ai_get_doc_content extends external_api {
         }
 
         return $output;
+    }
+
+    /**
+     * Resolve a markdown link target relative to the currently rendered docs file.
+     *
+     * Only relative .md links are converted to internal preview navigation.
+     * External URLs, absolute paths, and non-md links return null.
+     *
+     * @param string $href
+     * @param string $basedir
+     * @return array{path:string, fragment:string}|null
+     */
+    private static function resolve_internal_doc_link(string $href, string $basedir): ?array {
+        $raw = trim($href);
+        if ($raw === '') {
+            return null;
+        }
+
+        if (preg_match('/^[a-z][a-z0-9+.-]*:/i', $raw) || str_starts_with($raw, '//') || str_starts_with($raw, '/')) {
+            return null;
+        }
+
+        $fragment = '';
+        $pathpart = $raw;
+        $hashpos = strpos($raw, '#');
+        if ($hashpos !== false) {
+            $pathpart = substr($raw, 0, $hashpos);
+            $fragment = substr($raw, $hashpos + 1);
+        }
+
+        $pathpart = trim($pathpart);
+        if ($pathpart === '' || !preg_match('/\.md$/i', $pathpart)) {
+            return null;
+        }
+
+        $combined = ($basedir !== '' ? ($basedir . '/') : '') . $pathpart;
+        $normalized = self::normalize_relative_docs_path($combined);
+        if ($normalized === null || !preg_match('/\.md$/i', $normalized)) {
+            return null;
+        }
+
+        return [
+            'path' => $normalized,
+            'fragment' => trim($fragment),
+        ];
+    }
+
+    /**
+     * Normalize a relative docs path and reject traversal outside docs root.
+     *
+     * @param string $path
+     * @return string|null
+     */
+    private static function normalize_relative_docs_path(string $path): ?string {
+        $segments = explode('/', str_replace('\\', '/', $path));
+        $normalized = [];
+
+        foreach ($segments as $segment) {
+            $segment = trim($segment);
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                if (empty($normalized)) {
+                    return null;
+                }
+                array_pop($normalized);
+                continue;
+            }
+            $normalized[] = $segment;
+        }
+
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return implode('/', $normalized);
     }
 }
