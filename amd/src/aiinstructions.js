@@ -290,7 +290,7 @@ const maybeShowTrialTokenInvalidAlert = (response, errors = [], issueCodes = [])
         return;
     }
 
-    appendMessageHtml('assistant', `<span>${renderTextWithLinks(messageText)}</span>`);
+    appendMessageHtml('assistant', renderAssistantMessageHtml(messageText));
 };
 
 /**
@@ -386,7 +386,10 @@ const appendMessage = (role, content, meta = null) => {
     }
     const div = document.createElement('div');
     div.classList.add('booking-ai-msg', role);
-    div.innerHTML = `<span class="bubble">${escapeHtml(content)}</span>`
+    const bubbleContent = role === 'assistant'
+        ? renderAssistantMessageHtml(content)
+        : escapeHtml(content);
+    div.innerHTML = `<div class="bubble">${bubbleContent}</div>`
         + `${renderMessageDebugMeta(meta)}${renderMessageDebugJson(meta)}`;
     list.appendChild(div);
     list.scrollTop = list.scrollHeight;
@@ -445,7 +448,7 @@ const appendMessageHtml = (role, html, meta = null) => {
     }
     const div = document.createElement('div');
     div.classList.add('booking-ai-msg', role);
-    div.innerHTML = `<span class="bubble">${String(html || '')}</span>`
+    div.innerHTML = `<div class="bubble">${String(html || '')}</div>`
         + `${renderMessageDebugMeta(meta)}${renderMessageDebugJson(meta)}`;
     list.appendChild(div);
     list.scrollTop = list.scrollHeight;
@@ -647,9 +650,14 @@ const escapeHtml = (str) => {
 const renderTextWithLinks = (text) => {
     const input = String(text || '');
 
-    // Combined regex: markdown links [label](url) first, then bare https:// URLs.
+    // Combined regex: markdown links [label](url) first, then bare URLs.
+    // Supports absolute http(s) and Moodle-relative paths like /mod/booking/....
     // Markdown pattern must come first so bare-URL branch never fires inside [...](...)
-    const combinedRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(https?:\/\/[^\s)]+)/g;
+    const combinedRegex = new RegExp(
+        '\\[([^\\]]+)\\]\\(((?:https?:\\/\\/|\\/(?:mod|admin|course|local)\\/)[^)]+)\\)'
+        + '|((?:https?:\\/\\/|\\/(?:mod|admin|course|local)\\/)[^\\s)`"\'<]+)',
+        'g'
+    );
 
     let html = '';
     let lastIndex = 0;
@@ -662,11 +670,19 @@ const renderTextWithLinks = (text) => {
             // Markdown link: [label](url)
             const label = match[1];
             const url = match[2];
-            html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+            if (/^https?:\/\//i.test(url)) {
+                html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+            } else {
+                html += `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
+            }
         } else {
-            // Bare URL
+            // Bare URL or Moodle-relative path.
             const url = match[3];
-            html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+            if (/^https?:\/\//i.test(url)) {
+                html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+            } else {
+                html += `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
+            }
         }
 
         lastIndex = match.index + match[0].length;
@@ -674,6 +690,28 @@ const renderTextWithLinks = (text) => {
 
     html += escapeHtml(input.slice(lastIndex));
     return html.replace(/\n/g, '<br>');
+};
+
+/**
+ * Render assistant content as HTML.
+ *
+ * If the backend already returns HTML, keep it as-is. Otherwise render a
+ * plain-text fallback with escaped text, links and line breaks.
+ *
+ * @param {string} content
+ * @returns {string}
+ */
+const renderAssistantMessageHtml = (content) => {
+    const raw = String(content || '').trim();
+    if (raw === '') {
+        return '';
+    }
+
+    if (/<\/?[a-z][\s\S]*>/i.test(raw)) {
+        return raw;
+    }
+
+    return renderTextWithLinks(raw);
 };
 
 /**
@@ -988,7 +1026,7 @@ const appendFriendlyAssistantMessage = (content) => {
     if (!text) {
         return;
     }
-    appendMessageHtml('assistant', `<span>${renderTextWithLinks(text)}</span>`);
+    appendMessageHtml('assistant', renderAssistantMessageHtml(text));
 
     const firstUrl = extractFirstUrl(text);
     if (firstUrl !== '') {
@@ -1359,8 +1397,9 @@ const appendStepBubble = (label, msgId) => {
     const div = document.createElement('div');
     div.classList.add('booking-ai-msg', 'booking-ai-msg-step');
     div.dataset.stepMsgId = String(msgId);
+    const formattedLabel = renderTextWithLinks(String(label || ''));
     div.innerHTML = '<span class="booking-ai-step-spinner" aria-hidden="true"></span>'
-        + `<span class="booking-ai-step-label">${escapeHtml(label)}</span>`;
+        + `<span class="booking-ai-step-label">${formattedLabel}</span>`;
     list.appendChild(div);
     list.scrollTop = list.scrollHeight;
     activeStepBubbles.push(div);
@@ -1571,7 +1610,7 @@ const sendMessage = (message) => {
             if (ambiguityOptionsHtml !== '' && resp.response_type === 'clarification') {
                 appendMessageHtml(
                     'assistant',
-                    `<span>${renderTextWithLinks(messageText)}</span>${ambiguityOptionsHtml}`,
+                    `${renderAssistantMessageHtml(messageText)}${ambiguityOptionsHtml}`,
                     {
                         response_type: resp.response_type || '',
                         threadid: Number(resp.threadid || currentThreadId || 0),
@@ -1631,7 +1670,7 @@ const sendMessage = (message) => {
             if (isError && list) {
                 const div = document.createElement('div');
                 div.classList.add('booking-ai-msg', 'assistant', 'error');
-                div.innerHTML = `<span class="bubble">${renderTextWithLinks(resp.displaymessage || resp.message)}</span>`
+                div.innerHTML = `<div class="bubble">${renderAssistantMessageHtml(resp.displaymessage || resp.message)}</div>`
                     + `${renderMessageDebugMeta(meta)}${renderMessageDebugJson(meta)}`;
                 list.appendChild(div);
                 list.scrollTop = list.scrollHeight;
@@ -1641,7 +1680,7 @@ const sendMessage = (message) => {
             } else {
                 appendMessageHtml(
                     'assistant',
-                    `<span>${renderTextWithLinks(String(resp.displaymessage || resp.message || ''))}</span>`,
+                    renderAssistantMessageHtml(String(resp.displaymessage || resp.message || '')),
                     meta
                 );
             }

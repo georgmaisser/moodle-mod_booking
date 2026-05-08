@@ -173,10 +173,13 @@ class ai_send_message extends external_api {
             $privacyapplied = 1;
         }
 
+        $formattedmessage = self::format_ws_message((string)($result['message'] ?? ''), $context);
+        $formatteddisplaymessage = self::format_ws_message($displaymessage, $context);
+
         return [
             'response_type'         => $result['response_type'] ?? 'error',
-            'message'               => $result['message'] ?? '',
-            'displaymessage'        => $displaymessage,
+            'message'               => $formattedmessage,
+            'displaymessage'        => $formatteddisplaymessage,
             'privacyapplied'        => $privacyapplied,
             'commands'              => json_encode($result['commands'] ?? []),
             'ambiguities'           => json_encode($result['ambiguities'] ?? []),
@@ -190,6 +193,25 @@ class ai_send_message extends external_api {
             'resultsjson'           => json_encode($result['results'] ?? []),
             'previewoptionid'       => 0,
         ];
+    }
+
+    /**
+     * Format a markdown-like assistant message as HTML for WS output.
+     *
+     * @param string $message
+     * @param context_module $context
+     * @return string
+     */
+    private static function format_ws_message(string $message, context_module $context): string {
+        $message = trim($message);
+        if ($message === '') {
+            return '';
+        }
+
+        return format_text(\markdown_to_html($message), 1, [
+            'context' => $context,
+            'para' => false,
+        ]);
     }
 
     /**

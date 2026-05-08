@@ -152,6 +152,11 @@ class ai_poll_run_status extends external_api {
             }
         }
 
+        $message = self::format_ws_message($message, $context);
+        $displaymessage = self::format_ws_message($displaymessage, $context);
+        $followupmessage = self::format_ws_message($followupmessage, $context);
+        $followupdisplaymessage = self::format_ws_message($followupdisplaymessage, $context);
+
         return [
             'runid'       => (int)$run->id,
             'status'      => $run->status,
@@ -164,6 +169,25 @@ class ai_poll_run_status extends external_api {
             'followupcommandsjson' => $followupcommandsjson,
             'resultsjson' => $run->resultsjson ?? '[]',
         ];
+    }
+
+    /**
+     * Format a markdown-like assistant message as HTML for WS output.
+     *
+     * @param string $message
+     * @param context_module $context
+     * @return string
+     */
+    private static function format_ws_message(string $message, context_module $context): string {
+        $message = trim($message);
+        if ($message === '') {
+            return '';
+        }
+
+        return format_text(\markdown_to_html($message), 1, [
+            'context' => $context,
+            'para' => false,
+        ]);
     }
 
     /**

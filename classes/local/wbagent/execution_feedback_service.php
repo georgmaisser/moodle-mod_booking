@@ -551,6 +551,14 @@ class execution_feedback_service {
                 $entry['debugmessage'] = trim($result['debugmessage']);
             }
 
+            if (
+                isset($result['next_step_intent'])
+                && is_string($result['next_step_intent'])
+                && trim($result['next_step_intent']) !== ''
+            ) {
+                $entry['next_step_intent'] = trim($result['next_step_intent']);
+            }
+
             if (isset($result['userid'])) {
                 $entry['userid'] = (int)$result['userid'];
             }

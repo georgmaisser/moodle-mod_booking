@@ -17,7 +17,7 @@
 namespace mod_booking\local\wbagent\services\lookup;
 
 /**
- * Deterministic lookup over booking/docs markdown files.
+ * Deterministic lookup over local markdown documentation files.
  *
  * @package    mod_booking
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
@@ -27,22 +27,44 @@ class docs_lookup_service {
     /** Maximum number of sample paths included per TOC topic. */
     private const MAX_TOPIC_SAMPLE_PATHS = 3;
 
-    /** Query terms that indicate message/notification intent in docs lookups. */
-    private const MESSAGING_HINT_TOKENS = [
-        'notification', 'notifications', 'reminder', 'reminders',
-        'message', 'messages', 'email', 'emails', 'mail', 'mails',
-    ];
-
     /** @var string */
     private string $docsroot;
+
+    /** @var string */
+    private string $rootdocpath;
 
     /**
      * Constructor.
      *
      * @param string|null $docsroot
+     * @param string|null $rootdocpath
      */
-    public function __construct(?string $docsroot = null) {
+    public function __construct(?string $docsroot = null, ?string $rootdocpath = null) {
         $this->docsroot = $docsroot ?? dirname(__DIR__, 5) . '/docs';
+        $this->rootdocpath = trim((string)($rootdocpath ?? 'README.md'));
+        if ($this->rootdocpath === '') {
+            $this->rootdocpath = 'README.md';
+        }
+    }
+
+    /**
+     * Get configured root entry document path.
+     *
+     * @return string
+     */
+    public function get_root_doc_path(): string {
+        return $this->rootdocpath;
+    }
+
+    /**
+     * Read the configured root entry document.
+     *
+     * @param int $linestart
+     * @param int $linecount
+     * @return array<string,mixed>|null
+     */
+    public function read_root_doc(int $linestart = 1, int $linecount = 80): ?array {
+        return $this->read_doc_by_path($this->rootdocpath, $linestart, $linecount);
     }
 
     /**
@@ -236,7 +258,7 @@ class docs_lookup_service {
                 $topics[$topicid] = [
                     'topic_id' => $topicid,
                     'title' => $this->build_topic_title($topicid),
-                    'intent' => $this->detect_topic_intent($topicid),
+                    'intent' => 'documentation',
                     'doc_count' => 0,
                     'keywords' => [],
                     'sample_paths' => [],
@@ -373,22 +395,6 @@ class docs_lookup_service {
                 'score' => $score,
                 'doc_count' => (int)($topic['doc_count'] ?? 0),
             ];
-        }
-
-        if (!empty($candidates)) {
-            $queryhinttokens = [];
-            foreach ($basequeries as $query) {
-                $queryhinttokens = array_merge($queryhinttokens, $this->extract_query_tokens($query));
-            }
-            $queryhinttokens = array_values(array_unique($queryhinttokens));
-
-            foreach ($candidates as &$candidate) {
-                $candidate['score'] += $this->score_topic_hints(
-                    (string)($candidate['topic_id'] ?? ''),
-                    $queryhinttokens
-                );
-            }
-            unset($candidate);
         }
 
         usort($candidates, static function (array $left, array $right): int {
@@ -562,27 +568,6 @@ class docs_lookup_service {
     }
 
     /**
-     * Derive a compact intent hint from the topic id.
-     *
-     * @param string $topicid
-     * @return string
-     */
-    private function detect_topic_intent(string $topicid): string {
-        $map = [
-            'actions_after_booking' => 'automation',
-            'campaigns' => 'configuration',
-            'conditions' => 'rules',
-            'shortcodes' => 'templating',
-            'subbookings' => 'scheduling',
-            'webservice' => 'integration',
-            'settings' => 'configuration',
-            'overview' => 'overview',
-        ];
-
-        return $map[$topicid] ?? 'documentation';
-    }
-
-    /**
      * Collect candidate topic terms from a doc title/path/basename.
      *
      * @param array<string,mixed> $doc
@@ -637,51 +622,13 @@ class docs_lookup_service {
         }
 
         foreach ($queries as $query) {
-            $compact = preg_replace('/[^a-z0-9]+/', '', strtolower($query)) ?? '';
+            $compact = preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($query)) ?? '';
             if ($compact !== '' && strpos($compact, str_replace('_', '', $topicid)) !== false) {
                 $score += 120;
             }
         }
 
         return $score;
-    }
-
-    /**
-     * Apply targeted topic boosts for known docs-intent classes.
-     *
-     * @param string $topicid
-     * @param array<int,string> $querytokens
-     * @return int
-     */
-    private function score_topic_hints(string $topicid, array $querytokens): int {
-        $topicid = strtolower(trim($topicid));
-        if ($topicid === '' || empty($querytokens)) {
-            return 0;
-        }
-
-        $hasmessaginghint = false;
-        foreach ($querytokens as $token) {
-            if (in_array($token, self::MESSAGING_HINT_TOKENS, true)) {
-                $hasmessaginghint = true;
-                break;
-            }
-        }
-
-        if (!$hasmessaginghint) {
-            return 0;
-        }
-
-        if ($topicid === 'booking_rules') {
-            return 180;
-        }
-        if ($topicid === '00_booking_messages') {
-            return 120;
-        }
-        if ($topicid === 'actions_after_booking') {
-            return -40;
-        }
-
-        return 0;
     }
 
     /**
@@ -762,7 +709,13 @@ class docs_lookup_service {
      * @param array $doc
      * @return string
      */
-    public function build_summary(array $doc): string {
+    public function build_summary(array $doc, int $cmid = 0, string $outputlang = '', string $question = ''): string {
+        $source = trim((string)($doc['chunk_content'] ?? $doc['content'] ?? ''));
+        $steps = $this->extract_first_ordered_steps($source);
+        if ($steps !== '') {
+            return $steps;
+        }
+
         $excerpt = $this->strip_markdown((string)($doc['excerpt'] ?? ''));
         $excerpt = trim(preg_replace('/\s+/', ' ', $excerpt) ?? $excerpt);
         if ($excerpt === '') {
@@ -833,12 +786,14 @@ class docs_lookup_service {
      */
     private function score_doc(array $doc, array $tokens, string $question): int {
         $score = 0;
-        $path = strtolower((string)($doc['path'] ?? ''));
-        $title = strtolower((string)($doc['title'] ?? ''));
-        $excerpt = strtolower((string)($doc['excerpt'] ?? ''));
-        $content = strtolower((string)($doc['content'] ?? ''));
-        $basename = strtolower((string)($doc['basename'] ?? ''));
-        $questioncompact = preg_replace('/[^a-z0-9]+/', '', strtolower($question)) ?? '';
+        $path = mb_strtolower((string)($doc['path'] ?? ''));
+        $title = mb_strtolower((string)($doc['title'] ?? ''));
+        $excerpt = mb_strtolower((string)($doc['excerpt'] ?? ''));
+        $content = mb_strtolower((string)($doc['content'] ?? ''));
+        $basename = mb_strtolower((string)($doc['basename'] ?? ''));
+        $questioncompact = preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($question)) ?? '';
+        $titlepathmatches = [];
+        $contentmatches = [];
 
         if ($basename !== '' && $questioncompact !== '' && strpos($questioncompact, $basename) !== false) {
             $score += 250;
@@ -851,16 +806,28 @@ class docs_lookup_service {
 
             if (strpos($title, $token) !== false) {
                 $score += 60;
+                $titlepathmatches[$token] = true;
             }
             if (strpos($path, $token) !== false) {
                 $score += 40;
+                $titlepathmatches[$token] = true;
             }
             if (strpos($excerpt, $token) !== false) {
                 $score += 20;
+                $contentmatches[$token] = true;
             }
             if (strpos($content, $token) !== false) {
                 $score += 5;
+                $contentmatches[$token] = true;
             }
+        }
+
+        $tokencount = max(1, count($tokens));
+        $score += (int)floor((count($titlepathmatches) / $tokencount) * 220);
+        $score += (int)floor((count($contentmatches) / $tokencount) * 80);
+
+        if (in_array($basename, ['readme', 'overview', 'index'], true)) {
+            $score -= 25;
         }
 
         return $score;
@@ -874,7 +841,7 @@ class docs_lookup_service {
      * @return bool
      */
     private function has_exact_basename_hit(array $doc, string $question): bool {
-        $basename = strtolower((string)($doc['basename'] ?? ''));
+        $basename = mb_strtolower((string)($doc['basename'] ?? ''));
         if ($basename === '') {
             return false;
         }
@@ -886,7 +853,7 @@ class docs_lookup_service {
             return false;
         }
 
-        $questioncompact = preg_replace('/[^a-z0-9]+/', '', strtolower($question)) ?? '';
+        $questioncompact = preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($question)) ?? '';
         return $questioncompact !== '' && strpos($questioncompact, $basename) !== false;
     }
 
@@ -897,27 +864,81 @@ class docs_lookup_service {
      * @return array
      */
     private function extract_query_tokens(string $question): array {
-        $normalized = strtolower($question);
-        $normalized = preg_replace('/[^a-z0-9]+/i', ' ', $normalized) ?? $normalized;
+        $normalized = mb_strtolower($question);
+        $normalized = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $normalized) ?? $normalized;
         $parts = preg_split('/\s+/', trim($normalized)) ?: [];
-
-        $stopwords = [
-            'a', 'an', 'and', 'are', 'briefly', 'can', 'does', 'explain', 'for', 'function', 'help', 'how', 'i', 'is',
-            'it', 'mean', 'me', 'of', 'please', 'the', 'this', 'to', 'what', 'with', 'works',
-            'bitte', 'bedeutet', 'der', 'die', 'das', 'eine', 'ein', 'erklaer', 'erklaere', 'erklaeren', 'funktion',
-            'ist', 'was', 'wie', 'wofuer', 'wozu',
-        ];
-        $stopwordmap = array_fill_keys($stopwords, true);
 
         $tokens = [];
         foreach ($parts as $part) {
-            if ($part === '' || strlen($part) < 3 || isset($stopwordmap[$part])) {
+            if ($part === '' || mb_strlen($part) < 3) {
                 continue;
             }
             $tokens[] = $part;
         }
 
         return array_values(array_unique($tokens));
+    }
+
+    /**
+     * Extract the first ordered step list from markdown content.
+     *
+     * @param string $content
+     * @return string
+     */
+    private function extract_first_ordered_steps(string $content): string {
+        if ($content === '') {
+            return '';
+        }
+
+        $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", $content));
+        $collecting = false;
+        $steps = [];
+        $itemcount = 0;
+
+        foreach ($lines as $line) {
+            $trimmed = rtrim($line);
+
+            if (!$collecting && preg_match('/^\s*\d+\.\s+\S/u', $trimmed)) {
+                $collecting = true;
+            }
+
+            if (!$collecting) {
+                continue;
+            }
+
+            if (preg_match('/^\s*#{1,6}\s+/u', $trimmed)) {
+                break;
+            }
+
+            if ($trimmed === '') {
+                if (!empty($steps)) {
+                    $steps[] = '';
+                }
+                continue;
+            }
+
+            if (
+                preg_match('/^\s*\d+\.\s+\S/u', $trimmed)
+                || preg_match('/^\s{2,}\S/u', $trimmed)
+            ) {
+                if (preg_match('/^\s*\d+\.\s+\S/u', $trimmed)) {
+                    $itemcount++;
+                }
+                $steps[] = $trimmed;
+                continue;
+            }
+
+            if (!empty($steps)) {
+                break;
+            }
+        }
+
+        if ($itemcount < 2 || empty($steps)) {
+            return '';
+        }
+
+        $result = trim(implode("\n", $steps));
+        return mb_substr($result, 0, 900);
     }
 
     /**

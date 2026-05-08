@@ -347,9 +347,20 @@ class agent_decision_service {
         int $userid,
         string $outputlang
     ): array {
+        $modelmessage = trim((string)($result['message'] ?? ''));
+        $normalizedmessage = core_text::strtolower($modelmessage);
+        $isplaceholdermessage = in_array($normalizedmessage, ['executing', 'executing.', 'running', 'running.'], true);
         $pendingintent = $this->store->get_pending_intent($threadid);
 
         if ($pendingintent === null) {
+            if ($modelmessage !== '' && !$isplaceholdermessage) {
+                $fallback = $this->clarification_result($modelmessage);
+                $fallback['used_triggers'] = (array)($result['used_triggers'] ?? []);
+                if (!empty($result['next_step_intent'])) {
+                    $fallback['next_step_intent'] = trim((string)$result['next_step_intent']);
+                }
+                return $fallback;
+            }
             return $this->clarification_result(
                 $this->localized_string('ai_no_pending_intent', 'mod_booking', null, $outputlang)
             );
@@ -357,6 +368,14 @@ class agent_decision_service {
 
         $confirmcommands = is_array($pendingintent['commands'] ?? null) ? (array)$pendingintent['commands'] : [];
         if (empty($confirmcommands)) {
+            if ($modelmessage !== '' && !$isplaceholdermessage) {
+                $fallback = $this->clarification_result($modelmessage);
+                $fallback['used_triggers'] = (array)($result['used_triggers'] ?? []);
+                if (!empty($result['next_step_intent'])) {
+                    $fallback['next_step_intent'] = trim((string)$result['next_step_intent']);
+                }
+                return $fallback;
+            }
             return $this->clarification_result(
                 $this->localized_string('ai_no_pending_intent', 'mod_booking', null, $outputlang)
             );
@@ -429,6 +448,7 @@ class agent_decision_service {
         string $outputlang
     ): array {
         $commands = $this->inject_output_language_into_commands((array)($result['commands'] ?? []), $outputlang);
+        $nextstepintent = trim((string)($result['next_step_intent'] ?? ''));
         $commands = $this->enrich_option_anchor_inputs($commands);
         if (!is_array($commands) || empty($commands)) {
             return $result;
@@ -468,7 +488,8 @@ class agent_decision_service {
                 $threadid,
                 $cmid,
                 $userid,
-                $outputlang
+                $outputlang,
+                $nextstepintent
             );
         }
 
@@ -869,7 +890,8 @@ class agent_decision_service {
         int $threadid,
         int $cmid,
         int $userid,
-        string $outputlang
+        string $outputlang,
+        string $nextstepintent = ''
     ): array {
         // Read-only auto-execution must use deanonymized inputs, otherwise person names
         // replaced during privacy precheck can degrade exact option/user lookups.
@@ -922,7 +944,7 @@ class agent_decision_service {
                 $message = $this->localized_string('ai_run_executed', 'mod_booking', null, $outputlang);
             }
 
-            return [
+            $payload = [
                 'response_type' => 'execution_result',
                 'message'       => $message,
                 'commands'      => $preparedcommands,
@@ -931,6 +953,12 @@ class agent_decision_service {
                 'runid'         => (int)$runid,
                 'results'       => $results,
             ];
+
+            if (trim($nextstepintent) !== '') {
+                $payload['next_step_intent'] = trim($nextstepintent);
+            }
+
+            return $payload;
         } catch (\Throwable $e) {
             $failureresults = [[
                 'status'   => 'error',
@@ -1540,6 +1568,7 @@ class agent_decision_service {
         }
 
         $usedtriggers = (array)($result['used_triggers'] ?? []);
+        $nextstepintent = trim((string)($result['next_step_intent'] ?? ''));
         $candidatetasks = [];
         $triggertotask = $this->registry->get_trigger_id_to_task_name_map();
 
@@ -1666,7 +1695,7 @@ class agent_decision_service {
                 continue;
             }
 
-            return [
+            $recoverypayload = [
                 'response_type'   => 'task_call',
                 'message'         => $this->localized_string('ai_status_taskcall_default', 'mod_booking', null, $outputlang),
                 'commands'        => [[
@@ -1683,6 +1712,12 @@ class agent_decision_service {
                 ))),
                 'used_triggers'   => $usedtriggers,
             ];
+
+            if ($nextstepintent !== '') {
+                $recoverypayload['next_step_intent'] = $nextstepintent;
+            }
+
+            return $recoverypayload;
         }
 
         return $result;

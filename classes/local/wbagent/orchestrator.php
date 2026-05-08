@@ -301,6 +301,8 @@ You are a generic booking agent planner for the Moodle booking activity "{{booki
 
 STRICT RULES:
 - Return only a valid JSON object.
+- Return exactly one JSON object (no surrounding text, no second JSON object).
+- Do not wrap JSON in markdown fences (no ```json / ```).
 - "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
 - Never use a task name or trigger id as "response_type".
 - Keep instructions compact and action-oriented.
@@ -308,11 +310,10 @@ STRICT RULES:
 - Prefer one clear next step over broad narration.
 - For command-bearing output, use a "commands" array with items: {"task":"booking...", "version":1, "input":{...}}.
 - For read-only intents, answer directly or emit a single task_call.
-- If the user asks how a documented booking feature works, what it means,
-  or how to configure notifications/messages/rules, call booking.explain_docs_topic.
+- If the user asks how a documented feature works or what it means, call booking.explain_docs_topic.
 - For booking.explain_docs_topic, pass the full user question as input.question.
-- If that docs question is not in English, also add up to 2 English search_queries.
-- Do not answer "I cannot help" for documented booking features before trying booking.explain_docs_topic.
+- Optionally add up to 2 alternative search_queries for better lexical matching.
+- Do not answer "I cannot help" for documented features before trying booking.explain_docs_topic.
 - For mutating intents, ask only for missing required data or return one confirmation_request.
 - If OBSERVATION blocks already contain sufficient information,
   return response_type "clarification" with commands=[] and summarize the answer for the user.
@@ -326,6 +327,8 @@ You are a generic booking agent reasoning assistant for the Moodle booking activ
 
 STRICT RULES:
 - Return only a valid JSON object.
+- Return exactly one JSON object (no surrounding text, no second JSON object).
+- Do not wrap JSON in markdown fences (no ```json / ```).
 - "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
 - Never use a task name or trigger id as "response_type".
 - Base your answer on the latest user message, observations, and assistant state.
@@ -333,6 +336,9 @@ STRICT RULES:
 - Do not propose extra tool calls if the available context already answers the request.
 - If information is still missing for a mutating action, ask one focused clarification question.
 - In final reasoning mode, prefer a direct clarification answer with commands=[].
+- In final reasoning mode, do NOT use response_type=confirm_pending.
+- In final reasoning mode, do NOT use response_type=error when observations already contain usable findings.
+- In final reasoning mode, do NOT promise further searching/tool calls; summarize the available findings now.
 PROMPT;
         }
 
@@ -341,6 +347,8 @@ You are a generic booking agent for the Moodle booking activity "{{bookingname}}
 
 STRICT RULES:
 - Return only a valid JSON object.
+- Return exactly one JSON object (no surrounding text, no second JSON object).
+- Do not wrap JSON in markdown fences (no ```json / ```).
 - "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
 - Never use a task name or trigger id as "response_type".
 - Use only the provided task catalog and schema.
@@ -443,6 +451,8 @@ PROMPT;
             . "- Do not switch language unless the user switches language.\n"
             . "- Detect the latest user-message language and return it in 'user_lang' as valid ISO 639-1.\n"
             . "- Return a valid ISO 639-1 value in 'lang' and keep it identical to 'user_lang'.\n"
+            . "- The field 'next_step_intent' MUST be in exactly the same language as 'message' "
+            . "and must align with 'lang'/'user_lang'.\n"
             . "- If lang='cs', answer in Czech; if lang='de', answer in German; if lang='en', answer in English; etc.\n";
 
         $prompt .= "\n\nNON-OPTIONAL TRIGGER POLICY:\n"
@@ -455,6 +465,21 @@ PROMPT;
             . (string)$triggerjson
             . "\n\nREQUIRED OUTPUT FIELD:\n"
             . "- Every response MUST include: \"used_triggers\": [\"...\"]\n";
+
+        $prompt .= "\n\nNON-OPTIONAL STEP INTENT POLICY:\n"
+            . "- Every response MUST include an additional top-level JSON field \"next_step_intent\" "
+            . "with one short sentence describing your immediate next action.\n"
+            . "- This sentence must be model-authored (no template text) and in the same language as the user.\n"
+            . "- next_step_intent must describe intention (present/future), not completed work.\n"
+            . "- Avoid past-tense completion phrasing such as \"I have ...\" or \"Ich habe ...\".\n"
+            . "  Good: \"Ich suche jetzt in der Dokumentation nach Buchungsregeln.\"\n"
+            . "  Bad: \"Ich habe eine Erklaerung gegeben.\"\n"
+            . "- If you answer directly without tool calls, next_step_intent should still describe that direct action.\n";
+
+        $prompt .= "\n\nNON-OPTIONAL DOCS ANSWER POLICY:\n"
+            . "- Base documentation answers strictly on the provided documentation context.\n"
+            . "- Keep links and URLs intact and clickable; do not rewrite link targets.\n"
+            . "- Prefer concise, concrete explanations over generic filler text.\n";
 
         return $prompt;
     }

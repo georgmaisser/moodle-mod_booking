@@ -32,6 +32,7 @@ use external_function_parameters;
 use external_single_structure;
 use external_value;
 use mod_booking\local\wbagent\authorization_service;
+use moodle_url;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -306,7 +307,7 @@ class ai_get_doc_content extends external_api {
                 }
 
                 // Keep non-doc relative links untouched (e.g. /mod/booking/view.php?id=...).
-                $safehref = htmlspecialchars($href, ENT_QUOTES, 'UTF-8');
+                $safehref = htmlspecialchars(self::format_non_doc_link($href, $cmid), ENT_QUOTES, 'UTF-8');
                 return '<a href="' . $safehref . '">' . $label . '</a>';
             },
             $text
@@ -410,5 +411,70 @@ class ai_get_doc_content extends external_api {
         }
 
         return implode('/', $normalized);
+    }
+
+    /**
+     * Format non-doc links so they resolve on the current Moodle instance.
+     *
+     * Replaces <cmid> placeholders and uses moodle_url for absolute Moodle paths
+     * such as /mod/booking/editoptions.php?id=<cmid>.
+     *
+     * @param string $href
+     * @param int $cmid
+     * @return string
+     */
+    private static function format_non_doc_link(string $href, int $cmid): string {
+        $raw = trim($href);
+        if ($raw === '') {
+            return '';
+        }
+
+        // Replace documented placeholder with concrete module id from the active preview context.
+        $raw = preg_replace('/<\s*cmid\s*>/i', (string)$cmid, $raw) ?? $raw;
+
+        $parts = parse_url($raw);
+        if ($parts === false) {
+            return $raw;
+        }
+
+        // Keep absolute external URLs as-is (already escaped by caller).
+        if (!empty($parts['scheme'])) {
+            return $raw;
+        }
+
+        $path = (string)($parts['path'] ?? '');
+        if ($path === '') {
+            return $raw;
+        }
+
+        // Convert common Moodle-relative links to instance-root absolute URLs.
+        if (str_starts_with($path, '/')) {
+            return self::build_moodle_url_from_parts($parts);
+        }
+
+        if (str_starts_with($path, 'mod/') || str_starts_with($path, 'admin/') || str_starts_with($path, 'course/')) {
+            $parts['path'] = '/' . ltrim($path, '/');
+            return self::build_moodle_url_from_parts($parts);
+        }
+
+        return $raw;
+    }
+
+    /**
+     * Build an absolute URL on this Moodle instance from parsed URL parts.
+     *
+     * @param array $parts parse_url() array
+     * @return string
+     */
+    private static function build_moodle_url_from_parts(array $parts): string {
+        $path = (string)($parts['path'] ?? '/');
+        $fragment = isset($parts['fragment']) ? (string)$parts['fragment'] : null;
+
+        $params = [];
+        if (!empty($parts['query'])) {
+            parse_str((string)$parts['query'], $params);
+        }
+
+        return (new moodle_url($path, $params, $fragment))->out(false);
     }
 }

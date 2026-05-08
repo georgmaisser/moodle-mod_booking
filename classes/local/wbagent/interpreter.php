@@ -98,6 +98,14 @@ class interpreter implements agent_interpreter {
 
         $lang = $this->safe_string($parsed['lang'] ?? '');
         $userlang = $this->safe_string($parsed['user_lang'] ?? $parsed['userlang'] ?? '');
+        $nextstepintent = $this->safe_string($parsed['next_step_intent'] ?? '');
+        if (
+            $nextstepintent !== ''
+            && in_array((string)$responsetype, ['task_call', 'confirmation_request'], true)
+            && $this->looks_like_completed_action_intent($nextstepintent)
+        ) {
+            $nextstepintent = '';
+        }
         if ($userlang !== '') {
             $userlang = strtolower(substr($userlang, 0, 2));
         }
@@ -105,7 +113,7 @@ class interpreter implements agent_interpreter {
 
         // Passthrough for clarification, error, and confirm_pending types.
         if ($responsetype === 'clarification') {
-            return [
+            return $this->with_optional_next_step_intent([
                 'response_type' => 'clarification',
                 'lang'          => $lang,
                 'user_lang'     => $userlang,
@@ -115,12 +123,12 @@ class interpreter implements agent_interpreter {
                 'ambiguities'   => [],
                 'ambiguity_options' => [],
                 'errors'        => [],
-            ];
+            ], $nextstepintent);
         }
 
         if ($responsetype === 'error') {
             $errormessage = $this->strip_command_prefix($this->safe_string($parsed['message'] ?? 'AI returned an error.'));
-            return [
+            return $this->with_optional_next_step_intent([
                 'response_type' => 'error',
                 'lang'          => $lang,
                 'user_lang'     => $userlang,
@@ -130,21 +138,21 @@ class interpreter implements agent_interpreter {
                 'ambiguities'   => [],
                 'ambiguity_options' => [],
                 'errors'        => [$errormessage],
-            ];
+            ], $nextstepintent);
         }
 
         if ($responsetype === 'confirm_pending') {
-            return [
+            return $this->with_optional_next_step_intent([
                 'response_type' => 'confirm_pending',
                 'lang'          => $lang,
                 'user_lang'     => $userlang,
-                'message'       => '',
+                'message'       => $this->strip_command_prefix($this->safe_string($parsed['message'] ?? '')),
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
                 'ambiguities'   => [],
                 'ambiguity_options' => [],
                 'errors'        => [],
-            ];
+            ], $nextstepintent);
         }
 
         // Stages 3–6: Full validation for command-bearing responses.
@@ -163,7 +171,7 @@ class interpreter implements agent_interpreter {
             $validationmessage = $this->user_facing_validation_message($errors, $lang);
             $recoverableinputerror = $this->is_recoverable_input_validation_error($errors);
             if (!empty($confirmablecommands)) {
-                return [
+                return $this->with_optional_next_step_intent([
                     'response_type' => 'confirmation_request',
                     'lang'          => $lang,
                     'user_lang'     => $userlang,
@@ -175,9 +183,9 @@ class interpreter implements agent_interpreter {
                     'errors'        => $errors,
                     'attempted_tasks' => $attemptedtasks,
                     'issue_codes'   => $issuecodes,
-                ];
+                ], $nextstepintent);
             }
-            return [
+            return $this->with_optional_next_step_intent([
                 'response_type' => $recoverableinputerror ? 'clarification' : 'error',
                 'lang'          => $lang,
                 'user_lang'     => $userlang,
@@ -189,12 +197,12 @@ class interpreter implements agent_interpreter {
                 'errors'        => $errors,
                 'attempted_tasks' => $attemptedtasks,
                 'issue_codes'   => $issuecodes,
-            ];
+            ], $nextstepintent);
         }
 
         if (!empty($ambiguities)) {
             if (empty($errors) && !empty($confirmablecommands)) {
-                return [
+                return $this->with_optional_next_step_intent([
                     'response_type' => 'confirmation_request',
                     'lang'          => $lang,
                     'user_lang'     => $userlang,
@@ -208,10 +216,10 @@ class interpreter implements agent_interpreter {
                     'errors'        => [],
                     'attempted_tasks' => $attemptedtasks,
                     'issue_codes'   => $issuecodes,
-                ];
+                ], $nextstepintent);
             }
 
-            return [
+            return $this->with_optional_next_step_intent([
                 'response_type' => 'clarification',
                 'lang'          => $lang,
                 'user_lang'     => $userlang,
@@ -223,10 +231,10 @@ class interpreter implements agent_interpreter {
                 'errors'        => [],
                 'attempted_tasks' => $attemptedtasks,
                 'issue_codes'   => $issuecodes,
-            ];
+            ], $nextstepintent);
         }
 
-        return [
+        return $this->with_optional_next_step_intent([
             'response_type' => $responsetype,
             'lang'          => $lang,
             'user_lang'     => $userlang,
@@ -238,7 +246,54 @@ class interpreter implements agent_interpreter {
             'errors'        => [],
             'attempted_tasks' => $attemptedtasks,
             'issue_codes'   => $issuecodes,
+        ], $nextstepintent);
+    }
+
+    /**
+     * Attach optional framework-level next_step_intent to normalized payloads.
+     *
+     * @param array $payload
+     * @param string $nextstepintent
+     * @return array
+     */
+    private function with_optional_next_step_intent(array $payload, string $nextstepintent): array {
+        $intent = trim($nextstepintent);
+        if ($intent !== '') {
+            $payload['next_step_intent'] = $intent;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Detect whether an intent text describes completed work instead of next action.
+     *
+     * @param string $intent
+     * @return bool
+     */
+    private function looks_like_completed_action_intent(string $intent): bool {
+        $normalized = strtolower(trim($intent));
+        if ($normalized === '') {
+            return false;
+        }
+
+        $patterns = [
+            '/^i\s+have\b/',
+            '/^i\s+already\b/',
+            '/^ich\s+habe\b/',
+            '/^ich\s+bin\s+fertig\b/',
+            '/\bhabe\s+.*\bgegeben\b/',
+            '/\bhave\s+.*\bprovided\b/',
+            '/\bhave\s+.*\bexplained\b/',
         ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $normalized)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -250,6 +305,7 @@ class interpreter implements agent_interpreter {
      */
     private function normalize_task_like_response(array $parsed, string $lastusermessage = ''): ?array {
         $allowedtasks = $this->registry->get_task_names();
+        $nextstepintent = $this->safe_string($parsed['next_step_intent'] ?? '');
 
         $responsetype = (string)($parsed['response_type'] ?? '');
         $responsereferencedtask = $this->resolve_task_name_alias($responsetype, $allowedtasks);
@@ -259,6 +315,7 @@ class interpreter implements agent_interpreter {
             return [
                 'response_type' => 'task_call',
                 'message' => $this->safe_string($parsed['message'] ?? 'Executing.'),
+                'next_step_intent' => $nextstepintent,
                 'commands' => [
                     [
                         'task' => $responsereferencedtask,
@@ -281,6 +338,7 @@ class interpreter implements agent_interpreter {
                     'lang' => $this->safe_string($parsed['lang'] ?? ''),
                     'used_triggers' => [$responsetype],
                     'message' => $this->safe_string($parsed['message'] ?? 'Executing.'),
+                    'next_step_intent' => $nextstepintent,
                     'commands' => [
                         [
                             'task' => $taskname,
@@ -300,6 +358,7 @@ class interpreter implements agent_interpreter {
             return [
                 'response_type' => 'task_call',
                 'message' => $this->safe_string($parsed['message'] ?? 'Executing.'),
+                'next_step_intent' => $nextstepintent,
                 'commands' => [
                     [
                         'task' => $resolvedtask,
@@ -336,6 +395,7 @@ class interpreter implements agent_interpreter {
                     'user_lang' => $this->safe_string($parsed['user_lang'] ?? $parsed['userlang'] ?? ''),
                     'used_triggers' => $this->extract_used_triggers($parsed),
                     'message' => $this->safe_string($parsed['message'] ?? 'Executing.'),
+                    'next_step_intent' => $nextstepintent,
                     'commands' => $normalizedcommands,
                 ];
             }
@@ -411,24 +471,109 @@ class interpreter implements agent_interpreter {
     private function parse(string $rawresponse): ?array {
         $text = trim($rawresponse);
 
-        // Strip markdown fences.
-        $text = preg_replace('/^\x60\x60\x60(?:json)?\s*/i', '', $text);
-        $text = preg_replace('/\s*\x60\x60\x60$/', '', $text);
-
-        $data = json_decode($text, true);
-        if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
-            return $data;
-        }
-
-        // Fallback: try to extract the first {...} block.
-        if (preg_match('/\{.*\}/s', $text, $m)) {
-            $data = json_decode($m[0], true);
+        foreach ($this->extract_json_candidates($text) as $candidate) {
+            $data = json_decode($candidate, true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
                 return $data;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Extract likely JSON object candidates from raw model text.
+     *
+     * Handles plain JSON, markdown-fenced JSON blocks and multi-object output.
+     *
+     * @param string $text
+     * @return array<int,string>
+     */
+    private function extract_json_candidates(string $text): array {
+        $candidates = [];
+
+        $trimmed = trim($text);
+        if ($trimmed !== '') {
+            $candidates[] = $trimmed;
+        }
+
+        if (preg_match_all('/\x60\x60\x60(?:json)?\s*([\s\S]*?)\s*\x60\x60\x60/i', $text, $matches) === 1) {
+            foreach (($matches[1] ?? []) as $block) {
+                $block = trim((string)$block);
+                if ($block !== '') {
+                    $candidates[] = $block;
+                }
+            }
+        }
+
+        foreach ($this->extract_balanced_json_objects($text) as $json) {
+            $candidates[] = $json;
+        }
+
+        return array_values(array_unique(array_filter(array_map('trim', $candidates), static function (string $value): bool {
+            return $value !== '';
+        })));
+    }
+
+    /**
+     * Extract balanced top-level JSON object snippets from arbitrary text.
+     *
+     * @param string $text
+     * @return array<int,string>
+     */
+    private function extract_balanced_json_objects(string $text): array {
+        $objects = [];
+        $length = strlen($text);
+        $depth = 0;
+        $start = -1;
+        $instring = false;
+        $escaped = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($instring) {
+                if ($escaped) {
+                    $escaped = false;
+                    continue;
+                }
+
+                if ($char === '\\') {
+                    $escaped = true;
+                    continue;
+                }
+
+                if ($char === '"') {
+                    $instring = false;
+                }
+                continue;
+            }
+
+            if ($char === '"') {
+                $instring = true;
+                continue;
+            }
+
+            if ($char === '{') {
+                if ($depth === 0) {
+                    $start = $i;
+                }
+                $depth++;
+                continue;
+            }
+
+            if ($char === '}') {
+                if ($depth > 0) {
+                    $depth--;
+                    if ($depth === 0 && $start >= 0) {
+                        $objects[] = substr($text, $start, $i - $start + 1);
+                        $start = -1;
+                    }
+                }
+            }
+        }
+
+        return $objects;
     }
 
     /**

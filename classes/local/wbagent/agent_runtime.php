@@ -258,7 +258,12 @@ class agent_runtime {
 
                 // Write an ephemeral step label for frontend polling.
                 $steptask = implode(', ', $this->extract_step_task_names($commands, (array)($result['results'] ?? [])));
-                $steplabel = $this->build_step_label($step + 1, $commands, $result['results'] ?? []);
+                $steplabel = $this->build_step_label(
+                    $step + 1,
+                    $commands,
+                    $result['results'] ?? [],
+                    (string)($result['next_step_intent'] ?? '')
+                );
                 $this->store->add_step_message($threadid, $step + 1, $steplabel, $steptask);
 
                 // If the LLM keeps issuing the same readonly tasks, stop the loop early
@@ -751,7 +756,15 @@ class agent_runtime {
      * @param array $results
      * @return string
      */
-    private function build_step_label(int $stepnum, array $commands, array $results): string {
+    private function build_step_label(int $stepnum, array $commands, array $results, string $nextstepintent = ''): string {
+        $intent = trim($nextstepintent);
+        if ($intent === '') {
+            $intent = $this->extract_next_step_intent($results);
+        }
+        if ($intent !== '') {
+            return 'Step ' . $stepnum . ': ' . $intent;
+        }
+
         $descriptions = [];
         foreach ($this->extract_step_task_names($commands, $results) as $taskname) {
             if ($taskname === '') {
@@ -781,6 +794,26 @@ class agent_runtime {
         }
 
         return 'Step ' . $stepnum . ': Processing';
+    }
+
+    /**
+     * Extract a natural-language next step intent from task results.
+     *
+     * @param array $results
+     * @return string
+     */
+    private function extract_next_step_intent(array $results): string {
+        foreach ($results as $result) {
+            if (!is_array($result)) {
+                continue;
+            }
+            $intent = trim((string)($result['next_step_intent'] ?? ''));
+            if ($intent !== '') {
+                return $intent;
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -1077,6 +1110,7 @@ class agent_runtime {
             $observations,
             orchestrator::STEP_TYPE_FINAL_REASONING
         );
+        $narration = $this->normalize_final_reasoning_narration($narration);
         if ($this->is_final_clarification_without_commands($narration)) {
             $narrationlang = $this->resolve_output_language($threadid, $narration);
             return [
@@ -1101,6 +1135,36 @@ class agent_runtime {
         // Deterministic fallback is mandatory when narration output is malformed
         // or command-bearing. This guarantees loop termination with commands=[].
         return $this->build_deterministic_loop_repeat_fallback($state, $lang, $latestmessage);
+    }
+
+    /**
+     * Normalize final-reasoning narration payloads into clarification when safe.
+     *
+     * Some models still emit response_type=error with a usable user-facing summary
+     * despite explicit final-reasoning instructions. In that case, keep the content
+     * and coerce to clarification as long as no commands are present.
+     *
+     * @param array $result
+     * @return array
+     */
+    private function normalize_final_reasoning_narration(array $result): array {
+        if ((string)($result['response_type'] ?? '') !== 'error') {
+            return $result;
+        }
+
+        if (!empty((array)($result['commands'] ?? []))) {
+            return $result;
+        }
+
+        $message = trim((string)($result['message'] ?? ''));
+        if ($message === '') {
+            return $result;
+        }
+
+        $result['response_type'] = 'clarification';
+        $result['errors'] = [];
+
+        return $result;
     }
 
     /**
