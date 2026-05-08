@@ -1,4 +1,4 @@
-[Parent](README.md)
+[Back to parent section](README.md)
 
 # No Overlapping Bookings
 

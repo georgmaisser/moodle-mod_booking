@@ -1,4 +1,4 @@
-[Parent](README.md)
+[Back to parent section](README.md)
 
 # Campaign Type: Custom Field Campaign
 
