@@ -24,6 +24,8 @@
 
 namespace mod_booking\local\wbagent;
 
+use core_text;
+
 /**
  * Builds and validates the trigger catalog shared between prompt, interpreter and runtime flow.
  *
@@ -32,6 +34,19 @@ namespace mod_booking\local\wbagent;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class message_trigger_registry {
+    /** Marker for unknown response_type values coming from model output. */
+    public const UNKNOWN_RESPONSE_TYPE = 'UNKNOWN_TYPE';
+
+    /** Allowed response_type values in runtime/decision routing. */
+    private const KNOWN_RESPONSE_TYPES = [
+        'task_call',
+        'confirmation_request',
+        'confirm_pending',
+        'clarification',
+        'error',
+        'execution_result',
+    ];
+
     /** @var task_registry */
     private task_registry $taskregistry;
 
@@ -128,5 +143,24 @@ class message_trigger_registry {
         }
 
         return array_keys($normalized);
+    }
+
+    /**
+     * Normalize response_type into an explicit known set.
+     *
+     * @param string $responsetype
+     * @return string
+     */
+    public function normalize_response_type(string $responsetype): string {
+        $normalized = trim(core_text::strtolower($responsetype));
+        if ($normalized === '') {
+            return self::UNKNOWN_RESPONSE_TYPE;
+        }
+
+        if (!in_array($normalized, self::KNOWN_RESPONSE_TYPES, true)) {
+            return self::UNKNOWN_RESPONSE_TYPE;
+        }
+
+        return $normalized;
     }
 }

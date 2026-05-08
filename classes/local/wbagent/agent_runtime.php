@@ -105,6 +105,12 @@ class agent_runtime {
     /** @var agent_decision_service */
     private agent_decision_service $decisionsvc;
 
+    /** @var message_persistence_service */
+    private message_persistence_service $messagepersistence;
+
+    /** @var loop_finalizer */
+    private loop_finalizer $loopfinalizer;
+
     /**
      * Constructor.
      *
@@ -124,6 +130,8 @@ class agent_runtime {
         $this->store        = $store;
         $this->authz        = $authz;
         $this->decisionsvc  = new agent_decision_service($registry, $store, $authz);
+        $this->messagepersistence = new message_persistence_service($store);
+        $this->loopfinalizer = new loop_finalizer();
     }
 
     // -------------------------------------------------------------------------
@@ -160,7 +168,7 @@ class agent_runtime {
      */
     public function run(int $threadid, int $cmid, int $userid): array {
         $result = $this->run_internal($threadid, $cmid, $userid, []);
-        $this->persist_assistant_message($threadid, $result);
+        $this->messagepersistence->persist_assistant_message($threadid, $result);
         return $result;
     }
 
@@ -266,10 +274,19 @@ class agent_runtime {
                 );
                 $this->store->add_step_message($threadid, $step + 1, $steplabel, $steptask);
 
-                if ($this->should_finalize_after_execution_result($result, $state)) {
-                    $final = $this->build_sufficient_execution_result_clarification($result, $state);
+                $final = $this->loopfinalizer->finalize(
+                    $result,
+                    $state,
+                    self::MAX_LOOP_STEPS,
+                    fn(array $commands, array $results): array => $this->extract_step_task_names($commands, $results),
+                    fn(string $id, string $component, ?object $a, string $lang): string =>
+                        $this->localized_string($id, $component, $a, $lang),
+                    fn(array $results, string $currentmessage): string =>
+                        $this->build_loop_repeat_summary($results, $currentmessage)
+                );
+                if (is_array($final)) {
                     $final = $this->attach_loop_results($final, $state);
-                    $this->persist_assistant_message($threadid, $final);
+                    $this->messagepersistence->persist_assistant_message($threadid, $final);
                     return $final;
                 }
 
@@ -289,7 +306,7 @@ class agent_runtime {
 
             // Persist the SINGLE final assistant message and return.
             $result = $this->attach_loop_results($result, $state);
-            $this->persist_assistant_message($threadid, $result);
+            $this->messagepersistence->persist_assistant_message($threadid, $result);
             return $result;
         }
 
@@ -302,7 +319,7 @@ class agent_runtime {
         ]);
         $result = $this->loop_continue_result(current_language(), $limit);
         $result = $this->attach_loop_results($result, $state);
-        $this->persist_assistant_message($threadid, $result);
+        $this->messagepersistence->persist_assistant_message($threadid, $result);
         return $result;
     }
 
@@ -1088,6 +1105,31 @@ class agent_runtime {
         $this->store->set_thread_metadata_value($threadid, 'last_output_lang', $outputlang);
         $result['used_triggers'] = $triggerregistry->normalize_used_triggers($result['used_triggers'] ?? []);
 
+        $rawresponsetype = trim((string)($result['response_type'] ?? ''));
+        $result['response_type'] = $triggerregistry->normalize_response_type($rawresponsetype);
+        if ($result['response_type'] === message_trigger_registry::UNKNOWN_RESPONSE_TYPE) {
+            $result['response_type'] = 'error';
+            $result['commands'] = [];
+            $result['issue_codes'] = array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                [message_trigger_registry::UNKNOWN_RESPONSE_TYPE]
+            )));
+            if (trim((string)($result['message'] ?? '')) === '') {
+                $result['message'] = $this->localized_string(
+                    'ai_agent_malformed_taskcall_clarification',
+                    'mod_booking',
+                    null,
+                    $outputlang
+                );
+            }
+        }
+
+        $this->log_trigger_normalization($threadid, $cmid, $userid, [
+            'raw_response_type' => $rawresponsetype,
+            'normalized_response_type' => $result['response_type'],
+            'used_triggers' => (array)($result['used_triggers'] ?? []),
+        ]);
+
         // Infer issue codes when the LLM returned a generic error.
         if (
             (string)($result['response_type'] ?? '') === 'error'
@@ -1178,33 +1220,31 @@ class agent_runtime {
     }
 
     /**
-     * Persist the final assistant message to the conversation store.
+     * Log trigger/response-type normalization output for deterministic routing diagnostics.
      *
-     * Called exactly ONCE per user-visible turn — either by run() directly
-     * or by run_loop() when the loop terminates with a final response.
-     *
-     * @param  int   $threadid
-     * @param  array $result
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @param array $payload
      * @return void
      */
-    private function persist_assistant_message(int $threadid, array $result): void {
-        $this->store->add_message($threadid, 'assistant', $result['message'] ?? '', [
-            'response_type'            => $result['response_type'],
-            'runid'                    => $result['runid'] ?? 0,
-            'used_triggers'            => $result['used_triggers'] ?? [],
-            'commands'                 => $result['commands'] ?? [],
-            'ambiguities'              => $result['ambiguities'] ?? [],
-            'ambiguity_options'        => $result['ambiguity_options'] ?? [],
-            'errors'                   => $result['errors'] ?? [],
-            'attempted_tasks'          => $result['attempted_tasks'] ?? [],
-            'issue_codes'              => $result['issue_codes'] ?? [],
-            'pending_confirmation_code' => $result['pending_confirmation_code'] ?? '',
-            'results'                  => $result['results'] ?? [],
-            'loop_results'             => $result['loop_results'] ?? [],
-            'loop_step'                => $result['loop_step'] ?? 0,
-            'loop_max_steps'           => $result['loop_max_steps'] ?? 0,
-            'lang'                     => $result['lang'] ?? '',
-        ]);
+    private function log_trigger_normalization(int $threadid, int $cmid, int $userid, array $payload): void {
+        $request = json_encode([
+            'phase' => 'trigger_normalization',
+            'timestamp' => time(),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $response = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        llm_debug_logger::log_exchange_always(
+            $this->store,
+            $threadid,
+            $cmid,
+            $userid,
+            'runtime.trigger_normalization',
+            is_string($request) ? $request : '{}',
+            is_string($response) ? $response : '{}',
+            true,
+            ''
+        );
     }
 
     /**

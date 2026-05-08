@@ -51,6 +51,21 @@ use mod_booking\local\wbagent\booking\booking_task_support;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class agent_decision_service {
+    /** Response type constant used in routing decisions. */
+    private const RESPONSE_TYPE_TASK_CALL = 'task_call';
+
+    /** Response type constant used in routing decisions. */
+    private const RESPONSE_TYPE_CONFIRMATION_REQUEST = 'confirmation_request';
+
+    /** Response type constant used in routing decisions. */
+    private const RESPONSE_TYPE_CONFIRM_PENDING = 'confirm_pending';
+
+    /** Response type constant used in routing decisions. */
+    private const RESPONSE_TYPE_CLARIFICATION = 'clarification';
+
+    /** Response type constant used in routing decisions. */
+    private const RESPONSE_TYPE_ERROR = 'error';
+
     /** Issue codes indicating a duplicate-title confirmation context. */
     public const DUPLICATE_TITLE_ISSUE_CODES = [
         'DUPLICATE_TITLE_CONFIRM_REQUIRED',
@@ -77,6 +92,9 @@ class agent_decision_service {
     /** @var authorization_service */
     private authorization_service $authz;
 
+    /** @var recovery_enrichment_service */
+    private recovery_enrichment_service $recoverysvc;
+
     /**
      * Constructor.
      *
@@ -92,6 +110,7 @@ class agent_decision_service {
         $this->registry = $registry;
         $this->store    = $store;
         $this->authz    = $authz;
+        $this->recoverysvc = new recovery_enrichment_service($registry);
     }
 
     // -------------------------------------------------------------------------
@@ -142,14 +161,14 @@ class agent_decision_service {
 
         // 2. Normalise task_call with confirmation trigger → confirm_pending.
         if (
-            (string)($result['response_type'] ?? '') !== 'confirm_pending'
+            (string)($result['response_type'] ?? '') !== self::RESPONSE_TYPE_CONFIRM_PENDING
             && $this->result_has_trigger($result, 'core.is_confirmation_message')
         ) {
-            $result['response_type'] = 'confirm_pending';
+            $result['response_type'] = self::RESPONSE_TYPE_CONFIRM_PENDING;
         }
 
         // 3. Handle explicit user confirmation of pending intent.
-        if ((string)($result['response_type'] ?? '') === 'confirm_pending') {
+        if ((string)($result['response_type'] ?? '') === self::RESPONSE_TYPE_CONFIRM_PENDING) {
             return $this->handle_confirm_pending($result, $threadid, $cmid, $userid, $outputlang);
         }
 
@@ -164,11 +183,11 @@ class agent_decision_service {
         // 5. Safety: block accidental mutation carry-over on lookup requests.
         if (
             $this->result_has_trigger($result, 'core.is_lookup_request')
-            && (($result['response_type'] ?? '') === 'confirmation_request')
+            && (($result['response_type'] ?? '') === self::RESPONSE_TYPE_CONFIRMATION_REQUEST)
             && $this->has_mutating_commands($result)
         ) {
             return [
-                'response_type'   => 'clarification',
+                'response_type'   => self::RESPONSE_TYPE_CLARIFICATION,
                 'message'         => $this->localized_string(
                     'ai_lookup_detected_blocked_mutation',
                     'mod_booking',
@@ -189,18 +208,32 @@ class agent_decision_service {
         // trigger/schema-based readonly recovery BEFORE command routing so it can
         // execute in-process and does not leak as task_call to the frontend contract.
         $usermessage = $this->get_last_user_message($threadid);
-        $result = $this->promote_clarification_with_generic_task_recovery(
-            $result,
-            $usermessage,
-            $outputlang,
-            $threadid,
-            $cmid,
-            $userid
-        );
+        if ($this->should_attempt_recovery($result)) {
+            $result = $this->recoverysvc->promote(
+                $result,
+                $usermessage,
+                $outputlang,
+                $threadid,
+                $cmid,
+                $userid,
+                fn(
+                    string $taskname,
+                    string $message,
+                    string $lang,
+                    int $thread,
+                    int $module,
+                    int $user
+                ): ?array => $this->build_recovery_input_for_task($taskname, $message, $lang, $thread, $module, $user),
+                fn(string $message, array $recoveryresult): bool => $this->looks_like_lookup_request($message, $recoveryresult),
+                fn(string $message): bool => $this->looks_like_diagnostic_intent($message),
+                fn(string $taskname, bool $islookup): int => $this->score_generic_recovery_task($taskname, $islookup),
+                fn(int $thread): string => $this->extract_option_context_query_from_thread($thread)
+            );
+        }
 
         // 6. Harden: if the LLM incorrectly used task_call for a mutating command, promote.
-        if ($this->has_mutating_commands($result) && ($result['response_type'] ?? '') === 'task_call') {
-            $result['response_type'] = 'confirmation_request';
+        if ($this->has_mutating_commands($result) && ($result['response_type'] ?? '') === self::RESPONSE_TYPE_TASK_CALL) {
+            $result['response_type'] = self::RESPONSE_TYPE_CONFIRMATION_REQUEST;
             $normalizedmsg = core_text::strtolower(trim((string)($result['message'] ?? '')));
             if (in_array($normalizedmsg, ['executing', 'executing.', 'running', 'running.'], true)) {
                 $result['message'] = '';
@@ -208,13 +241,22 @@ class agent_decision_service {
         }
 
         // 7. Execute read-only commands immediately; confirmation-gate mutating ones.
-        if (in_array((string)($result['response_type'] ?? ''), ['task_call', 'confirmation_request'], true)) {
+        if (
+            in_array(
+                (string)($result['response_type'] ?? ''),
+                [
+                    self::RESPONSE_TYPE_TASK_CALL,
+                    self::RESPONSE_TYPE_CONFIRMATION_REQUEST,
+                ],
+                true
+            )
+        ) {
             $result = $this->handle_command_routing($result, $threadid, $cmid, $userid, $outputlang);
         }
 
         // 8. Run preflight on confirmation commands: resolve entities, detect conflicts,
         // update commands to carry prepared_input, route based on preflight result.
-        if (($result['response_type'] ?? '') === 'confirmation_request' && !empty($result['commands'])) {
+        if (($result['response_type'] ?? '') === self::RESPONSE_TYPE_CONFIRMATION_REQUEST && !empty($result['commands'])) {
             $result = $this->handle_preflight($result, $threadid, $cmid, $userid, $outputlang);
         }
 
@@ -232,7 +274,7 @@ class agent_decision_service {
         }
 
         // 11. Store / clear pending intent.
-        if (($result['response_type'] ?? '') === 'confirmation_request' && !empty($result['commands'])) {
+        if (($result['response_type'] ?? '') === self::RESPONSE_TYPE_CONFIRMATION_REQUEST && !empty($result['commands'])) {
             $intentkey = hash('sha256', (string)$userid . ':' . $threadid . '::' . json_encode($result['commands']));
             $this->store->set_pending_intent($threadid, $result['commands'], $intentkey, $userid, $cmid);
             $pendingintent = $this->store->get_pending_intent($threadid);
@@ -262,7 +304,7 @@ class agent_decision_service {
         int $userid,
         string $outputlang
     ): array {
-        if ((string)($result['response_type'] ?? '') !== 'task_call') {
+        if ((string)($result['response_type'] ?? '') !== self::RESPONSE_TYPE_TASK_CALL) {
             return $result;
         }
 
@@ -272,6 +314,25 @@ class agent_decision_service {
         }
 
         return $this->handle_command_routing($result, $threadid, $cmid, $userid, $outputlang);
+    }
+
+    /**
+     * Named routing condition for entering recovery enrichment.
+     *
+     * @param array $result
+     * @return bool
+     */
+    private function should_attempt_recovery(array $result): bool {
+        $responsetype = (string)($result['response_type'] ?? '');
+        if (!in_array($responsetype, [self::RESPONSE_TYPE_ERROR, self::RESPONSE_TYPE_CLARIFICATION], true)) {
+            return false;
+        }
+
+        if (!empty((array)($result['commands'] ?? []))) {
+            return false;
+        }
+
+        return empty((array)($result['results'] ?? []));
     }
 
     /**

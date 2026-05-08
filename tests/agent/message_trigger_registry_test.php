@@ -88,6 +88,27 @@ final class message_trigger_registry_test extends booking_advanced_testcase {
     }
 
     /**
+     * Unknown response types must be normalized explicitly.
+     *
+     * @covers \mod_booking\local\wbagent\message_trigger_registry::normalize_response_type
+     */
+    public function test_normalize_response_type_returns_unknown_marker_for_invalid_values(): void {
+        $registry = new task_registry();
+        $triggerregistry = new message_trigger_registry($registry);
+
+        $this->assertSame('task_call', $triggerregistry->normalize_response_type('task_call'));
+        $this->assertSame('clarification', $triggerregistry->normalize_response_type(' Clarification '));
+        $this->assertSame(
+            message_trigger_registry::UNKNOWN_RESPONSE_TYPE,
+            $triggerregistry->normalize_response_type('totally_new_type')
+        );
+        $this->assertSame(
+            message_trigger_registry::UNKNOWN_RESPONSE_TYPE,
+            $triggerregistry->normalize_response_type('')
+        );
+    }
+
+    /**
      * High/medium-priority mod_booking tasks should expose dedicated trigger ids.
      *
      * @covers \mod_booking\local\wbagent\booking\tasks\add_price_category_task::get_message_triggers

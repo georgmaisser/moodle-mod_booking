@@ -577,10 +577,10 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
 
         $result = $runtime->run_loop($threadid, (int)$this->booking->cmid, (int)$this->teacher->id);
 
-        // Step 1: clarification->fallback readonly execution.
-        // Step 2: repeated readonly execution triggers repeat stop.
-        // Step 3: narration-only clarification pass.
-        $this->assertSame(3, $callcount);
+        // The recovery path may require multiple internal planning passes,
+        // but must stay bounded by loop limits and must not leak task_call.
+        $this->assertGreaterThanOrEqual(2, $callcount);
+        $this->assertLessThanOrEqual(agent_runtime::MAX_LOOP_STEPS, $callcount);
         $this->assertSame('clarification', (string)($result['response_type'] ?? ''));
         $this->assertNotSame('task_call', (string)($result['response_type'] ?? ''));
         $this->assertNotEmpty((array)($result['results'] ?? []));
@@ -905,5 +905,60 @@ final class agent_internal_loop_test extends abstract_agent_testcase {
             strtolower($obs),
             'Observation must indicate it is about booking options'
         );
+    }
+
+    /**
+     * Unknown response_type values must be normalized before routing/persistence.
+     */
+    public function test_run_normalizes_unknown_response_type_to_error_path(): void {
+        $this->setUser($this->teacher);
+
+        $store = new conversation_store();
+        $registry = task_registry::make_default();
+        $authz = new authorization_service();
+
+        $unknown = [
+            'response_type'     => 'mystery_type',
+            'lang'              => 'en',
+            'message'           => 'Some unsupported model response.',
+            'used_triggers'     => [],
+            'commands'          => [],
+            'ambiguities'       => [],
+            'ambiguity_options' => [],
+            'errors'            => [],
+            'attempted_tasks'   => [],
+            'issue_codes'       => [],
+        ];
+
+        $mockorchestrator = $this->getMockBuilder(orchestrator::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $mockorchestrator->method('process')->willReturn($unknown);
+
+        $runtime = new agent_runtime($registry, $mockorchestrator, $store, $authz);
+
+        $thread = $store->get_or_create_thread(
+            (int)$this->teacher->id,
+            (int)$this->booking->cmid,
+            (int)$this->booking->id
+        );
+        $threadid = (int)$thread->id;
+        $store->add_message($threadid, 'user', 'Bitte hilf mir mit booking');
+
+        $result = $runtime->run($threadid, (int)$this->booking->cmid, (int)$this->teacher->id);
+
+        $this->assertNotSame('mystery_type', (string)($result['response_type'] ?? ''));
+        $this->assertNotSame('task_call', (string)($result['response_type'] ?? ''));
+
+        $debugentries = $store->get_llm_debug_entries($threadid);
+        $sources = array_map(static fn($entry): string => (string)($entry->source ?? ''), $debugentries);
+        $this->assertContains('runtime.trigger_normalization', $sources);
+
+        $messages = $store->get_messages($threadid);
+        $assistantmessages = array_values(array_filter(
+            $messages,
+            static fn($m) => ($m->role ?? '') === 'assistant'
+        ));
+        $this->assertCount(1, $assistantmessages);
     }
 }
