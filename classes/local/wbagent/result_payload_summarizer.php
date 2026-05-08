@@ -66,7 +66,16 @@ class result_payload_summarizer {
         }
 
         if (empty($parts)) {
-            return "Step {$step}: Tool executed successfully.";
+            // Improved fallback: Provide richer context than "Tool executed successfully."
+            // Attempt to count result entries for better diagnostics.
+            $resultcount = count(array_filter($results, static fn($e) => is_array($e)));
+            if ($resultcount === 0) {
+                return "Step {$step}: No structured results returned.";
+            }
+            if ($resultcount === 1) {
+                return "Step {$step}: One result entry returned.";
+            }
+            return "Step {$step}: {$resultcount} result entries returned.";
         }
 
         return "Step {$step}: " . implode(' ', $parts);

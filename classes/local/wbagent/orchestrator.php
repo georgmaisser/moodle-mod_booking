@@ -234,16 +234,9 @@ class orchestrator {
             return <<<'PROMPT'
 You are a generic booking agent planner for the Moodle booking activity "{{bookingname}}".
 
-STRICT RULES:
-- Return only a valid JSON object.
-- Return exactly one JSON object (no surrounding text, no second JSON object).
-- Do not wrap JSON in markdown fences (no ```json / ```).
-- "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
-- Never use a task name or trigger id as "response_type".
+ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
 - Keep instructions compact and action-oriented.
-- Use the task catalog and schema below. Do not invent tasks or fields.
 - Prefer one clear next step over broad narration.
-- For command-bearing output, use a "commands" array with items: {"task":"booking...", "version":1, "input":{...}}.
 - For read-only intents, answer directly or emit a single task_call.
 - If the user asks how a documented feature works or what it means, call booking.explain_docs_topic.
 - For booking.explain_docs_topic, pass the full user question as input.question.
@@ -266,12 +259,7 @@ PROMPT;
             return <<<'PROMPT'
 You are a generic booking agent reasoning assistant for the Moodle booking activity "{{bookingname}}".
 
-STRICT RULES:
-- Return only a valid JSON object.
-- Return exactly one JSON object (no surrounding text, no second JSON object).
-- Do not wrap JSON in markdown fences (no ```json / ```).
-- "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
-- Never use a task name or trigger id as "response_type".
+ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - Base your answer on the latest user message, observations, and assistant state.
 - Be concise, precise, and helpful.
 - Do not propose extra tool calls if the available context already answers the request.
@@ -289,12 +277,7 @@ PROMPT;
         return <<<'PROMPT'
 You are a generic booking agent for the Moodle booking activity "{{bookingname}}".
 
-STRICT RULES:
-- Return only a valid JSON object.
-- Return exactly one JSON object (no surrounding text, no second JSON object).
-- Do not wrap JSON in markdown fences (no ```json / ```).
-- "response_type" MUST be exactly one of: clarification, confirmation_request, task_call, error, confirm_pending.
-- Never use a task name or trigger id as "response_type".
+ACTION-SPECIFIC GUIDANCE:
 - Use only the provided task catalog and schema.
 - Do not invent option ids, course ids, or unsupported actions.
 - For read-only intents, prefer direct task_call handling.
@@ -389,43 +372,10 @@ PROMPT;
             '{{fullschemajson}}' => (string)$fullschemajson,
         ]);
 
-        // Enforce language mirroring even when administrators provide a custom prompt template.
-        $prompt .= "\n\nNON-OPTIONAL LANGUAGE POLICY:\n"
-            . "- Use the same language as the latest user message for all user-facing text in JSON fields (especially 'message').\n"
-            . "- Do not switch language unless the user switches language.\n"
-            . "- Return a valid ISO 639-1 value in 'lang' for the latest user-message language.\n"
-            . "- The field 'next_step_intent' MUST be in exactly the same language as 'message' "
-            . "and must align with 'lang'.\n"
-            . "- If lang='cs', answer in Czech; if lang='de', answer in German; if lang='en', answer in English; etc.\n";
-
-        $prompt .= "\n\nNON-OPTIONAL TRIGGER POLICY:\n"
-            . "- Evaluate the latest user message against AVAILABLE MESSAGE TRIGGERS below.\n"
-            . "- Return a JSON array field 'used_triggers' with trigger ids that apply to the latest user message.\n"
-            . "- Do NOT invent trigger ids. Use only ids from the catalog.\n"
-            . "- If none apply, return an empty array for 'used_triggers'.\n"
-            . "- Keep response_type independent and correct; triggers are additional structured signals.\n"
-            . "\nAVAILABLE MESSAGE TRIGGERS:\n"
-            . (string)$triggerjson
-            . "\n\nREQUIRED OUTPUT FIELD:\n"
-            . "- Every response MUST include: \"used_triggers\": [\"...\"]\n";
-
-        $prompt .= "\n\nNON-OPTIONAL STEP INTENT POLICY:\n"
-            . "- Every response MUST include an additional top-level JSON field \"next_step_intent\" "
-            . "with one short sentence describing your immediate next action.\n"
-            . "- This sentence must be model-authored (no template text) and in the same language as the user.\n"
-            . "- next_step_intent must describe intention (present/future), not completed work.\n"
-            . "- Avoid past-tense completion phrasing such as \"I have ...\" or \"Ich habe ...\".\n"
-            . "  Good: \"Ich suche jetzt in der Dokumentation nach Buchungsregeln.\"\n"
-            . "  Bad: \"Ich habe eine Erklaerung gegeben.\"\n"
-            . "- If you answer directly without tool calls, next_step_intent should still describe that direct action.\n";
-
-        $prompt .= "\n\nNON-OPTIONAL DOCS ANSWER POLICY:\n"
-            . "- Base documentation answers strictly on the provided documentation context.\n"
-            . "- Keep links and URLs intact and clickable; do not rewrite link targets.\n"
-            . "- Prefer concise, concrete explanations over generic filler text.\n"
-            . "- If the user asks HOW TO perform an action and the documentation context provides actionable steps, "
-            . "answer with a clearly formatted numbered list (1., 2., 3.) in the user's language.\n"
-            . "- Do not invent steps; only use steps supported by the available documentation context.\n";
+        // Append all NON-OPTIONAL policies from centralized policy builder.
+        // This is the single source of truth for dynamic policy appends.
+        $policybuilder = new prompt_policy_builder();
+        $prompt .= $policybuilder->build_all_policies($triggerjson, $steptype);
 
         return $prompt;
     }
@@ -464,13 +414,9 @@ PROMPT;
             $assistantstateblocks = $this->build_assistant_state_blocks($trimmedmessages);
         }
         if (!empty($assistantstateblocks)) {
-            $systemprompt .= "\n\nFOLLOW-UP STATE POLICY:\n"
-                . "- Use ASSISTANT_STATE blocks as factual memory for follow-up questions.\n"
-                . "- Prefer structured state facts over generic restatements.\n"
-                . "- If ASSISTANT_STATE already contains diagnosis/results, "
-                . "answer directly from it before proposing new tool calls.\n"
-                . "- If ASSISTANT_STATE contains a 'found_results' line, those items were already found "
-                . "in a previous turn — include their names/details in your response.\n";
+            // Append FOLLOW-UP STATE POLICY from centralized builder.
+            $policybuilder = new prompt_policy_builder();
+            $systemprompt .= "\n\n" . $policybuilder->build_follow_up_state_policy();
         }
 
         $parts = ["[SYSTEM]\n{$systemprompt}"];
