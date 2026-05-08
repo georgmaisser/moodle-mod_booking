@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Scheduled Tasks — Reference
 
 mod_booking registers 5 Moodle scheduled tasks in `db/tasks.php`. These run automatically via Moodle's cron system.

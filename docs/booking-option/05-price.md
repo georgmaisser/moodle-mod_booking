@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Price
 
 The **Price** section (header: *Price*) allows you to attach a price to a booking option. Prices are handled through the **Shopping Cart** integration (requires the [local_shopping_cart](https://github.com/Wunderbyte-GmbH/moodle-local_shopping_cart) plugin).

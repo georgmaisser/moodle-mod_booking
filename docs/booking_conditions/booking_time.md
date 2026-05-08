@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Booking Time
 
 **Class:** `mod_booking\bo_availability\conditions\booking_time`  

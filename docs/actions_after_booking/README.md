@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Actions After Booking — Overview
 
 **Actions after booking** (also called *booking actions* or *bo_actions*) are automated actions that are triggered **immediately** when a specific booking event occurs for a user. They are distinct from [booking rules](../booking_rules/README.md), which are schedule-based or event-triggered notifications.

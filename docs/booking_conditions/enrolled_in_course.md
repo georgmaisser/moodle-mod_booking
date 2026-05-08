@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Enrolled in Course
 
 **Class:** `mod_booking\bo_availability\conditions\enrolledincourse`  

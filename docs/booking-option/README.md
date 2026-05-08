@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Booking Option — Settings Reference
 
 This section documents every setting available in the **booking option form** — the form you see when you create or edit a single bookable event, course, or time slot inside a Booking activity.

@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Linked Moodle Course
 
 The **Moodle course** section (header: *Moodle course*) lets you connect a booking option to a Moodle course. When a user books the option, they are automatically enrolled in the linked course.

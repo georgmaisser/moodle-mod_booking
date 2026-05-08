@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Advanced Options
 
 The **Advanced options** section (header: *Advanced options*) groups settings that are less commonly needed but provide fine-grained control over cancellations, custom texts, poll URLs, attachments, and more.

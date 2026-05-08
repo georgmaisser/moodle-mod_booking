@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Sub-bookings — Overview
 
 **Sub-bookings** are optional add-ons or customisation steps that can be attached to a booking option. When a user books the parent option, they are presented with the sub-booking as an additional step in the booking flow.

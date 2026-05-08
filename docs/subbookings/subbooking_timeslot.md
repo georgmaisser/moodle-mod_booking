@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Sub-booking Type: Time Slot
 
 **Class:** `mod_booking\subbookings\sb_types\subbooking_timeslot`

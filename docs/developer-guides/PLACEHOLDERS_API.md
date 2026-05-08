@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Placeholders — Developer API
 
 This guide explains how to implement a custom placeholder class for the mod_booking placeholder system.

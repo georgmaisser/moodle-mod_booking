@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Booking Extensions — Developer API
 
 This page describes how to build a `bookingextension_*` subplugin for mod_booking.

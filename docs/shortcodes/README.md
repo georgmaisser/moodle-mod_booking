@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Shortcodes — Reference
 
 mod_booking provides a set of Moodle shortcodes that you can embed in any page, course section, or label to display booking-related tables and components. Shortcodes are processed by the **local_shortcodes** filter (or Moodle's built-in shortcode filter where available).

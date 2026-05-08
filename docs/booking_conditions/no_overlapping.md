@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # No Overlapping Bookings
 
 **Class:** `mod_booking\bo_availability\conditions\nooverlapping`  

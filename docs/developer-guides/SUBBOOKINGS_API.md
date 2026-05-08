@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Sub-bookings — Developer API
 
 This guide explains how to implement a custom sub-booking type for mod_booking.

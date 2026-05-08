@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Architecture — mod_booking Plugin
 
 This document describes the high-level architecture of the mod_booking Moodle plugin, its key class hierarchy, and how data flows through the main use cases.

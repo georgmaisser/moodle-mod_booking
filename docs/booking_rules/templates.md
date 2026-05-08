@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Booking Rules — Built-in Templates
 
 The rule editor provides a set of **pre-configured rule templates** that cover the most common notification scenarios. Loading a template pre-fills the rule type, condition, action, email subject, and email body. You can then adjust any field before saving.

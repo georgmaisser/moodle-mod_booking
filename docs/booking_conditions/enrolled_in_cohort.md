@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Enrolled in Cohort
 
 **Class:** `mod_booking\bo_availability\conditions\enrolledincohorts`  

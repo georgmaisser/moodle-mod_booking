@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Booking Rules — Rule Types (Triggers)
 
 A **rule type** defines *when* a booking rule is triggered. Currently three rule types are available.

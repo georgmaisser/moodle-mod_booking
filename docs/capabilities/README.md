@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Capabilities — Reference
 
 Moodle capabilities define what each role is allowed to do inside **mod_booking**. They are defined in `db/access.php` and can be customised per-role using Moodle's standard role management (*Site administration → Users → Permissions → Define roles*).

@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Has Competency
 
 **Class:** `mod_booking\bo_availability\conditions\hascompetency`  

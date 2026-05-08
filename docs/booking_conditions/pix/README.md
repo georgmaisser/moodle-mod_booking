@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Screenshots
 
 This folder contains screenshots used in the booking conditions documentation.

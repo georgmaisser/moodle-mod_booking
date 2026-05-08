@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # General Settings
 
 The **General** section is always the first section in the booking option form. It covers the identity of the option (title, description, visibility) and its basic capacity settings.

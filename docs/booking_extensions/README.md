@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Booking Extensions — Overview
 
 **Booking extensions** are subplugins of type `bookingextension` that extend mod_booking with additional functionality. They follow Moodle's standard subplugin architecture and are installed as separate plugins under `mod/booking/bookingextension/<pluginname>/`.

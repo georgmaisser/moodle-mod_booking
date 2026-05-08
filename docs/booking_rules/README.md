@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Booking Rules — Overview
 
 Booking rules let you automate actions inside the **mod_booking** plugin.

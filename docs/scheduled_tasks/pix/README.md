@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # pix — Screenshots and Images
 
 This folder contains screenshots and images used in the scheduled tasks documentation.

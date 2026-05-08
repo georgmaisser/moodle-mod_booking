@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Action After Booking: Cancel Booking
 
 **Class:** `mod_booking\bo_actions\action_types\cancelbooking`

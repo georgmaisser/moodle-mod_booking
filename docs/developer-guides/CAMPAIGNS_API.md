@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Campaigns — Developer API
 
 This guide explains how to implement a custom campaign type for the mod_booking campaign system.

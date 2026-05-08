@@ -1,3 +1,5 @@
+[Parent](../README.md)
+
 # Booking Extensions — Full Developer API
 
 This is the complete developer reference for building `bookingextension_*` subplugins. For a shorter overview, see [Booking extensions developer API](../booking_extensions/developer-api.md).

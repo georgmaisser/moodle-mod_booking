@@ -11,6 +11,7 @@ This `docs/` directory is the central reference for administrators, teachers, an
 | I want to… | Go to… |
 |------------|--------|
 | Understand how booking messages work | [Booking messages](00_booking_messages/README.md) |
+| Create a new booking option | [Create a booking option (first steps)](#create-a-booking-option-first-steps) |
 | Send any kind of messages and reminders in relation to booking events or course start etc. | [Booking rules](booking_rules/README.md) |
 | Restrict who can book an option | [Booking conditions](booking_conditions/README.md) |
 | Adapt booking forms depending on capabilities of users | [Booking option form](booking-option/README.md) |
@@ -36,6 +37,30 @@ Important distinction for AI/explain tasks:
 3. Open global booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
 4. Open campaign management: [/mod/booking/edit_campaigns.php](/mod/booking/edit_campaigns.php).
 5. Use this docs index to jump to the feature-specific step-by-step page.
+
+For the most common starting task, see [Create a booking option (first steps)](#create-a-booking-option-first-steps).
+
+## Create a booking option (first steps)
+
+Use this path when you want to set up a new option quickly:
+
+1. Open your booking activity: [/mod/booking/view.php?id=<cmid>](/mod/booking/view.php?id=<cmid>).
+2. Open option management: [/mod/booking/editoptions.php?id=<cmid>](/mod/booking/editoptions.php?id=<cmid>).
+3. Click the button to create a new option (for example "Add option" / "Add booking option").
+4. In the option form, fill at least:
+	- Option title/name
+	- Booking start/end or relevant dates
+	- Capacity (and waiting list if needed)
+	- Visibility/availability settings
+5. Save the option.
+6. Re-open it from the options list and complete advanced fields if needed (teachers, pricing, linked course, confirmation workflow).
+
+Detailed field-by-field guide:
+- [Booking option form](booking-option/README.md)
+
+Common next steps:
+- Restrict who can book: [Booking conditions](booking_conditions/README.md)
+- Configure messages/reminders: [Booking rules](booking_rules/README.md)
 
 ---
 

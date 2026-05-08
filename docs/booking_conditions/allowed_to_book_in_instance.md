@@ -1,3 +1,5 @@
+[Parent](README.md)
+
 # Allowed to Book in Instance
 
 **Class:** `mod_booking\bo_availability\conditions\allowedtobookininstance`  
