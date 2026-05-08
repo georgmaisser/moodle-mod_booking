@@ -154,98 +154,33 @@ class orchestrator {
             false
         );
 
-        try {
-            if ($actionclass === summarise_text::class) {
-                $action = new summarise_text(
-                    contextid: $context->id,
-                    userid: $userid,
-                    prompttext: $prompt,
-                );
-            } else if ($actionclass === explain_text::class) {
-                $action = new explain_text(
-                    contextid: $context->id,
-                    userid: $userid,
-                    prompttext: $prompt,
-                );
-            } else {
-                $action = new generate_text(
-                    contextid: $context->id,
-                    userid: $userid,
-                    prompttext: $prompt,
-                );
-            }
+        $llm = new llm_call_service($this->store);
+        $call = $llm->invoke($threadid, $cmid, $userid, $debugsource, $prompt, $actionclass);
+        $rawtext = (string)($call['rawcontent'] ?? '');
 
-            $response = $manager->process_action($action);
-
-            $rawtext = (string)($response->get_response_data()['generatedcontent'] ?? '');
-            $providersuccess = (bool)$response->get_success();
-            $providererror = (string)($response->get_errormessage() ?? '');
-            llm_debug_logger::log_exchange(
-                $this->store,
-                $threadid,
-                $cmid,
-                $userid,
-                $debugsource,
-                $prompt,
-                $rawtext,
-                $providersuccess,
-                $providererror
-            );
-
-            if (!$response->get_success()) {
-                $errormessage = $response->get_errormessage() ?? 'Provider returned an error.';
-                $errorcode = (int)$response->get_errorcode();
-                $errorname = (string)$response->get_error();
-                $issuecodes = ai_error_classifier::classify_from_response($errormessage, $errorcode, $errorname);
-                return [
-                    'response_type' => 'error',
-                    'message'       => get_string('ai_provider_error', 'mod_booking'),
-                    'commands'      => [],
-                    'ambiguities'   => [],
-                    'errors'        => [$errormessage],
-                    'issue_codes'   => $issuecodes,
-                ];
-            }
-
-            if ($rawtext === '') {
-                return [
-                    'response_type' => 'error',
-                    'message'       => get_string('ai_provider_error', 'mod_booking'),
-                    'commands'      => [],
-                    'ambiguities'   => [],
-                    'errors'        => ['Provider returned empty content.'],
-                    'issue_codes'   => [],
-                ];
-            }
-        } catch (\Throwable $e) {
-            llm_debug_logger::log_exchange(
-                $this->store,
-                $threadid,
-                $cmid,
-                $userid,
-                $this->build_orchestrator_debug_source(
-                    $normalizedsteptype,
-                    $actionclass,
-                    (string)$routing['routepolicy'],
-                    !empty($routing['routingfallback']),
-                    $primaryprovider,
-                    $historycount,
-                    $observationcount,
-                    true
-                ),
-                $prompt,
-                '',
-                false,
-                $e->getMessage()
-            );
-            $issuecodes = ai_error_classifier::classify_from_response($e->getMessage(), (int)$e->getCode(), '');
+        if (empty($call['success'])) {
+            $errormessage = (string)($call['errormessage'] ?? 'Provider returned an error.');
+            $errorcode = (int)($call['errorcode'] ?? 0);
+            $errorname = (string)($call['errorname'] ?? '');
+            $issuecodes = ai_error_classifier::classify_from_response($errormessage, $errorcode, $errorname);
             return [
                 'response_type' => 'error',
                 'message'       => get_string('ai_provider_error', 'mod_booking'),
                 'commands'      => [],
                 'ambiguities'   => [],
-                'errors'        => [$e->getMessage()],
+                'errors'        => [$errormessage],
                 'issue_codes'   => $issuecodes,
+            ];
+        }
+
+        if ($rawtext === '') {
+            return [
+                'response_type' => 'error',
+                'message'       => get_string('ai_provider_error', 'mod_booking'),
+                'commands'      => [],
+                'ambiguities'   => [],
+                'errors'        => ['Provider returned empty content.'],
+                'issue_codes'   => [],
             ];
         }
 
@@ -313,6 +248,12 @@ STRICT RULES:
 - If the user asks how a documented feature works or what it means, call booking.explain_docs_topic.
 - For booking.explain_docs_topic, pass the full user question as input.question.
 - Optionally add up to 2 alternative search_queries for better lexical matching.
+- If a docs OBSERVATION says "Linked docs in this section:" and one of those
+    linked docs is more relevant, call booking.explain_docs_topic again with
+    input.doc_path set to that relative markdown path.
+- If a docs OBSERVATION says "Continue this document from line N", continue
+    with booking.explain_docs_topic using the same input.doc_path and
+    input.line_start=N instead of restarting from the root docs README.
 - Do not answer "I cannot help" for documented features before trying booking.explain_docs_topic.
 - For mutating intents, ask only for missing required data or return one confirmation_request.
 - If OBSERVATION blocks already contain sufficient information,
@@ -339,6 +280,9 @@ STRICT RULES:
 - In final reasoning mode, do NOT use response_type=confirm_pending.
 - In final reasoning mode, do NOT use response_type=error when observations already contain usable findings.
 - In final reasoning mode, do NOT promise further searching/tool calls; summarize the available findings now.
+- If documentation observations already include concrete configuration fields or labels
+    (e.g. bookingopeningtime, bookable from, bookingclosingtime), answer directly and
+    do NOT ask the user to reconfirm intent.
 PROMPT;
         }
 
@@ -449,10 +393,9 @@ PROMPT;
         $prompt .= "\n\nNON-OPTIONAL LANGUAGE POLICY:\n"
             . "- Use the same language as the latest user message for all user-facing text in JSON fields (especially 'message').\n"
             . "- Do not switch language unless the user switches language.\n"
-            . "- Detect the latest user-message language and return it in 'user_lang' as valid ISO 639-1.\n"
-            . "- Return a valid ISO 639-1 value in 'lang' and keep it identical to 'user_lang'.\n"
+            . "- Return a valid ISO 639-1 value in 'lang' for the latest user-message language.\n"
             . "- The field 'next_step_intent' MUST be in exactly the same language as 'message' "
-            . "and must align with 'lang'/'user_lang'.\n"
+            . "and must align with 'lang'.\n"
             . "- If lang='cs', answer in Czech; if lang='de', answer in German; if lang='en', answer in English; etc.\n";
 
         $prompt .= "\n\nNON-OPTIONAL TRIGGER POLICY:\n"
@@ -479,7 +422,10 @@ PROMPT;
         $prompt .= "\n\nNON-OPTIONAL DOCS ANSWER POLICY:\n"
             . "- Base documentation answers strictly on the provided documentation context.\n"
             . "- Keep links and URLs intact and clickable; do not rewrite link targets.\n"
-            . "- Prefer concise, concrete explanations over generic filler text.\n";
+            . "- Prefer concise, concrete explanations over generic filler text.\n"
+            . "- If the user asks HOW TO perform an action and the documentation context provides actionable steps, "
+            . "answer with a clearly formatted numbered list (1., 2., 3.) in the user's language.\n"
+            . "- Do not invent steps; only use steps supported by the available documentation context.\n";
 
         return $prompt;
     }

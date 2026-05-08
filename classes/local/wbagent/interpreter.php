@@ -106,8 +106,11 @@ class interpreter implements agent_interpreter {
         ) {
             $nextstepintent = '';
         }
-        if ($userlang !== '') {
-            $userlang = strtolower(substr($userlang, 0, 2));
+        if ($lang === '' && $userlang !== '') {
+            $lang = $userlang;
+        }
+        if ($lang !== '') {
+            $lang = strtolower(substr($lang, 0, 2));
         }
         $usedtriggers = $this->extract_used_triggers($parsed);
 
@@ -116,7 +119,6 @@ class interpreter implements agent_interpreter {
             return $this->with_optional_next_step_intent([
                 'response_type' => 'clarification',
                 'lang'          => $lang,
-                'user_lang'     => $userlang,
                 'message'       => $this->strip_command_prefix($this->safe_string($parsed['message'] ?? '')),
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -131,7 +133,6 @@ class interpreter implements agent_interpreter {
             return $this->with_optional_next_step_intent([
                 'response_type' => 'error',
                 'lang'          => $lang,
-                'user_lang'     => $userlang,
                 'message'       => $errormessage,
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -145,7 +146,6 @@ class interpreter implements agent_interpreter {
             return $this->with_optional_next_step_intent([
                 'response_type' => 'confirm_pending',
                 'lang'          => $lang,
-                'user_lang'     => $userlang,
                 'message'       => $this->strip_command_prefix($this->safe_string($parsed['message'] ?? '')),
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -174,7 +174,6 @@ class interpreter implements agent_interpreter {
                 return $this->with_optional_next_step_intent([
                     'response_type' => 'confirmation_request',
                     'lang'          => $lang,
-                    'user_lang'     => $userlang,
                     'message'       => $validationmessage,
                     'used_triggers' => $usedtriggers,
                     'commands'      => $confirmablecommands,
@@ -188,7 +187,6 @@ class interpreter implements agent_interpreter {
             return $this->with_optional_next_step_intent([
                 'response_type' => $recoverableinputerror ? 'clarification' : 'error',
                 'lang'          => $lang,
-                'user_lang'     => $userlang,
                 'message'       => $validationmessage,
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -205,7 +203,6 @@ class interpreter implements agent_interpreter {
                 return $this->with_optional_next_step_intent([
                     'response_type' => 'confirmation_request',
                     'lang'          => $lang,
-                    'user_lang'     => $userlang,
                     // For backend-driven confirmable issues, prefer task-validator wording
                     // over generic LLM confirmation text so the user sees the real reason.
                     'message'       => $this->confirmation_message_from_ambiguities($ambiguities),
@@ -222,7 +219,6 @@ class interpreter implements agent_interpreter {
             return $this->with_optional_next_step_intent([
                 'response_type' => 'clarification',
                 'lang'          => $lang,
-                'user_lang'     => $userlang,
                 'message'       => $this->clarification_message($parsed, $ambiguities),
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
@@ -237,7 +233,6 @@ class interpreter implements agent_interpreter {
         return $this->with_optional_next_step_intent([
             'response_type' => $responsetype,
             'lang'          => $lang,
-            'user_lang'     => $userlang,
             'message'       => $this->safe_string($parsed['message'] ?? ''),
             'used_triggers' => $usedtriggers,
             'commands'      => $validatedcommands,
@@ -392,7 +387,6 @@ class interpreter implements agent_interpreter {
                 return [
                     'response_type' => 'task_call',
                     'lang' => $this->safe_string($parsed['lang'] ?? ''),
-                    'user_lang' => $this->safe_string($parsed['user_lang'] ?? $parsed['userlang'] ?? ''),
                     'used_triggers' => $this->extract_used_triggers($parsed),
                     'message' => $this->safe_string($parsed['message'] ?? 'Executing.'),
                     'next_step_intent' => $nextstepintent,

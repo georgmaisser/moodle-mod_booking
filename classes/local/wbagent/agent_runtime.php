@@ -266,17 +266,8 @@ class agent_runtime {
                 );
                 $this->store->add_step_message($threadid, $step + 1, $steplabel, $steptask);
 
-                // If the LLM keeps issuing the same readonly tasks, stop the loop early
-                // and return the latest useful result instead of burning the full step budget.
-                if ($this->is_repeated_readonly_step($state, $commands, (array)($result['results'] ?? []))) {
-                    $final = $this->loop_repeat_narration_result(
-                        $threadid,
-                        $cmid,
-                        $userid,
-                        $state,
-                        trim((string)($result['lang'] ?? '')) ?: current_language(),
-                        trim((string)($result['message'] ?? ''))
-                    );
+                if ($this->should_finalize_after_execution_result($result, $state)) {
+                    $final = $this->build_sufficient_execution_result_clarification($result, $state);
                     $final = $this->attach_loop_results($final, $state);
                     $this->persist_assistant_message($threadid, $final);
                     return $final;
@@ -289,19 +280,11 @@ class agent_runtime {
             // Any other response type requires user interaction or signals completion.
             if ($this->should_recover_from_missing_commands_error($result, $state)) {
                 // Self-healing retry: if the model returned a command-bearing response type
-                // without commands, give it one corrective retry with explicit guidance.
+                // without commands, give it one silent corrective retry.
                 if (!$missingcommandsretryused) {
                     $missingcommandsretryused = true;
-                    $state->record_step(
-                        [],
-                        [],
-                        'System note: Previous assistant response had a command-bearing response_type '
-                        . 'but no commands. Return valid commands for task_call/confirmation_request, '
-                        . 'or switch to clarification with plain text only.'
-                    );
                     continue;
                 }
-                $result = $this->recover_missing_commands_error_result($result, $state);
             }
 
             // Persist the SINGLE final assistant message and return.
@@ -634,6 +617,104 @@ class agent_runtime {
     }
 
     /**
+     * Decide whether the current readonly execution step already contains enough
+     * information to end the loop with a clarification response.
+     *
+     * @param array $result
+     * @param agent_state $state
+     * @return bool
+     */
+    private function should_finalize_after_execution_result(array $result, agent_state $state): bool {
+        if ((string)($result['response_type'] ?? '') !== 'execution_result') {
+            return false;
+        }
+
+        $results = (array)($result['results'] ?? []);
+        if (empty($results)) {
+            return false;
+        }
+
+        $commands = (array)($result['commands'] ?? []);
+        $tasks = $this->extract_step_task_names($commands, $results);
+        if ($state->step_count() < 2) {
+            return false;
+        }
+
+        $message = trim((string)($result['message'] ?? ''));
+        $enriched = $this->maybe_enrich_message_from_results($message, $results);
+
+        if ($this->is_low_information_message($enriched)) {
+            return false;
+        }
+
+        $isdocsexplain = in_array('booking.explain_docs_topic', $tasks, true);
+        if ($isdocsexplain) {
+            foreach ($results as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                $selectedpath = trim((string)($entry['selected_doc_path'] ?? ''));
+                if ($selectedpath !== '') {
+                    return true;
+                }
+                if (!empty((array)($entry['docs'] ?? []))) {
+                    return true;
+                }
+            }
+        }
+
+        return strlen($enriched) >= 120;
+    }
+
+    /**
+     * Build a deterministic clarification payload from a sufficiently informative
+     * readonly execution step.
+     *
+     * @param array $result
+     * @param agent_state $state
+     * @return array
+     */
+    private function build_sufficient_execution_result_clarification(array $result, agent_state $state): array {
+        $results = (array)($result['results'] ?? []);
+        $message = trim((string)($result['message'] ?? ''));
+        $message = $this->maybe_enrich_message_from_results($message, $results);
+
+        if ($message === '' || $this->is_low_information_message($message)) {
+            $message = $this->build_loop_repeat_summary($results, $message);
+        }
+
+        if ($message === '' || $this->is_low_information_message($message)) {
+            $message = $this->localized_string('ai_run_executed', 'mod_booking', null, (string)($result['lang'] ?? ''));
+            if ($message === 'ai_run_executed') {
+                $message = 'I found enough information to answer your question.';
+            }
+        }
+
+        $attemptedtasks = $this->extract_step_task_names((array)($result['commands'] ?? []), $results);
+
+        return [
+            'response_type'             => 'clarification',
+            'message'                   => $message,
+            'commands'                  => [],
+            'ambiguities'               => [],
+            'ambiguity_options'         => [],
+            'errors'                    => [],
+            'attempted_tasks'           => $attemptedtasks,
+            'issue_codes'               => array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                ['LOOP_EARLY_SUFFICIENT_CONTEXT']
+            ))),
+            'pending_confirmation_code' => '',
+            'used_triggers'             => (array)($result['used_triggers'] ?? []),
+            'runid'                     => (int)($result['runid'] ?? 0),
+            'results'                   => [],
+            'lang'                      => (string)($result['lang'] ?? ''),
+            'loop_step'                 => $state->step_count(),
+            'loop_max_steps'            => self::MAX_LOOP_STEPS,
+        ];
+    }
+
+    /**
      * Decide whether a loop step error should be downgraded to a user-facing clarification.
      *
      * @param array $result
@@ -878,7 +959,10 @@ class agent_runtime {
     }
 
     /**
-     * Detect whether the current readonly step repeats the same task set as the previous step.
+     * Detect whether the current readonly step repeats the same command signature as the previous step.
+     *
+     * For docs traversal, the same readonly task may legitimately repeat with a different
+     * doc_path or line_start. Those follow-up reads must not be treated as a loop.
      *
      * @param agent_state $state
      * @param array $commands
@@ -891,24 +975,86 @@ class agent_runtime {
         }
 
         $steps = $state->get_steps();
-        $currenttasks = $this->extract_step_task_names(
+        $currentsignatures = $this->extract_step_command_signatures(
             (array)($steps[count($steps) - 1]['tool_calls'] ?? []),
             (array)($steps[count($steps) - 1]['results'] ?? [])
         );
-        $previoustasks = $this->extract_step_task_names(
+        $previoussignatures = $this->extract_step_command_signatures(
             (array)($steps[count($steps) - 2]['tool_calls'] ?? []),
             (array)($steps[count($steps) - 2]['results'] ?? [])
         );
 
         // Keep a safety check against malformed current step payload.
-        if (empty($currenttasks) || empty($this->extract_step_task_names($commands, $results))) {
+        if (empty($currentsignatures) || empty($this->extract_step_command_signatures($commands, $results))) {
             return false;
         }
 
-        sort($currenttasks);
-        sort($previoustasks);
+        sort($currentsignatures);
+        sort($previoussignatures);
 
-        return $currenttasks === $previoustasks;
+        return $currentsignatures === $previoussignatures;
+    }
+
+    /**
+     * Extract comparable command signatures for a completed loop step.
+     *
+     * Prefer task + normalized input for tool calls. Fall back to task names embedded
+     * in results when the executed command payload is unavailable.
+     *
+     * @param array $commands
+     * @param array $results
+     * @return string[]
+     */
+    private function extract_step_command_signatures(array $commands, array $results): array {
+        $signatures = [];
+        foreach ($commands as $command) {
+            if (!is_array($command)) {
+                continue;
+            }
+
+            $taskname = trim((string)($command['task'] ?? ''));
+            if ($taskname === '') {
+                continue;
+            }
+
+            $input = $command['input'] ?? [];
+            if (!is_array($input)) {
+                $input = [];
+            }
+
+            $normalizedinput = $this->normalize_command_input_for_signature($input);
+            $encodedinput = json_encode($normalizedinput, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $signatures[] = $taskname . '|' . (is_string($encodedinput) ? $encodedinput : '{}');
+        }
+
+        if (!empty($signatures)) {
+            return array_values(array_unique($signatures));
+        }
+
+        return $this->extract_step_task_names($commands, $results);
+    }
+
+    /**
+     * Recursively normalize command input for stable loop-signature comparison.
+     *
+     * @param mixed $value
+     * @return mixed
+     */
+    private function normalize_command_input_for_signature($value) {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        if (array_is_list($value)) {
+            return array_map(fn($item) => $this->normalize_command_input_for_signature($item), $value);
+        }
+
+        ksort($value);
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->normalize_command_input_for_signature($item);
+        }
+
+        return $value;
     }
 
     // -------------------------------------------------------------------------
@@ -935,8 +1081,8 @@ class agent_runtime {
         // Plan: call the LLM once, passing any accumulated observations.
         $steptype = empty($observations)
             ? orchestrator::STEP_TYPE_TOOL_CALL_PARSE
-            : orchestrator::STEP_TYPE_SIMPLE_RETRIEVAL;
-        $result = $this->orchestrator->process($threadid, $cmid, $userid, $observations, $steptype);
+            : orchestrator::STEP_TYPE_FINAL_REASONING;
+        $result = $this->call_orchestrator_step($threadid, $cmid, $userid, $observations, $steptype);
 
         $outputlang = $this->resolve_output_language($threadid, $result);
         $this->store->set_thread_metadata_value($threadid, 'last_output_lang', $outputlang);
@@ -975,6 +1121,29 @@ class agent_runtime {
         }
 
         return $result;
+    }
+
+    /**
+     * Execute a single orchestrator planning step.
+     *
+     * This centralizes all runtime-side model planning calls so instrumentation and
+     * behavior stay consistent across normal loop steps and special narration paths.
+     *
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @param array $observations
+     * @param string $steptype
+     * @return array
+     */
+    private function call_orchestrator_step(
+        int $threadid,
+        int $cmid,
+        int $userid,
+        array $observations,
+        string $steptype
+    ): array {
+        return $this->orchestrator->process($threadid, $cmid, $userid, $observations, $steptype);
     }
 
     /**
@@ -1103,7 +1272,7 @@ class agent_runtime {
             . 'Do NOT call tools again. Return response_type=clarification, commands=[], '
             . 'and summarize the latest findings for the user in plain language.';
 
-        $narration = $this->orchestrator->process(
+        $narration = $this->call_orchestrator_step(
             $threadid,
             $cmid,
             $userid,

@@ -40,8 +40,23 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
     /** Candidate pool size before final top-2 selection. */
     private const DOC_CANDIDATE_POOL_LIMIT = 20;
 
+    /** Soft score for adding root doc as navigation context. */
+    private const ROOT_DOC_NAV_SCORE = 50;
+
     /** Default line window per docs read step. */
     private const DEFAULT_LINE_COUNT = 80;
+
+    /** Reduced line window for first observation to avoid context drift. */
+    private const FIRST_STEP_LINE_COUNT = 40;
+
+    /** High-confidence threshold for planner-driven direct doc-path selection. */
+    private const PLANNER_DIRECT_DOC_CONFIDENCE = 0.72;
+
+    /** Score ratio threshold for disambiguation when top candidates are too close. */
+    private const DISAMBIGUATION_RATIO = 0.90;
+
+    /** Lower ratio threshold when top candidates come from different topics. */
+    private const DISAMBIGUATION_MIXED_TOPIC_RATIO = 0.82;
 
     /**
      * Constructor.
@@ -70,6 +85,9 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             'description' => 'Explain documented features by searching local markdown documentation '
                 . 'and using the two best matches.',
             'readonly' => $this->is_read_only(),
+            'planner_capabilities' => [
+                'semantic_input_enrichment',
+            ],
             'properties' => [
                 'question' => [
                     'type' => 'string',
@@ -103,6 +121,26 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                 'line_count' => [
                     'type' => 'integer',
                     'description' => 'Optional number of lines to read per step (default 80; clamped to 20..200).',
+                    'required' => false,
+                ],
+                'topic_hint' => [
+                    'type' => 'string',
+                    'description' => 'Optional planner hint for preferred docs topic/folder.',
+                    'required' => false,
+                ],
+                'doc_path_candidates' => [
+                    'type' => 'array',
+                    'description' => 'Optional planner-proposed ranked candidate paths (max 3) for direct read.',
+                    'required' => false,
+                ],
+                'retrieval_goal' => [
+                    'type' => 'string',
+                    'description' => 'Optional retrieval goal, e.g. configure_howto, concept_explanation, troubleshooting.',
+                    'required' => false,
+                ],
+                'planner_confidence' => [
+                    'type' => 'number',
+                    'description' => 'Optional planner confidence in [0..1] for structured retrieval hints.',
                     'required' => false,
                 ],
             ],
@@ -164,17 +202,42 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
         $docpath = trim((string)($input['doc_path'] ?? ''));
         $linestart = $this->normalize_line_start((int)($input['line_start'] ?? 1));
         $linecount = $this->normalize_line_count((int)($input['line_count'] ?? self::DEFAULT_LINE_COUNT));
+        $isfirststep = $linestart <= 1;
+        $effectivelinecount = $isfirststep ? min($linecount, self::FIRST_STEP_LINE_COUNT) : $linecount;
+
+        $topichint = trim((string)($input['topic_hint'] ?? ''));
+        $retrievalgoal = trim((string)($input['retrieval_goal'] ?? ''));
+        $plannerconfidence = max(0.0, min(1.0, (float)($input['planner_confidence'] ?? 0.0)));
+        $docpathcandidates = array_values(array_filter(array_slice(array_map(
+            'trim',
+            (array)($input['doc_path_candidates'] ?? [])
+        ), 0, 3)));
 
         $service = $this->create_docs_lookup_service();
-        $rootdoc = $service->read_root_doc($linestart, $linecount);
+        $rootdoc = $service->read_root_doc($linestart, $effectivelinecount);
 
         // Fast path: caller supplied a concrete doc path — skip search entirely.
         if ($docpath !== '') {
-            $directdoc = $service->read_doc_by_path($docpath, $linestart, $linecount);
+            $directdoc = $service->read_doc_by_path($docpath, $linestart, $effectivelinecount);
             if ($directdoc !== null) {
                 return $this->build_direct_doc_result($directdoc, $question, $service, $cmid, $outputlang);
             }
             // Path not found — fall through to keyword search.
+        }
+
+        // Planner precision path: for high confidence candidate paths, prefer direct doc reads.
+        if ($docpath === '' && $plannerconfidence >= self::PLANNER_DIRECT_DOC_CONFIDENCE && !empty($docpathcandidates)) {
+            foreach ($docpathcandidates as $candidatepath) {
+                $directdoc = $service->read_doc_by_path($candidatepath, $linestart, $effectivelinecount);
+                if ($directdoc === null) {
+                    continue;
+                }
+                return $this->build_direct_doc_result($directdoc, $question, $service, $cmid, $outputlang, [
+                    'Mode: planner_direct_candidate',
+                    'Planner confidence: ' . number_format($plannerconfidence, 3, '.', ''),
+                    'Planner candidate: ' . $candidatepath,
+                ]);
+            }
         }
 
         // Build query list: original question + up to 2 optional alternative search phrases.
@@ -183,6 +246,17 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             0,
             2
         )));
+
+        if ($docpath !== '') {
+            $directdoc = $service->read_doc_by_path($docpath, $linestart, $effectivelinecount);
+            if ($directdoc !== null) {
+                return $this->build_direct_doc_result($directdoc, $question, $service, $cmid, $outputlang, [
+                    'Mode: direct_path_read',
+                    'Path: ' . $docpath,
+                ]);
+            }
+        }
+
         $allqueries = array_values(array_unique(array_filter(array_merge([$question], $extraqueries))));
 
         $topicselection = $service->detect_best_topic($question, $extraqueries);
@@ -192,8 +266,23 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
         $retrievalmode = 'global';
 
         $docs = [];
+        $hinttopicid = $this->resolve_topic_hint_to_topic_id($service, $topichint);
+        if ($hinttopicid !== '') {
+            $docs = $service->search_in_topic(
+                $hinttopicid,
+                $question,
+                $extraqueries,
+                self::DOC_CANDIDATE_POOL_LIMIT
+            );
+            if (!empty($docs)) {
+                $selectedtopicid = $hinttopicid;
+                $retrievalmode = 'topic_hint';
+            }
+        }
+
         if (
-            $selectedtopicid !== ''
+            empty($docs)
+            && $selectedtopicid !== ''
             && $topicconfidence >= self::TOPIC_CONFIDENCE_THRESHOLD
             && $topicscore >= self::TOPIC_MIN_SCORE
         ) {
@@ -213,9 +302,19 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             $retrievalmode = 'global';
         }
 
-        if (is_array($rootdoc)) {
+        $docs = $this->apply_configure_intent_boost($docs, $question, $retrievalgoal);
+
+        if (
+            $selectedtopicid !== ''
+            && $retrievalmode !== 'topic_hint'
+            && str_starts_with($retrievalmode, 'global')
+        ) {
+            $retrievalmode .= '+topic_fallback';
+        }
+
+        if (is_array($rootdoc) && !$isfirststep) {
             $rootcandidate = $rootdoc;
-            $rootcandidate['score'] = 100000;
+            $rootcandidate['score'] = self::ROOT_DOC_NAV_SCORE;
             $rootcandidate['exactbasenamehit'] = true;
             $docs = $this->prepend_doc_candidate($docs, $rootcandidate);
             $retrievalmode .= '+root';
@@ -235,7 +334,44 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             ];
         }
 
-        $selecteddocs = array_slice($docs, 0, 2);
+        if ($this->should_disambiguate_docs($docs, $question, $retrievalgoal)) {
+            $topdocs = array_slice($docs, 0, 2);
+            $message = $this->build_disambiguation_message($topdocs, $outputlang);
+            $options = array_values(array_filter(array_map(
+                static function (array $doc): string {
+                    $title = trim((string)($doc['title'] ?? ''));
+                    if ($title !== '') {
+                        return $title;
+                    }
+                    return trim((string)($doc['path'] ?? ''));
+                },
+                $topdocs
+            )));
+            return [
+                'status' => 'executed',
+                'detail' => $message,
+                'usermessage' => $message,
+                'resultid' => null,
+                'docs' => [],
+                'selected_doc_path' => '',
+                'retrieval_mode' => $retrievalmode . '+disambiguation',
+                'queries_used' => $allqueries,
+                'disambiguation_required' => true,
+                'disambiguation_options' => $options,
+                'debugmessage' => $this->build_task_debug_message(
+                    self::TASK_NAME,
+                    $input,
+                    [
+                        'Docs matched: ' . count($topdocs),
+                        'Top doc 1: ' . (string)($topdocs[0]['path'] ?? ''),
+                        'Top doc 2: ' . (string)($topdocs[1]['path'] ?? ''),
+                        'Retrieval mode: ' . $retrievalmode . '+disambiguation',
+                    ]
+                ),
+            ];
+        }
+
+        $selecteddocs = array_slice($docs, 0, $isfirststep ? 1 : 2);
         $firstdoc = $selecteddocs[0];
 
         $usermessage = $service->build_summary($firstdoc, $cmid, $outputlang, $question);
@@ -251,12 +387,12 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             $usermessage .= "\n" . implode("\n", array_values(array_unique($doclinks)));
         }
 
-        $usermessage = $this->enforce_max_chars($usermessage, 650);
+        $usermessage = $this->enforce_max_chars($usermessage, $isfirststep ? 360 : 650);
 
         $structureddocs = [];
         foreach ($selecteddocs as $doc) {
             $path = (string)($doc['path'] ?? '');
-            $readdoc = $path !== '' ? $service->read_doc_by_path($path, $linestart, $linecount) : null;
+            $readdoc = $path !== '' ? $service->read_doc_by_path($path, $linestart, $effectivelinecount) : null;
             $docpayload = is_array($readdoc) ? array_merge($doc, $readdoc) : $doc;
             $structureddocs[] = $this->build_structured_doc_payload(
                 $docpayload,
@@ -270,6 +406,9 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             'usermessage' => $usermessage,
             'resultid' => null,
             'docs' => $structureddocs,
+            'selected_doc_path' => (string)($firstdoc['path'] ?? ''),
+            'retrieval_mode' => $retrievalmode,
+            'queries_used' => $allqueries,
             'debugmessage' => $this->build_task_debug_message(
                 self::TASK_NAME,
                 $input,
@@ -280,11 +419,197 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                     'Topic score: ' . $topicscore,
                     'Topic confidence: ' . number_format($topicconfidence, 3, '.', ''),
                     'Retrieval mode: ' . $retrievalmode,
-                    'Line window: start=' . $linestart . ' count=' . $linecount,
+                    'Line window: start=' . $linestart . ' count=' . $effectivelinecount,
                     'Queries used: ' . implode(' | ', $allqueries),
                 ]
             ),
         ];
+    }
+
+    /**
+     * Map planner topic hint to a concrete topic id from docs index.
+     *
+     * @param docs_lookup_service $service
+     * @param string $topichint
+     * @return string
+     */
+    private function resolve_topic_hint_to_topic_id(docs_lookup_service $service, string $topichint): string {
+        $hint = strtolower(trim($topichint));
+        if ($hint === '') {
+            return '';
+        }
+
+        foreach ($service->get_master_toc_index() as $topic) {
+            $topicid = strtolower(trim((string)($topic['topic_id'] ?? '')));
+            $title = strtolower(trim((string)($topic['title'] ?? '')));
+            if ($topicid === '' && $title === '') {
+                continue;
+            }
+            if ($hint === $topicid || $hint === $title) {
+                return (string)($topic['topic_id'] ?? '');
+            }
+            if (str_contains($topicid, $hint) || str_contains($title, $hint) || str_contains($hint, $topicid)) {
+                return (string)($topic['topic_id'] ?? '');
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Boost precise configuration docs for how-to style questions.
+     *
+     * @param array $docs
+     * @param string $question
+     * @param string $retrievalgoal
+     * @return array
+     */
+    private function apply_configure_intent_boost(array $docs, string $question, string $retrievalgoal = ''): array {
+        $goal = strtolower(trim($retrievalgoal));
+        $isconfigure = $goal === 'configure_howto' || $this->looks_like_configuration_question($question);
+        if (!$isconfigure) {
+            return $docs;
+        }
+
+        foreach ($docs as &$doc) {
+            $score = (int)($doc['score'] ?? 0);
+            $path = strtolower((string)($doc['path'] ?? ''));
+            $content = strtolower((string)($doc['content'] ?? ''));
+
+            if (str_contains($path, 'booking_conditions/booking_time.md')) {
+                $score += 220;
+            }
+            if (str_contains($path, 'booking-option/04-availability.md')) {
+                $score += 180;
+            }
+            if (str_contains($content, 'bookable from') || str_contains($content, 'bookingopeningtime')) {
+                $score += 120;
+            }
+            if (str_contains($content, 'how to configure') || str_contains($content, 'step 1')) {
+                $score += 60;
+            }
+            if (preg_match('/\/readme\.md$/i', $path)) {
+                $score -= 60;
+            }
+
+            $doc['score'] = $score;
+        }
+        unset($doc);
+
+        return $docs;
+    }
+
+    /**
+     * Determine whether docs candidates are too ambiguous for a silent pick.
+     *
+     * @param array $docs
+     * @param string $question
+     * @param string $retrievalgoal
+     * @return bool
+     */
+    private function should_disambiguate_docs(array $docs, string $question, string $retrievalgoal = ''): bool {
+        if (count($docs) < 2) {
+            return false;
+        }
+
+        $top = (array)$docs[0];
+        $second = (array)$docs[1];
+        $topscore = (int)($top['score'] ?? 0);
+        $secondscore = (int)($second['score'] ?? 0);
+        if ($topscore <= 0 || $secondscore <= 0) {
+            return false;
+        }
+
+        $ratio = $secondscore / max(1, $topscore);
+        if ($ratio >= self::DISAMBIGUATION_RATIO) {
+            return true;
+        }
+
+        $toptopic = strtolower(trim(strtok((string)($top['path'] ?? ''), '/')));
+        $secondtopic = strtolower(trim(strtok((string)($second['path'] ?? ''), '/')));
+        $mixedtopics = $toptopic !== '' && $secondtopic !== '' && $toptopic !== $secondtopic;
+
+        if ($mixedtopics && $ratio >= self::DISAMBIGUATION_MIXED_TOPIC_RATIO) {
+            return true;
+        }
+
+        // For clear how-to requests, avoid disambiguation if top doc already looks config-specific.
+        if ($this->looks_like_configuration_question($question) || strtolower(trim($retrievalgoal)) === 'configure_howto') {
+            $toppath = strtolower((string)($top['path'] ?? ''));
+            if (
+                str_contains($toppath, 'booking_conditions/booking_time.md')
+                || str_contains($toppath, 'booking-option/04-availability.md')
+            ) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Build a short user-facing disambiguation question.
+     *
+     * @param array $docs
+     * @param string $outputlang
+     * @return string
+     */
+    private function build_disambiguation_message(array $docs, string $outputlang): string {
+        $titles = [];
+        foreach ($docs as $doc) {
+            $title = trim((string)($doc['title'] ?? ''));
+            if ($title === '') {
+                $title = trim((string)($doc['path'] ?? ''));
+            }
+            if ($title !== '') {
+                $titles[] = $title;
+            }
+        }
+
+        $titles = array_slice(array_values(array_unique($titles)), 0, 2);
+        if (empty($titles)) {
+            return $this->looks_like_german($outputlang)
+                ? 'Ich habe zwei nahe Treffer gefunden. Soll ich auf die '
+                    . 'Verfugbarkeitseinstellungen oder auf Bedingungen fokussieren?'
+                : 'I found two close matches. Should I focus on availability settings or booking conditions?';
+        }
+
+        if ($this->looks_like_german($outputlang)) {
+            return 'Ich habe zwei nahe Treffer gefunden: "' . implode('" und "', $titles)
+                . '". Welchen davon soll ich als Grundlage nehmen?';
+        }
+
+        return 'I found two close matches: "' . implode('" and "', $titles)
+            . '". Which one should I use as the primary source?';
+    }
+
+    /**
+     * Detect configuration-style questions.
+     *
+     * @param string $question
+     * @return bool
+     */
+    private function looks_like_configuration_question(string $question): bool {
+        $normalized = strtolower(trim((string)preg_replace('/\s+/', ' ', $question)));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool)preg_match(
+            '/(wie\s+kann\s+ich|how\s+can\s+i|how\s+to|einstellen|konfigur|setup|set\s+up'
+            . '|bookable\s+from|bookingopeningtime|ab\s+einem\s+zeitpunkt)/u',
+            $normalized
+        );
+    }
+
+    /**
+     * Check whether the output language is German.
+     *
+     * @param string $outputlang
+     * @return bool
+     */
+    private function looks_like_german(string $outputlang): bool {
+        return str_starts_with(strtolower(trim($outputlang)), 'de');
     }
 
     /**
@@ -357,7 +682,8 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
         string $question,
         docs_lookup_service $service,
         int $cmid,
-        string $outputlang
+        string $outputlang,
+        array $debuglines = []
     ): array {
         $path = (string)($doc['path'] ?? '');
         $url = $this->build_doc_url($path);
@@ -375,16 +701,18 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             'usermessage'  => $usermessage,
             'resultid'     => null,
             'docs'         => [$structureddoc],
+            'selected_doc_path' => $path,
+            'retrieval_mode' => 'direct_path',
             'debugmessage' => $this->build_task_debug_message(
                 self::TASK_NAME,
                 ['question' => $question, 'doc_path' => $path],
-                [
+                array_merge([
                     'Mode: direct_path_read',
                     'Path: ' . $path,
                     'Line window: start=' . (int)($structureddoc['line_start'] ?? 1)
                         . ' count=' . max(0, (int)($structureddoc['line_end'] ?? 0)
                             - (int)($structureddoc['line_start'] ?? 1) + 1),
-                ]
+                ], $debuglines)
             ),
         ];
     }

@@ -642,6 +642,65 @@ const escapeHtml = (str) => {
 };
 
 /**
+ * Extract docs preview metadata from a link href.
+ *
+ * @param {string} href
+ * @returns {{docpath: string, fragment: string}}
+ */
+const getDocLinkMeta = (href) => {
+    const raw = String(href || '').trim();
+    if (raw === '') {
+        return {docpath: '', fragment: ''};
+    }
+
+    let normalized = raw;
+    const absoluteMatch = normalized.match(/^https?:\/\/[^/]+(\/.*)$/i);
+    if (absoluteMatch) {
+        normalized = String(absoluteMatch[1] || '');
+    }
+
+    const hashIndex = normalized.indexOf('#');
+    const fragment = hashIndex >= 0 ? normalized.slice(hashIndex + 1).trim() : '';
+    const withoutHash = hashIndex >= 0 ? normalized.slice(0, hashIndex) : normalized;
+    const queryIndex = withoutHash.indexOf('?');
+    const withoutQuery = queryIndex >= 0 ? withoutHash.slice(0, queryIndex) : withoutHash;
+
+    if (/^\/mod\/booking\/docs\//i.test(withoutQuery)) {
+        const docpath = withoutQuery.replace(/^\/mod\/booking\/docs\//i, '').trim();
+        return {docpath, fragment};
+    }
+
+    if (/\.md$/i.test(withoutQuery) && !/^\//.test(withoutQuery)) {
+        return {docpath: withoutQuery.trim(), fragment};
+    }
+
+    return {docpath: '', fragment: ''};
+};
+
+/**
+ * Render one hyperlink with the correct behavior attributes.
+ *
+ * @param {string} href
+ * @param {string} label
+ * @returns {string}
+ */
+const renderSmartLink = (href, label) => {
+    const safeHref = escapeHtml(href);
+    const safeLabel = escapeHtml(label);
+    const meta = getDocLinkMeta(href);
+
+    if (meta.docpath !== '') {
+        const dataDocPath = escapeHtml(meta.docpath);
+        const dataDocFragment = escapeHtml(meta.fragment);
+        return `<a href="${safeHref}" class="booking-doc-link"`
+            + ` data-docpath="${dataDocPath}" data-docfragment="${dataDocFragment}">`
+            + `${safeLabel}</a>`;
+    }
+
+    return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeLabel}</a>`;
+};
+
+/**
  * Escape text and convert URLs/newlines for rich status rendering.
  *
  * @param {string} text
@@ -670,19 +729,11 @@ const renderTextWithLinks = (text) => {
             // Markdown link: [label](url)
             const label = match[1];
             const url = match[2];
-            if (/^https?:\/\//i.test(url)) {
-                html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
-            } else {
-                html += `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
-            }
+            html += renderSmartLink(url, label);
         } else {
             // Bare URL or Moodle-relative path.
             const url = match[3];
-            if (/^https?:\/\//i.test(url)) {
-                html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
-            } else {
-                html += `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
-            }
+            html += renderSmartLink(url, url);
         }
 
         lastIndex = match.index + match[0].length;
@@ -2103,9 +2154,24 @@ export const init = (config = null) => {
             const anchor = target.closest('a');
             if (anchor instanceof HTMLAnchorElement) {
                 const href = String(anchor.getAttribute('href') || '').trim();
-                if (/^https?:\/\//i.test(href)) {
+                const inlineDocPath = String(anchor.getAttribute('data-docpath') || '').trim();
+                const inlineDocFragment = String(anchor.getAttribute('data-docfragment') || '').trim();
+                if (inlineDocPath !== '') {
                     event.preventDefault();
-                    loadUrlInSidePreview(href);
+                    loadDocInPreview(inlineDocPath, '', inlineDocFragment);
+                    return;
+                }
+
+                const resolvedDocMeta = getDocLinkMeta(href);
+                if (resolvedDocMeta.docpath !== '') {
+                    event.preventDefault();
+                    loadDocInPreview(resolvedDocMeta.docpath, '', resolvedDocMeta.fragment);
+                    return;
+                }
+
+                if (href !== '' && !href.startsWith('#')) {
+                    event.preventDefault();
+                    window.open(href, '_blank', 'noopener,noreferrer');
                     return;
                 }
             }

@@ -262,7 +262,7 @@ class task_registry {
             'booking.list_option_properties' => ['scope'],
             'booking.list_actions' => ['scope'],
             'booking.get_current_user' => [],
-            'booking.explain_docs_topic' => ['question', 'search_queries'],
+            'booking.explain_docs_topic' => ['question', 'search_queries', 'doc_path', 'line_start', 'line_count'],
             'booking.diagnose_booking_issue' => ['question', 'optionquery', 'optionid', 'userquery'],
             'booking.diagnose_cancellation_issue' => ['question', 'optionquery', 'optionid', 'userquery'],
             'booking.book_users' => ['optionquery', 'optionid', 'userquery', 'userids'],

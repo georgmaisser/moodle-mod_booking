@@ -59,7 +59,7 @@ class result_payload_summarizer {
                 continue;
             }
 
-            $summary = self::describe_entry($entry);
+            $summary = self::describe_entry($entry, $step);
             if ($summary !== '') {
                 $parts[] = $summary;
             }
@@ -83,7 +83,7 @@ class result_payload_summarizer {
      * @return string         Empty string when nothing meaningful is available.
      */
     public static function describe_result_for_state(array $entry): string {
-        return self::describe_entry($entry);
+        return self::describe_entry($entry, 0);
     }
 
     /**
@@ -141,9 +141,10 @@ class result_payload_summarizer {
      * without going through the step-labelled for_observation() wrapper.
      *
      * @param  array $entry
+     * @param  int   $step
      * @return string
      */
-    public static function describe_entry(array $entry): string {
+    public static function describe_entry(array $entry, int $step = 0): string {
         $category = self::detect_result_category($entry);
 
         switch ($category) {
@@ -196,7 +197,7 @@ class result_payload_summarizer {
                 return $csummary . '.';
 
             case 'docs':
-                return self::describe_docs_entry($entry['docs']);
+                return self::describe_docs_entry($entry['docs'], $step);
 
             case 'diagnosis':
                 return self::describe_diagnosis_entry($entry['diagnosis']);
@@ -259,16 +260,18 @@ class result_payload_summarizer {
      * Hard maximum: 2000 characters total. Truncated sections get a "[...]" suffix.
      *
      * @param  array $docs  Array of doc entries: {title, excerpt, url, path, score}
+     * @param  int   $step
      * @return string
      */
-    private static function describe_docs_entry(array $docs): string {
+    private static function describe_docs_entry(array $docs, int $step = 0): string {
+        $isfirststep = $step > 0 && $step <= 1;
         // Prefer chunk-based reading payloads; keep enough budget for one or two chunks.
         $hasrichcontent = !empty(array_filter(
             $docs,
             static fn(array $d): bool => trim((string)($d['chunk_content'] ?? $d['full_content'] ?? '')) !== ''
         ));
-        $maxobservation  = $hasrichcontent ? 4500 : 2000;
-        $maxperdoc       = $hasrichcontent ? 2500 : 500;
+        $maxobservation  = $isfirststep ? 1400 : ($hasrichcontent ? 4500 : 2000);
+        $maxperdoc       = $isfirststep ? 700 : ($hasrichcontent ? 2500 : 500);
         $parts           = [];
         $linklines       = [];
 
@@ -301,15 +304,15 @@ class result_payload_summarizer {
                 $parts[] = $block;
             }
 
-            if ($hasmore && $nextline > 0) {
+            if (!$isfirststep && $hasmore && $nextline > 0) {
                 $parts[] = 'Continue this document from line ' . $nextline . ' if more detail is needed.';
             }
 
-            if (!empty($chunklinks)) {
+            if (!$isfirststep && !empty($chunklinks)) {
                 $parts[] = 'Linked docs in this section: ' . implode(', ', array_slice($chunklinks, 0, 4));
             }
 
-            if ($url !== '') {
+            if (!$isfirststep && $url !== '') {
                 $linkline = $title !== '' ? "- {$title}: {$url}" : "- {$url}";
                 $linklines[] = $linkline;
             }

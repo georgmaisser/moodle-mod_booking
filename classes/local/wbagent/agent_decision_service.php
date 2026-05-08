@@ -194,7 +194,8 @@ class agent_decision_service {
             $usermessage,
             $outputlang,
             $threadid,
-            $cmid
+            $cmid,
+            $userid
         );
 
         // 6. Harden: if the LLM incorrectly used task_call for a mutating command, promote.
@@ -954,6 +955,27 @@ class agent_decision_service {
                 'results'       => $results,
             ];
 
+            $disambiguationrequired = false;
+            foreach ($results as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                if (!empty($entry['disambiguation_required'])) {
+                    $disambiguationrequired = true;
+                    $candidate = trim((string)($entry['usermessage'] ?? $entry['detail'] ?? ''));
+                    if ($candidate !== '') {
+                        $payload['message'] = $candidate;
+                    }
+                    break;
+                }
+            }
+
+            if ($disambiguationrequired) {
+                $payload['response_type'] = 'clarification';
+                $payload['commands'] = [];
+                $payload['issue_codes'] = ['DOCS_DISAMBIGUATION_REQUIRED'];
+            }
+
             if (trim($nextstepintent) !== '') {
                 $payload['next_step_intent'] = trim($nextstepintent);
             }
@@ -1557,7 +1579,8 @@ class agent_decision_service {
         string $usermessage,
         string $outputlang,
         int $threadid,
-        int $cmid
+        int $cmid,
+        int $userid
     ): array {
         $responsetype = (string)($result['response_type'] ?? '');
         if (!in_array($responsetype, ['clarification', 'error'], true)) {
@@ -1584,7 +1607,10 @@ class agent_decision_service {
             $candidatetasks[$taskname] = true;
         }
 
-        if (empty($candidatetasks) && $this->looks_like_docs_help_intent($usermessage)) {
+        // Direct booking.explain_docs_topic recovery when appropriate.
+        // This runs even without explicit core.is_lookup_request trigger to catch cases where
+        // the model says it will search docs but doesn't provide structured trigger data.
+        if (empty($candidatetasks) && $this->looks_like_lookup_request($usermessage, $result)) {
             $taskname = 'booking.explain_docs_topic';
             if ($this->registry->is_read_only_task($taskname) && $this->registry->get_task($taskname) !== null) {
                 $candidatetasks[$taskname] = true;
@@ -1679,18 +1705,58 @@ class agent_decision_service {
             }
         }
 
+        // Generic question-only fallback:
+        // If trigger-based routing failed, prefer readonly tasks that can operate
+        // from a free-form question without additional option anchors.
+        if (empty($candidatetasks)) {
+            foreach ($this->registry->get_task_names() as $taskname) {
+                if (!$this->registry->is_read_only_task($taskname)) {
+                    continue;
+                }
+
+                $task = $this->registry->get_task($taskname);
+                if ($task === null) {
+                    continue;
+                }
+
+                $schema = $task->get_schema();
+                $properties = (array)($schema['properties'] ?? []);
+                if (!isset($properties['question']) || !is_array($properties['question'])) {
+                    continue;
+                }
+
+                // Skip tasks that REQUIRE explicit option anchors from the user.
+                // Having the fields in the schema is OK if they are not required.
+                $optionqueryisrequired = !empty($properties['optionquery']['required'] ?? false);
+                $optionidisrequired = !empty($properties['optionid']['required'] ?? false);
+                if ($optionqueryisrequired || $optionidisrequired) {
+                    continue;
+                }
+
+                $candidatetasks[(string)$taskname] = true;
+            }
+        }
+
         if (empty($candidatetasks)) {
             return $result;
         }
 
+        $islookuprecovery = $this->result_has_trigger($result, 'core.is_lookup_request');
         $tasknames = array_keys($candidatetasks);
-        usort($tasknames, function (string $a, string $b) use ($usermessage): int {
-            return $this->score_generic_recovery_task($b, $usermessage)
-                <=> $this->score_generic_recovery_task($a, $usermessage);
+        usort($tasknames, function (string $a, string $b) use ($islookuprecovery): int {
+            return $this->score_generic_recovery_task($b, $islookuprecovery)
+                <=> $this->score_generic_recovery_task($a, $islookuprecovery);
         });
 
         foreach ($tasknames as $taskname) {
-            $input = $this->build_recovery_input_for_task($taskname, $usermessage, $outputlang, $threadid, $cmid);
+            $input = $this->build_recovery_input_for_task(
+                $taskname,
+                $usermessage,
+                $outputlang,
+                $threadid,
+                $cmid,
+                $userid
+            );
             if ($input === null) {
                 continue;
             }
@@ -1727,10 +1793,10 @@ class agent_decision_service {
      * Score a recovery candidate task by schema fit to the user message.
      *
      * @param string $taskname
-     * @param string $usermessage
+     * @param bool $islookuprecovery
      * @return int
      */
-    private function score_generic_recovery_task(string $taskname, string $usermessage): int {
+    private function score_generic_recovery_task(string $taskname, bool $islookuprecovery = false): int {
         $task = $this->registry->get_task($taskname);
         if ($task === null) {
             return -1000;
@@ -1745,32 +1811,23 @@ class agent_decision_service {
         $hasoptionanchor = isset($properties['optionquery']) || isset($properties['optionid']);
         $hasuserquery = isset($properties['userquery']) && is_array($properties['userquery']);
 
-        if ($this->looks_like_docs_help_intent($usermessage)) {
-            if ($taskname === 'booking.explain_docs_topic') {
-                $score += 12;
-            }
-            if ($hasquestion) {
-                $score += 4;
-            }
-            if ($hasquery && !$hasquestion) {
-                $score -= 2;
-            }
+        if ($islookuprecovery && $taskname === 'booking.explain_docs_topic') {
+            $score += 12;
         }
 
-        if ($this->looks_like_diagnostic_intent($usermessage)) {
-            if ($hasquestion) {
-                $score += 6;
-            }
-            if ($hasoptionanchor) {
-                $score += 4;
-            }
-            if ($hasuserquery) {
-                $score += 2;
-            }
-            if ($hasquery && !$hasquestion) {
-                $score -= 2;
-            }
-        } else if ($hasquery) {
+        if ($hasquestion) {
+            $score += 5;
+        }
+
+        if ($hasoptionanchor) {
+            $score += 2;
+        }
+
+        if ($hasuserquery) {
+            $score += 1;
+        }
+
+        if ($hasquery && !$hasquestion) {
             $score += 3;
         }
 
@@ -1778,23 +1835,44 @@ class agent_decision_service {
     }
 
     /**
-     * Heuristic detector for docs/help intent in user text.
+     * Detect whether a clarification/error response indicates a documentation lookup attempt.
      *
      * @param string $message
+     * @param array $result
      * @return bool
      */
-    private function looks_like_docs_help_intent(string $message): bool {
+    private function looks_like_lookup_request(string $message, array $result): bool {
         $normalized = core_text::strtolower(trim((string)preg_replace('/\s+/', ' ', $message)));
-        if ($normalized === '') {
-            return false;
+
+        // Heuristic 1: next_step_intent mentions documentation/search.
+        $nextstepintent = core_text::strtolower(trim((string)($result['next_step_intent'] ?? '')));
+        if ($nextstepintent !== '') {
+            $hasdocsintent = (
+                str_contains($nextstepintent, 'dokumentation')
+                || str_contains($nextstepintent, 'documentation')
+                || str_contains($nextstepintent, 'suche')
+                || str_contains($nextstepintent, 'search')
+            );
+            if ($hasdocsintent) {
+                return true;
+            }
         }
 
-        $pattern = '/('
-            . '\bhow\b|\bwhat\s+is\b|\bexplain\b|\bdocumentation\b|'
-            . '\bwie\b|\bwas\s+ist\b|\berkl[aä]re\b|\berklaere\b|'
-            . '\bbenachrichtig|\bnotification|\bmessage|\bregel|\brule'
-            . ')/u';
-        return (bool)preg_match($pattern, $normalized);
+        // Heuristic 2: Message is a question (ends with ?) and contains how-to keywords.
+        if (preg_match('/ \? *$/', $normalized)) {
+            if (preg_match('/\b(wie|how|kann|can|soll|should|wo|where|was|what|warum|why|wann|when)\b/', $normalized)) {
+                return true;
+            }
+        }
+
+        // Heuristic 3: Message mentions enabling/disabling/allowing/restricting.
+        $longpattern = '/(erlauben|allow|aktivieren|enable|deaktivieren|disable|einschränken|restrict'
+            . '|beschränken)/';
+        if (preg_match($longpattern, $normalized)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -1832,7 +1910,8 @@ class agent_decision_service {
         string $usermessage,
         string $outputlang,
         int $threadid,
-        int $cmid
+        int $cmid,
+        int $userid
     ): ?array {
         $task = $this->registry->get_task($taskname);
         if ($task === null || !$task->is_read_only()) {
@@ -1880,6 +1959,17 @@ class agent_decision_service {
         if (isset($properties['userquery']) && is_array($properties['userquery']) && $userquery !== '') {
             $input['userquery'] = $userquery;
         }
+
+        $planner = new planner_service($this->store);
+        $input = $planner->enrich_recovery_input(
+            $taskname,
+            $schema,
+            $usermessage,
+            $input,
+            $threadid,
+            $cmid,
+            $userid
+        );
 
         // Ensure all required properties are present.
         foreach ($properties as $name => $def) {
