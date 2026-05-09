@@ -803,7 +803,9 @@ class agent_decision_service {
         string $outputlang
     ): array {
         $commands = (array)($result['commands'] ?? []);
+        $lastusermessage = trim($this->get_last_user_message($threadid));
         $anonymizer = new privacy_anonymizer($this->store);
+        $planner = new planner_service($this->store);
         $updatedcommands = [];
         $allissuecodes = [];
         $allissues = [];
@@ -837,6 +839,19 @@ class agent_decision_service {
             // Deanonymize before preflight so task sees real values.
             if ($threadid > 0 && $userid > 0) {
                 $input = $anonymizer->deanonymize_command_input_for_active_user($cmid, $userid, $input);
+            }
+
+            // Enrich planner-capable tasks (especially docs explain) before preflight.
+            if ($lastusermessage !== '') {
+                $input = $planner->enrich_recovery_input(
+                    $taskname,
+                    $task->get_schema(),
+                    $lastusermessage,
+                    $input,
+                    $threadid,
+                    $cmid,
+                    $userid
+                );
             }
 
             $preflightresult = $task->preflight($input, $cmid, $userid);

@@ -243,7 +243,9 @@ ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
 - For read-only intents, answer directly or emit a single task_call.
 - If the user asks how a documented feature works or what it means, call booking.explain_docs_topic.
 - For booking.explain_docs_topic, pass the full user question as input.question.
-- Optionally add up to 2 alternative search_queries for better lexical matching.
+- For booking.explain_docs_topic, include either input.doc_path or non-empty input.doc_path_candidates from docs_index.
+- If docs_index provides relevant paths, do NOT leave doc_path and doc_path_candidates empty.
+- Optionally add up to 2 alternative search_queries for planning quality.
 - search_queries MUST ALWAYS be in English, regardless of the user's language.
 - If a docs OBSERVATION says "Linked docs in this section:" and one of those
     linked docs is more relevant, call booking.explain_docs_topic again with
@@ -272,7 +274,9 @@ ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - If observations already contain sufficient information, MUST return response_type="clarification" with commands=[].
 - If information is still missing for a mutating action, ask one focused clarification question.
 - In final reasoning mode, prefer a direct clarification answer with commands=[].
-- For documented read-only questions, if observations are still insufficient, you MAY return one booking.explain_docs_topic task_call to read a more relevant linked doc or continue from line N.
+- For documented read-only questions, if observations are still insufficient,
+    you MAY return one booking.explain_docs_topic task_call to read a more relevant linked doc
+    or continue from line N.
 - In final reasoning mode, do NOT use response_type=confirm_pending.
 - In final reasoning mode, do NOT use response_type=error when observations already contain usable findings.
 - In final reasoning mode, do NOT promise further searching/tool calls; summarize the available findings now.

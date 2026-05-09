@@ -534,6 +534,8 @@ $string['ai_docs_explain_followup_query'] = 'Bitte erklaeren Sie dieses Dokument
 $string['ai_docs_explain_generation_failed'] =
     'Ich habe passende Dokumentation gefunden, konnte aber aktuell keine kurze Antwort erzeugen. Bitte formulieren Sie Ihre Frage um.';
 $string['ai_docs_explain_invalid_maxdocs'] = 'Das Feld "maxdocs" muss groesser als 0 sein, wenn es angegeben wird.';
+$string['ai_docs_explain_missing_doc_path'] =
+    'Es wurde kein gueltiger Dokumentationspfad uebergeben. Bitte erneut mit doc_path oder doc_path_candidates aus dem docs_index versuchen.';
 $string['ai_docs_explain_no_match'] = 'Ich konnte kein passendes Dokumentationsthema fuer diese Frage finden.';
 $string['ai_docs_explain_required_question'] = 'Das Feld "question" ist fuer explain_docs_topic erforderlich.';
 $string['ai_followup_create_option_with_property_query'] = 'Bitte helfen Sie mir, eine Buchungsoption zu erstellen und dieses Feld zu verwenden: {$a}';

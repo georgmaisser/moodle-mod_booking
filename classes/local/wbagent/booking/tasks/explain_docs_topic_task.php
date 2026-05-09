@@ -205,222 +205,156 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
         $isfirststep = $linestart <= 1;
         $effectivelinecount = $isfirststep ? min($linecount, self::FIRST_STEP_LINE_COUNT) : $linecount;
 
-        $topichint = trim((string)($input['topic_hint'] ?? ''));
-        $retrievalgoal = trim((string)($input['retrieval_goal'] ?? ''));
         $plannerconfidence = max(0.0, min(1.0, (float)($input['planner_confidence'] ?? 0.0)));
         $docpathcandidates = array_values(array_filter(array_slice(array_map(
             'trim',
             (array)($input['doc_path_candidates'] ?? [])
         ), 0, 3)));
+        $searchqueries = array_values(array_filter(array_slice(array_map(
+            'trim',
+            (array)($input['search_queries'] ?? [])
+        ), 0, 2)));
+        $topichint = trim((string)($input['topic_hint'] ?? ''));
+        $retrievalgoal = trim((string)($input['retrieval_goal'] ?? ''));
 
         $service = $this->create_docs_lookup_service();
-        $rootdoc = $service->read_root_doc($linestart, $effectivelinecount);
+        $directdoc = null;
 
-        // Fast path: caller supplied a concrete doc path — skip search entirely.
+        // Deterministic path mode: direct doc_path has highest priority.
         if ($docpath !== '') {
             $directdoc = $service->read_doc_by_path($docpath, $linestart, $effectivelinecount);
             if ($directdoc !== null) {
-                return $this->build_direct_doc_result($directdoc, $question, $service, $cmid, $outputlang);
+                return $this->build_direct_doc_result(
+                    $directdoc,
+                    $question,
+                    $service,
+                    $cmid,
+                    $outputlang,
+                    [
+                        'Mode: direct_path_read',
+                        'Path: ' . $docpath,
+                    ]
+                );
             }
-            // Path not found — fall through to keyword search.
         }
 
-        // Planner precision path: for high confidence candidate paths, prefer direct doc reads.
-        if ($docpath === '' && $plannerconfidence >= self::PLANNER_DIRECT_DOC_CONFIDENCE && !empty($docpathcandidates)) {
+        // Deterministic planner mode: use the first valid candidate from docs_index planning.
+        if (!empty($docpathcandidates)) {
             foreach ($docpathcandidates as $candidatepath) {
                 $directdoc = $service->read_doc_by_path($candidatepath, $linestart, $effectivelinecount);
                 if ($directdoc === null) {
                     continue;
                 }
-                return $this->build_direct_doc_result($directdoc, $question, $service, $cmid, $outputlang, [
-                    'Mode: planner_direct_candidate',
-                    'Planner confidence: ' . number_format($plannerconfidence, 3, '.', ''),
-                    'Planner candidate: ' . $candidatepath,
-                ]);
+
+                return $this->build_direct_doc_result(
+                    $directdoc,
+                    $question,
+                    $service,
+                    $cmid,
+                    $outputlang,
+                    [
+                        'Mode: planner_direct_candidate',
+                        'Planner confidence: ' . number_format($plannerconfidence, 3, '.', ''),
+                        'Planner candidate: ' . $candidatepath,
+                    ]
+                );
             }
         }
 
-        // Build query list: original question + up to 2 optional alternative search phrases.
-        $extraqueries = array_values(array_filter(array_slice(
-            array_map('trim', (array)($input['search_queries'] ?? [])),
-            0,
-            2
-        )));
-
-        if ($docpath !== '') {
-            $directdoc = $service->read_doc_by_path($docpath, $linestart, $effectivelinecount);
-            if ($directdoc !== null) {
-                return $this->build_direct_doc_result($directdoc, $question, $service, $cmid, $outputlang, [
-                    'Mode: direct_path_read',
-                    'Path: ' . $docpath,
-                ]);
-            }
-        }
-
-        $allqueries = array_values(array_unique(array_filter(array_merge([$question], $extraqueries))));
-
-        $topicselection = $service->detect_best_topic($question, $extraqueries);
-        $selectedtopicid = (string)($topicselection['topic_id'] ?? '');
-        $topicconfidence = (float)($topicselection['confidence'] ?? 0.0);
-        $topicscore = (int)($topicselection['score'] ?? 0);
-        $retrievalmode = 'global';
-
+        $allqueries = array_values(array_filter(array_unique(array_merge([$question], $searchqueries))));
         $docs = [];
-        $hinttopicid = $this->resolve_topic_hint_to_topic_id($service, $topichint);
-        if ($hinttopicid !== '') {
-            $docs = $service->search_in_topic(
-                $hinttopicid,
-                $question,
-                $extraqueries,
-                self::DOC_CANDIDATE_POOL_LIMIT
-            );
-            if (!empty($docs)) {
-                $selectedtopicid = $hinttopicid;
-                $retrievalmode = 'topic_hint';
+
+        // Planner-guided topic retrieval using docs index topic IDs.
+        if ($topichint !== '') {
+            $resolvedtopic = $this->resolve_topic_hint_to_topic_id($service, $topichint);
+            if ($resolvedtopic !== '') {
+                $docs = $service->search_in_topic(
+                    $resolvedtopic,
+                    $question,
+                    $searchqueries,
+                    self::DOC_CANDIDATE_POOL_LIMIT
+                );
             }
         }
 
-        if (
-            empty($docs)
-            && $selectedtopicid !== ''
-            && $topicconfidence >= self::TOPIC_CONFIDENCE_THRESHOLD
-            && $topicscore >= self::TOPIC_MIN_SCORE
-        ) {
-            $docs = $service->search_in_topic(
-                $selectedtopicid,
-                $question,
-                $extraqueries,
-                self::DOC_CANDIDATE_POOL_LIMIT
-            );
-            $retrievalmode = 'topic';
+        // If planner topic hint is missing or weak, detect the best topic from docs index.
+        if (empty($docs)) {
+            $topicdecision = $service->detect_best_topic($question, $searchqueries);
+            $topictouse = trim((string)($topicdecision['topic_id'] ?? ''));
+            $topicscore = (int)($topicdecision['score'] ?? 0);
+            $topicconfidence = (float)($topicdecision['confidence'] ?? 0.0);
+
+            if (
+                $topictouse !== ''
+                && $topicscore >= self::TOPIC_MIN_SCORE
+                && ($plannerconfidence >= self::TOPIC_CONFIDENCE_THRESHOLD || $topicconfidence >= self::TOPIC_CONFIDENCE_THRESHOLD)
+            ) {
+                $docs = $service->search_in_topic(
+                    $topictouse,
+                    $question,
+                    $searchqueries,
+                    self::DOC_CANDIDATE_POOL_LIMIT
+                );
+            }
         }
 
         if (empty($docs)) {
-            $docs = count($allqueries) > 1
-                ? $service->search_multi($allqueries, self::DOC_CANDIDATE_POOL_LIMIT)
-                : $service->search($question, self::DOC_CANDIDATE_POOL_LIMIT);
-            $retrievalmode = 'global';
+            $docs = $service->search_multi($allqueries, self::DOC_CANDIDATE_POOL_LIMIT);
         }
 
         $docs = $this->apply_configure_intent_boost($docs, $question, $retrievalgoal);
-
-        if (
-            $selectedtopicid !== ''
-            && $retrievalmode !== 'topic_hint'
-            && str_starts_with($retrievalmode, 'global')
-        ) {
-            $retrievalmode .= '+topic_fallback';
-        }
-
-        if (is_array($rootdoc) && !$isfirststep) {
-            $rootcandidate = $rootdoc;
-            $rootcandidate['score'] = self::ROOT_DOC_NAV_SCORE;
-            $rootcandidate['exactbasenamehit'] = true;
-            $docs = $this->prepend_doc_candidate($docs, $rootcandidate);
-            $retrievalmode .= '+root';
-        }
-
         $docs = $this->prioritize_docs($docs);
 
-        if (empty($docs)) {
-            $nomatch = $this->localized_string('ai_docs_explain_no_match', null, $outputlang);
-            return [
-                'status' => 'executed',
-                'detail' => $nomatch,
-                'usermessage' => $nomatch,
-                'resultid' => null,
-                'docs' => [],
-                'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $input, ['Docs matched: 0']),
-            ];
-        }
-
-        if ($this->should_disambiguate_docs($docs, $question, $retrievalgoal)) {
-            $topdocs = array_slice($docs, 0, 2);
-            $message = $this->build_disambiguation_message($topdocs, $outputlang);
-            $options = array_values(array_filter(array_map(
-                static function (array $doc): string {
-                    $title = trim((string)($doc['title'] ?? ''));
-                    if ($title !== '') {
-                        return $title;
-                    }
-                    return trim((string)($doc['path'] ?? ''));
-                },
-                $topdocs
-            )));
-            return [
-                'status' => 'executed',
-                'detail' => $message,
-                'usermessage' => $message,
-                'resultid' => null,
-                'docs' => [],
-                'selected_doc_path' => '',
-                'retrieval_mode' => $retrievalmode . '+disambiguation',
-                'queries_used' => $allqueries,
-                'disambiguation_required' => true,
-                'disambiguation_options' => $options,
-                'debugmessage' => $this->build_task_debug_message(
-                    self::TASK_NAME,
-                    $input,
-                    [
-                        'Docs matched: ' . count($topdocs),
-                        'Top doc 1: ' . (string)($topdocs[0]['path'] ?? ''),
-                        'Top doc 2: ' . (string)($topdocs[1]['path'] ?? ''),
-                        'Retrieval mode: ' . $retrievalmode . '+disambiguation',
-                    ]
-                ),
-            ];
-        }
-
-        $selecteddocs = array_slice($docs, 0, $isfirststep ? 1 : 2);
-        $firstdoc = $selecteddocs[0];
-
-        $usermessage = $service->build_summary($firstdoc, $cmid, $outputlang, $question);
-        $doclinks = [];
-        foreach ($selecteddocs as $doc) {
-            $path = trim((string)($doc['path'] ?? ''));
-            if ($path === '') {
-                continue;
+        if (!empty($docs)) {
+            $bestpath = trim((string)($docs[0]['path'] ?? ''));
+            if ($bestpath !== '') {
+                $bestdoc = $service->read_doc_by_path($bestpath, $linestart, $effectivelinecount);
+                if ($bestdoc !== null) {
+                    return $this->build_direct_doc_result(
+                        $bestdoc,
+                        $question,
+                        $service,
+                        $cmid,
+                        $outputlang,
+                        [
+                            'Mode: docs_index_fallback',
+                            'Selected path: ' . $bestpath,
+                        ]
+                    );
+                }
             }
-            $doclinks[] = $this->build_doc_url($path);
-        }
-        if (!empty($doclinks)) {
-            $usermessage .= "\n" . implode("\n", array_values(array_unique($doclinks)));
         }
 
-        $usermessage = $this->enforce_max_chars($usermessage, $isfirststep ? 360 : 650);
-
-        $structureddocs = [];
-        foreach ($selecteddocs as $doc) {
-            $path = (string)($doc['path'] ?? '');
-            $readdoc = $path !== '' ? $service->read_doc_by_path($path, $linestart, $effectivelinecount) : null;
-            $docpayload = is_array($readdoc) ? array_merge($doc, $readdoc) : $doc;
-            $structureddocs[] = $this->build_structured_doc_payload(
-                $docpayload,
-                (int)($doc['score'] ?? 0)
+        $rootdoc = $service->read_root_doc($linestart, $effectivelinecount);
+        if ($rootdoc !== null) {
+            return $this->build_direct_doc_result(
+                $rootdoc,
+                $question,
+                $service,
+                $cmid,
+                $outputlang,
+                [
+                    'Mode: root_doc_fallback',
+                    'Reason: no_ranked_doc_selected',
+                ]
             );
         }
 
+        $nomatch = $this->localized_string('ai_docs_explain_no_match', null, $outputlang);
         return [
-            'status' => 'executed',
-            'detail' => $usermessage,
-            'usermessage' => $usermessage,
+            'status' => 'error',
+            'detail' => $nomatch,
+            'usermessage' => $nomatch,
             'resultid' => null,
-            'docs' => $structureddocs,
-            'selected_doc_path' => (string)($firstdoc['path'] ?? ''),
-            'retrieval_mode' => $retrievalmode,
-            'queries_used' => $allqueries,
+            'docs' => [],
             'debugmessage' => $this->build_task_debug_message(
                 self::TASK_NAME,
                 $input,
                 [
-                    'Docs matched: ' . count($selecteddocs),
-                    'Top doc: ' . (string)($firstdoc['path'] ?? ''),
-                    'Topic: ' . ($selectedtopicid !== '' ? $selectedtopicid : 'none'),
-                    'Topic score: ' . $topicscore,
-                    'Topic confidence: ' . number_format($topicconfidence, 3, '.', ''),
-                    'Retrieval mode: ' . $retrievalmode,
-                    'Line window: start=' . $linestart . ' count=' . $effectivelinecount,
-                    'Queries used: ' . implode(' | ', $allqueries),
+                    'Mode: docs_index_fallback',
+                    'Reason: no_docs_match_and_no_root_doc',
+                    'Provided doc_path: ' . ($docpath !== '' ? $docpath : '[empty]'),
+                    'Candidate count: ' . count($docpathcandidates),
                 ]
             ),
         ];

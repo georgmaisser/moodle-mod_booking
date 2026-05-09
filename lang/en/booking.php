@@ -528,6 +528,8 @@ $string['ai_docs_explain_followup_query'] = 'Please explain this documentation t
 $string['ai_docs_explain_generation_failed'] =
     'I found matching documentation but could not generate a concise answer right now. Please try rephrasing your question.';
 $string['ai_docs_explain_invalid_maxdocs'] = 'Field "maxdocs" must be greater than 0 when provided.';
+$string['ai_docs_explain_missing_doc_path'] =
+    'No valid documentation path was provided. Please retry with doc_path or doc_path_candidates from docs_index.';
 $string['ai_docs_explain_no_match'] = 'I could not find a matching documentation topic for that question.';
 $string['ai_docs_explain_required_question'] = 'Field "question" is required for explain_docs_topic.';
 $string['ai_empty_message'] = 'Please enter a message.';

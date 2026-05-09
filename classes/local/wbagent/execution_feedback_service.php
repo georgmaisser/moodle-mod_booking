@@ -676,7 +676,7 @@ class execution_feedback_service {
         }
 
         $detail = trim((string)($result['detail'] ?? ''));
-        if ($detail !== '' && $outputlang === '') {
+        if ($detail !== '') {
             return $detail;
         }
 

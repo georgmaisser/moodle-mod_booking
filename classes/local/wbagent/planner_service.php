@@ -211,6 +211,7 @@ class planner_service {
             . "- If uncertain, return empty input_patch.\n"
             . "- For search_queries, return at most 2 short strings.\n"
             . "- For doc_path, use an exact listed docs path when index is provided.\n\n"
+            . "- Never invent placeholder paths like path/to/... or docs/faq/... unless exactly present in docs_index.\n\n"
             . "task_name:\n"
             . $taskname
             . "\n\n"
@@ -226,10 +227,11 @@ class planner_service {
         if (!empty($docsindexlines)) {
             $prompt .= "\n\n"
                 . "docs_planning_hints:\n"
-                . "- For docs tasks prefer structured planning keys in input_patch: "
+                . "- For docs tasks use structured planning keys in input_patch: "
                 . "topic_hint, doc_path_candidates, retrieval_goal.\n"
+                . "- For booking.explain_docs_topic you MUST provide either doc_path or non-empty doc_path_candidates.\n"
                 . "- topic_hint should be a concise topic id or folder-like hint.\n"
-                . "- doc_path_candidates should contain up to 3 exact paths from docs_index.\n"
+                . "- doc_path_candidates should contain 1 to 3 exact paths from docs_index.\n"
                 . "- retrieval_goal should be one of: configure_howto, concept_explanation, troubleshooting, api_reference.\n"
                 . "- search_queries MUST always be in English, regardless of the user's language.\n"
                 . "- SEMANTIC ROUTING: if the question is about restrictions, limitations, who can book, "
@@ -238,7 +240,8 @@ class planner_service {
                 . "- SEMANTIC ROUTING: if the question is about reminders, notifications, emails, "
                 . "message automation, or event triggers -> prefer booking_rules/.\n"
                 . "- For booking window / time questions, prioritise booking_conditions/booking_time.md "
-                . "above all other paths.\n\n"
+                . "above all other paths.\n"
+                . "- Do NOT return empty input_patch for docs tasks when suitable docs paths exist in docs_index.\n\n"
                 . "docs_index:\n"
                 . implode("\n", $docsindexlines);
         }
@@ -300,11 +303,11 @@ class planner_service {
             if ($name === '' || !isset($properties[$name])) {
                 continue;
             }
-            if (!$this->is_input_value_empty($input[$name] ?? null)) {
-                continue;
-            }
 
             if ($name === 'search_queries') {
+                if (!$this->is_input_value_empty($input[$name] ?? null)) {
+                    continue;
+                }
                 $queries = array_values(array_filter(array_slice(array_map(
                     'trim',
                     (array)$value
@@ -323,6 +326,14 @@ class planner_service {
                 if ($docsservice !== null && $docsservice->read_doc_by_path($docpath, 1, 20) === null) {
                     continue;
                 }
+
+                 $currentpath = trim((string)($input[$name] ?? ''));
+                if ($currentpath !== '') {
+                    if ($docsservice === null || $docsservice->read_doc_by_path($currentpath, 1, 20) !== null) {
+                        continue;
+                    }
+                }
+
                 $input[$name] = $docpath;
                 continue;
             }
@@ -340,9 +351,30 @@ class planner_service {
                         }
                     ));
                 }
+
+                $existingcandidates = array_values(array_filter(array_map(
+                    'trim',
+                    (array)($input[$name] ?? [])
+                )));
+                if ($docsservice !== null) {
+                    $existingcandidates = array_values(array_filter(
+                        $existingcandidates,
+                        static function (string $candidate) use ($docsservice): bool {
+                            return $docsservice->read_doc_by_path($candidate, 1, 20) !== null;
+                        }
+                    ));
+                }
+                if (!empty($existingcandidates)) {
+                    continue;
+                }
+
                 if (!empty($candidates)) {
                     $input[$name] = $candidates;
                 }
+                continue;
+            }
+
+            if (!$this->is_input_value_empty($input[$name] ?? null)) {
                 continue;
             }
 
