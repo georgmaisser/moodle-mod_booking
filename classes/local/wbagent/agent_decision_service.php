@@ -612,6 +612,15 @@ class agent_decision_service {
         $readonlyexecution = null;
 
         if (!empty($readonlycommands)) {
+            $readonlycommands = $this->enrich_readonly_commands_with_planner(
+                $readonlycommands,
+                $threadid,
+                $cmid,
+                $userid
+            );
+        }
+
+        if (!empty($readonlycommands)) {
             $readonlyexecution = $this->execute_readonly_commands(
                 $readonlycommands,
                 $threadid,
@@ -709,6 +718,61 @@ class agent_decision_service {
         }
 
         return '';
+    }
+
+    /**
+     * Enrich readonly command inputs using planner_service when the task schema allows it.
+     *
+     * This keeps execution generic and capability-driven: planner_service itself decides
+     * whether enrichment is applicable based on schema capabilities/properties.
+     *
+     * @param array $commands
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @return array
+     */
+    private function enrich_readonly_commands_with_planner(
+        array $commands,
+        int $threadid,
+        int $cmid,
+        int $userid
+    ): array {
+        $usermessage = trim($this->get_last_user_message($threadid));
+        if ($usermessage === '' || $userid <= 0) {
+            return $commands;
+        }
+
+        $planner = new planner_service($this->store);
+        foreach ($commands as &$command) {
+            if (!is_array($command)) {
+                continue;
+            }
+
+            $taskname = trim((string)($command['task'] ?? ''));
+            if ($taskname === '' || !$this->registry->is_read_only_task($taskname)) {
+                continue;
+            }
+
+            $task = $this->registry->get_task($taskname);
+            if ($task === null) {
+                continue;
+            }
+
+            $input = is_array($command['input'] ?? null) ? (array)$command['input'] : [];
+            $command['input'] = $planner->enrich_recovery_input(
+                $taskname,
+                $task->get_schema(),
+                $usermessage,
+                $input,
+                $threadid,
+                $cmid,
+                $userid
+            );
+        }
+        unset($command);
+
+        return $commands;
     }
 
     /**

@@ -292,6 +292,9 @@ class agent_runtime {
                         $this->build_loop_repeat_summary($results, $currentmessage)
                 );
                 if (is_array($final)) {
+                    // Even for deterministic early-finalize, run one synthesis step so
+                    // the final user-facing response is composed via final_synthesis.
+                    $final = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $final);
                     $final = $this->attach_loop_results($final, $state);
                     $this->messagepersistence->persist_assistant_message($threadid, $final);
                     return $final;
