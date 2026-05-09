@@ -248,4 +248,58 @@ final class agent_architecture_contract_test extends booking_advanced_testcase {
         $this->assertContains('booking.search_options', (array)($result['attempted_tasks'] ?? []));
         $this->assertNotEmpty((array)($result['results'] ?? []));
     }
+
+    /**
+     * UNKNOWN_TYPE response normalization should trigger recovery enrichment, not leak as final response.
+     *
+     * Regression test for the Loose End where UNKNOWN_TYPE was not routed to recovery enrichment.
+     * An unknown response_type from the LLM should be normalized to UNKNOWN_TYPE, then treated
+     * as a dead-end requiring recovery (not passed through as-is to the caller).
+     */
+    public function test_unknown_response_type_triggers_recovery_enrichment_contract(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course();
+        $booking = $this->getDataGenerator()->create_module('booking', [
+            'course' => $course->id,
+            'name' => 'Unknown Type Contract Booking',
+        ]);
+
+        $registry = task_registry::make_default();
+        $store = new conversation_store();
+        $authz = new authorization_service();
+
+        // Mock an orchestrator result with an unknown response_type.
+        // This simulates the LLM returning an invalid response_type that gets normalized to UNKNOWN_TYPE.
+        $unknowntyperesult = [
+            'response_type' => 'UNKNOWN_TYPE',
+            'lang' => 'en',
+            'message' => 'This should be treated as a dead-end.',
+            'used_triggers' => [],
+            'commands' => [],
+            'ambiguities' => [],
+            'ambiguity_options' => [],
+            'errors' => [],
+            'attempted_tasks' => [],
+            'issue_codes' => [],
+            'next_step_intent' => '',
+        ];
+
+        $mockorchestrator = $this->getMockBuilder(orchestrator::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $mockorchestrator->method('process')->willReturn($unknowntyperesult);
+
+        $runtime = new agent_runtime($registry, $mockorchestrator, $store, $authz);
+        $thread = $store->get_or_create_thread(11, (int)$booking->cmid, (int)$booking->id);
+        $threadid = (int)$thread->id;
+        $store->add_message($threadid, 'user', 'show me something');
+
+        $result = $runtime->run($threadid, (int)$booking->cmid, 11);
+
+        // The result should NOT be 'UNKNOWN_TYPE' in the final output.
+        // It should either be handled by recovery enrichment or converted to clarification.
+        $this->assertNotSame('UNKNOWN_TYPE', (string)($result['response_type'] ?? ''), 'UNKNOWN_TYPE should not leak as final response_type; recovery enrichment should have handled it');
+    }
 }

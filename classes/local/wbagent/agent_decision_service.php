@@ -66,6 +66,9 @@ class agent_decision_service {
     /** Response type constant used in routing decisions. */
     private const RESPONSE_TYPE_ERROR = 'error';
 
+    /** Response type constant for unknown/invalid responses from normalization. */
+    private const RESPONSE_TYPE_UNKNOWN = 'UNKNOWN_TYPE';
+
     /** Issue codes indicating a duplicate-title confirmation context. */
     public const DUPLICATE_TITLE_ISSUE_CODES = [
         'DUPLICATE_TITLE_CONFIRM_REQUIRED',
@@ -324,7 +327,7 @@ class agent_decision_service {
      */
     private function should_attempt_recovery(array $result): bool {
         $responsetype = (string)($result['response_type'] ?? '');
-        if (!in_array($responsetype, [self::RESPONSE_TYPE_ERROR, self::RESPONSE_TYPE_CLARIFICATION], true)) {
+        if (!in_array($responsetype, [self::RESPONSE_TYPE_ERROR, self::RESPONSE_TYPE_CLARIFICATION, self::RESPONSE_TYPE_UNKNOWN], true)) {
             return false;
         }
 
