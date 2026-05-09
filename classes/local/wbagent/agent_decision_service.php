@@ -139,7 +139,8 @@ class agent_decision_service {
         int $cmid,
         int $userid,
         string $outputlang,
-        int $previewoptionid
+        int $previewoptionid,
+        bool $hasobservationscontext = false
     ): array {
         // 1. Preview shortcut: if the user asked for a preview and one is available.
         if ($previewoptionid > 0 && $this->result_has_trigger($result, 'core.is_preview_request')) {
@@ -211,7 +212,26 @@ class agent_decision_service {
         // trigger/schema-based readonly recovery BEFORE command routing so it can
         // execute in-process and does not leak as task_call to the frontend contract.
         $usermessage = $this->get_last_user_message($threadid);
-        if ($this->should_attempt_recovery($result)) {
+        $lookupintent = (
+            $this->result_has_trigger($result, 'core.is_lookup_request')
+            || $this->looks_like_lookup_request($usermessage, $result)
+        );
+        $iscontractincompleteintentonly = $this->is_contract_incomplete_intent_only(
+            $result,
+            $lookupintent,
+            $hasobservationscontext
+        );
+
+        if ($iscontractincompleteintentonly) {
+            $result['issue_codes'] = array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                ['CONTRACT_INCOMPLETE_INTENT_ONLY']
+            )));
+        }
+
+        if ($this->should_attempt_recovery($result, $hasobservationscontext)) {
+            $hadcommandsbefore = !empty((array)($result['commands'] ?? []));
+            $hadresultsbefore = !empty((array)($result['results'] ?? []));
             $result = $this->recoverysvc->promote(
                 $result,
                 $usermessage,
@@ -232,6 +252,18 @@ class agent_decision_service {
                 fn(string $taskname, bool $islookup): int => $this->score_generic_recovery_task($taskname, $islookup),
                 fn(int $thread): string => $this->extract_option_context_query_from_thread($thread)
             );
+
+            if (
+                !$hadcommandsbefore
+                && !$hadresultsbefore
+                && (string)($result['response_type'] ?? '') === self::RESPONSE_TYPE_TASK_CALL
+                && !empty((array)($result['commands'] ?? []))
+            ) {
+                $result['issue_codes'] = array_values(array_unique(array_merge(
+                    (array)($result['issue_codes'] ?? []),
+                    ['READONLY_RECOVERY_FORCED']
+                )));
+            }
         }
 
         // 6. Harden: if the LLM incorrectly used task_call for a mutating command, promote.
@@ -325,9 +357,15 @@ class agent_decision_service {
      * @param array $result
      * @return bool
      */
-    private function should_attempt_recovery(array $result): bool {
+    private function should_attempt_recovery(array $result, bool $hasobservationscontext = false): bool {
         $responsetype = (string)($result['response_type'] ?? '');
-        if (!in_array($responsetype, [self::RESPONSE_TYPE_ERROR, self::RESPONSE_TYPE_CLARIFICATION, self::RESPONSE_TYPE_UNKNOWN], true)) {
+        if (
+            !in_array(
+                $responsetype,
+                [self::RESPONSE_TYPE_ERROR, self::RESPONSE_TYPE_CLARIFICATION, self::RESPONSE_TYPE_UNKNOWN],
+                true
+            )
+        ) {
             return false;
         }
 
@@ -335,7 +373,26 @@ class agent_decision_service {
             return false;
         }
 
-        return empty((array)($result['results'] ?? []));
+        if (!empty((array)($result['results'] ?? []))) {
+            return false;
+        }
+
+        // Once observations already exist in the loop context, defer to the synthesis
+        // stage rather than forcing another recovery lookup step.
+        if ($hasobservationscontext) {
+            return false;
+        }
+
+        // Do not attempt recovery when the orchestrator already produced a substantive
+        // clarification message. A real answer is present — let the synthesis step refine
+        // it rather than firing an unnecessary second lookup task.
+        if ($responsetype === self::RESPONSE_TYPE_CLARIFICATION) {
+            if ($this->is_substantive_clarification_message((string)($result['message'] ?? ''), $result)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -1923,7 +1980,7 @@ class agent_decision_service {
         }
 
         // Heuristic 2: Message is a question (ends with ?) and contains how-to keywords.
-        if (preg_match('/ \? *$/', $normalized)) {
+        if (preg_match('/\? *$/', $normalized)) {
             if (preg_match('/\b(wie|how|kann|can|soll|should|wo|where|was|what|warum|why|wann|when)\b/', $normalized)) {
                 return true;
             }
@@ -1933,6 +1990,131 @@ class agent_decision_service {
         $longpattern = '/(erlauben|allow|aktivieren|enable|deaktivieren|disable|einschränken|restrict'
             . '|beschränken)/';
         if (preg_match($longpattern, $normalized)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Detect incomplete planner contract payloads that carry intent text but no executable semantics.
+     *
+     * @param array $result
+     * @param bool $lookupintent
+     * @param bool $hasobservationscontext
+     * @return bool
+     */
+    private function is_contract_incomplete_intent_only(
+        array $result,
+        bool $lookupintent,
+        bool $hasobservationscontext
+    ): bool {
+        if ($hasobservationscontext) {
+            return false;
+        }
+
+        if (!$lookupintent) {
+            return false;
+        }
+
+        if (!empty((array)($result['commands'] ?? [])) || !empty((array)($result['results'] ?? []))) {
+            return false;
+        }
+
+        if ((string)($result['response_type'] ?? '') !== self::RESPONSE_TYPE_CLARIFICATION) {
+            return false;
+        }
+
+        return $this->is_non_substantive_clarification_message((string)($result['message'] ?? ''), $result);
+    }
+
+    /**
+     * Determine whether a clarification contains enough answer substance to avoid recovery.
+     *
+     * @param string $message
+     * @param array $result
+     * @return bool
+     */
+    private function is_substantive_clarification_message(string $message, array $result): bool {
+        return !$this->is_non_substantive_clarification_message($message, $result);
+    }
+
+    /**
+     * Detect progress-only clarifications (intent narration without concrete answer content).
+     *
+     * @param string $message
+     * @param array $result
+     * @return bool
+     */
+    private function is_non_substantive_clarification_message(string $message, array $result): bool {
+        $message = trim($message);
+        if ($message === '') {
+            return true;
+        }
+
+        if (!empty((array)($result['results'] ?? [])) || !empty((array)($result['commands'] ?? []))) {
+            return false;
+        }
+
+        // Concrete evidence markers: links or structured multi-line explanations.
+        if (
+            str_contains($message, '](')
+            || str_contains(core_text::strtolower($message), 'http://')
+            || str_contains(core_text::strtolower($message), 'https://')
+        ) {
+            return false;
+        }
+        if (str_contains($message, "\n") && strlen($message) >= 120) {
+            return false;
+        }
+
+        $normalized = core_text::strtolower((string)preg_replace('/\s+/', ' ', $message));
+        $intentmarkers = [
+            'ich werde',
+            'ich suche',
+            'ich schaue',
+            'ich rufe',
+            'ich pruefe',
+            'ich prüfe',
+            'i will',
+            'i am going to',
+            'let me',
+            'i will now',
+            'i am checking',
+            'i am searching',
+        ];
+        $hasintentmarker = false;
+        foreach ($intentmarkers as $marker) {
+            if (str_contains($normalized, $marker)) {
+                $hasintentmarker = true;
+                break;
+            }
+        }
+
+        $lookupmarkers = [
+            'dokumentation',
+            'documentation',
+            'benachrichtigung',
+            'notification',
+            'suche',
+            'search',
+            'nachsehen',
+            'look up',
+        ];
+        $haslookupmarker = false;
+        foreach ($lookupmarkers as $marker) {
+            if (str_contains($normalized, $marker)) {
+                $haslookupmarker = true;
+                break;
+            }
+        }
+
+        if ($hasintentmarker && $haslookupmarker) {
+            return true;
+        }
+
+        // Very short single-line clarifications are usually progress text, not a final answer.
+        if (!str_contains($message, "\n") && strlen($message) < 90) {
             return true;
         }
 

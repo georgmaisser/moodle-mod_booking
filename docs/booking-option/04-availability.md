@@ -2,6 +2,8 @@
 
 # Availability Conditions
 
+> **Primary page** for: temporal booking restrictions (opening time, closing time, booking window), access restrictions. For automated emails and reminders, see [Booking Rules](../booking_rules/README.md).
+
 The **Availability conditions** section (header: *Availability conditions*) controls **who** can book the option and **when** bookings are accepted. It is one of the most powerful sections in the booking option form.
 
 ---

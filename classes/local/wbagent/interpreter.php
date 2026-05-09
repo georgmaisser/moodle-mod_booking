@@ -395,6 +395,24 @@ class interpreter implements agent_interpreter {
             }
         }
 
+        // Fallback: LLM produced a message without any task-call signal.
+        // Heal it to clarification so the synthesis path can proceed rather than
+        // triggering an unnecessary recovery loop iteration.
+        $fallbackmessage = $this->safe_string($parsed['message'] ?? '');
+        if ($fallbackmessage !== '') {
+            return [
+                'response_type'     => 'clarification',
+                'lang'              => $this->safe_string($parsed['lang'] ?? ''),
+                'message'           => $this->strip_command_prefix($fallbackmessage),
+                'used_triggers'     => $this->extract_used_triggers($parsed),
+                'commands'          => [],
+                'ambiguities'       => [],
+                'ambiguity_options' => [],
+                'errors'            => [],
+                'issue_codes'       => ['CONTRACT_MISSING_RESPONSE_TYPE_HEALED'],
+            ];
+        }
+
         return null;
     }
 

@@ -29,6 +29,7 @@ This `docs/` directory is the central reference for administrators, teachers, an
 Important distinction for AI/explain tasks:
 - Questions about messages, reminders, notification emails, or message automation belong to [Booking rules](booking_rules/README.md).
 - [Actions after booking](actions_after_booking/README.md) (bo_actions) are not the messaging system; they run immediate post-booking actions like cancel/book/profile/REST.
+- Questions about restrictions or limitations (who can book, when bookable, booking window, time limit) belong to [Booking Conditions](booking_conditions/README.md) and [Availability](booking-option/04-availability.md). These pages take priority over Booking Rules for restriction/limitation queries.
 
 ## First Admin Workflow (click-by-click)
 

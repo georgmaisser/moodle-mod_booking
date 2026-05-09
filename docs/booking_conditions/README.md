@@ -2,6 +2,8 @@
 
 # Booking Conditions
 
+> **Primary page** for: booking restrictions, booking limitations, who can book, when users can book, booking window, time-based restrictions. For messaging and reminders, see [Booking Rules](../booking_rules/README.md).
+
 Booking conditions control **who can book** a booking option and **when**. Each booking option can have one or more conditions configured. If a condition is not met, the user sees an alert and the "Book it" button is blocked (or replaced by a warning).
 
 ---

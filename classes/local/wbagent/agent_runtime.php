@@ -294,6 +294,17 @@ class agent_runtime {
                 continue;
             }
 
+            // Planner signals "enough info" — fire one generate_text synthesis step.
+            // Only triggered when the planner returns clarification+commands=[] AND observations
+            // were accumulated (i.e. at least one tool call was executed this turn).
+            if (
+                (string)($result['response_type'] ?? '') === 'clarification'
+                && empty((array)($result['commands'] ?? []))
+                && !empty($state->get_observations())
+            ) {
+                $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
+            }
+
             // Any other response type requires user interaction or signals completion.
             if ($this->should_recover_from_missing_commands_error($result, $state)) {
                 // Self-healing retry: if the model returned a command-bearing response type
@@ -1095,11 +1106,16 @@ class agent_runtime {
         $previewoptionid = $this->resolve_preview_option_id($threadid, $cmid);
         $triggerregistry = new message_trigger_registry($this->registry);
 
-        // Plan: call the LLM once, passing any accumulated observations.
-        $steptype = empty($observations)
-            ? orchestrator::STEP_TYPE_TOOL_CALL_PARSE
-            : orchestrator::STEP_TYPE_FINAL_REASONING;
-        $result = $this->call_orchestrator_step($threadid, $cmid, $userid, $observations, $steptype);
+        // Plan: always use the compact planner (summarise_text) regardless of observation count.
+        // Final synthesis via generate_text is triggered separately in run_loop() once the planner
+        // signals completion with response_type=clarification and commands=[].
+        $result = $this->call_orchestrator_step(
+            $threadid,
+            $cmid,
+            $userid,
+            $observations,
+            orchestrator::STEP_TYPE_TOOL_CALL_PARSE
+        );
 
         $outputlang = $this->resolve_output_language($threadid, $result);
         $this->store->set_thread_metadata_value($threadid, 'last_output_lang', $outputlang);
@@ -1124,12 +1140,6 @@ class agent_runtime {
             }
         }
 
-        $this->log_trigger_normalization($threadid, $cmid, $userid, [
-            'raw_response_type' => $rawresponsetype,
-            'normalized_response_type' => $result['response_type'],
-            'used_triggers' => (array)($result['used_triggers'] ?? []),
-        ]);
-
         // Infer issue codes when the LLM returned a generic error.
         if (
             (string)($result['response_type'] ?? '') === 'error'
@@ -1142,7 +1152,15 @@ class agent_runtime {
         }
 
         // Decide: route through the confirmation / trigger / execution decision tree.
-        $result = $this->decisionsvc->process($result, $threadid, $cmid, $userid, $outputlang, $previewoptionid);
+        $result = $this->decisionsvc->process(
+            $result,
+            $threadid,
+            $cmid,
+            $userid,
+            $outputlang,
+            $previewoptionid,
+            !empty($observations)
+        );
         $result['lang'] = $outputlang;
 
         // Override message for token/subscription issues.
@@ -1220,34 +1238,6 @@ class agent_runtime {
     }
 
     /**
-     * Log trigger/response-type normalization output for deterministic routing diagnostics.
-     *
-     * @param int $threadid
-     * @param int $cmid
-     * @param int $userid
-     * @param array $payload
-     * @return void
-     */
-    private function log_trigger_normalization(int $threadid, int $cmid, int $userid, array $payload): void {
-        $request = json_encode([
-            'phase' => 'trigger_normalization',
-            'timestamp' => time(),
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $response = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        llm_debug_logger::log_exchange_always(
-            $this->store,
-            $threadid,
-            $cmid,
-            $userid,
-            'runtime.trigger_normalization',
-            is_string($request) ? $request : '{}',
-            is_string($response) ? $response : '{}',
-            true,
-            ''
-        );
-    }
-
-    /**
      * Build a clarification result asking the user whether to continue after hitting the step limit.
      *
      * Observations are stored in thread metadata (_loop_resume) by the caller before
@@ -1286,6 +1276,53 @@ class agent_runtime {
     }
 
     /**
+     * Fire a final generate_text (STEP_TYPE_FINAL_SYNTHESIS) step once the planner has signalled
+     * that all observations are sufficient to answer.
+     *
+     * generate_text receives the accumulated observations and composes the polished final answer.
+     * Falls back to the planning result's message if synthesis is malformed.
+     *
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @param agent_state $state
+     * @param array $planningresult The clarification result from the planner (used as fallback).
+     * @return array
+     */
+    private function run_synthesis_step(
+        int $threadid,
+        int $cmid,
+        int $userid,
+        agent_state $state,
+        array $planningresult
+    ): array {
+        $observations = $state->get_observations();
+        $synthesis = $this->call_orchestrator_step(
+            $threadid,
+            $cmid,
+            $userid,
+            $observations,
+            orchestrator::STEP_TYPE_FINAL_SYNTHESIS
+        );
+
+        // Coerce error-without-commands to clarification (model stayed well-formed but mistyped).
+        $synthesis = $this->normalize_final_reasoning_narration($synthesis);
+
+        if ($this->is_final_clarification_without_commands($synthesis)) {
+            $synthesislang = $this->resolve_output_language($threadid, $synthesis);
+            $synthesis['lang'] = $synthesislang;
+            $synthesis['loop_step'] = $state->step_count();
+            $synthesis['loop_max_steps'] = self::MAX_LOOP_STEPS;
+            return $synthesis;
+        }
+
+        // Synthesis failed or produced unexpected output — fall back to the planning result.
+        $planningresult['loop_step'] = $state->step_count();
+        $planningresult['loop_max_steps'] = self::MAX_LOOP_STEPS;
+        return $planningresult;
+    }
+
+    /**
      * Build final loop-repeat response by attempting one narration-only LLM step.
      *
      * The model gets a strict instruction to summarize findings without new tool calls.
@@ -1317,7 +1354,7 @@ class agent_runtime {
             $cmid,
             $userid,
             $observations,
-            orchestrator::STEP_TYPE_FINAL_REASONING
+            orchestrator::STEP_TYPE_FINAL_SYNTHESIS
         );
         $narration = $this->normalize_final_reasoning_narration($narration);
         if ($this->is_final_clarification_without_commands($narration)) {

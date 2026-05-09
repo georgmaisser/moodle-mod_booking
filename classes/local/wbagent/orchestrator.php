@@ -59,6 +59,9 @@ class orchestrator {
     /** Richer prompt profile for final narration/reasoning turns. */
     public const STEP_TYPE_FINAL_REASONING = 'final_reasoning';
 
+    /** Final synthesis turn: generate_text composes the polished answer from accumulated observations. */
+    public const STEP_TYPE_FINAL_SYNTHESIS = 'final_synthesis';
+
     /** @var task_registry */
     private task_registry $registry;
 
@@ -241,6 +244,7 @@ ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
 - If the user asks how a documented feature works or what it means, call booking.explain_docs_topic.
 - For booking.explain_docs_topic, pass the full user question as input.question.
 - Optionally add up to 2 alternative search_queries for better lexical matching.
+- search_queries MUST ALWAYS be in English, regardless of the user's language.
 - If a docs OBSERVATION says "Linked docs in this section:" and one of those
     linked docs is more relevant, call booking.explain_docs_topic again with
     input.doc_path set to that relative markdown path.
@@ -250,8 +254,10 @@ ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
 - Do not answer "I cannot help" for documented features before trying booking.explain_docs_topic.
 - For mutating intents, ask only for missing required data or return one confirmation_request.
 - If OBSERVATION blocks already contain sufficient information,
-  return response_type "clarification" with commands=[] and summarize the answer for the user.
+    MUST return response_type "clarification" with commands=[] and summarize the answer for the user.
 - Do not repeat the same read-only lookup task if an existing OBSERVATION already provides the needed answer.
+- If OBSERVATION blocks are not yet sufficient for a documented read-only question,
+    you MAY issue one follow-up booking.explain_docs_topic task_call to read a more relevant linked doc or continue the same doc.
 PROMPT;
         }
 
@@ -263,14 +269,38 @@ ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - Base your answer on the latest user message, observations, and assistant state.
 - Be concise, precise, and helpful.
 - Do not propose extra tool calls if the available context already answers the request.
+- If observations already contain sufficient information, MUST return response_type="clarification" with commands=[].
 - If information is still missing for a mutating action, ask one focused clarification question.
 - In final reasoning mode, prefer a direct clarification answer with commands=[].
+- For documented read-only questions, if observations are still insufficient, you MAY return one booking.explain_docs_topic task_call to read a more relevant linked doc or continue from line N.
 - In final reasoning mode, do NOT use response_type=confirm_pending.
 - In final reasoning mode, do NOT use response_type=error when observations already contain usable findings.
 - In final reasoning mode, do NOT promise further searching/tool calls; summarize the available findings now.
 - If documentation observations already include concrete configuration fields or labels
     (e.g. bookingopeningtime, bookable from, bookingclosingtime), answer directly and
     do NOT ask the user to reconfirm intent.
+PROMPT;
+        }
+
+        if ($actionclass === generate_text::class) {
+            return <<<'PROMPT'
+You are a booking expert that composes polished, helpful answers for the Moodle booking activity "{{bookingname}}".
+
+SYNTHESIS TASK:
+- Retrieved documentation is provided in the OBSERVATION blocks. Your job is to write a high-quality final answer.
+- Do NOT call any tools or issue task_calls.
+- Always return response_type="clarification" with commands=[].
+- LANGUAGE: Detect the language from the [USER] message and write the entire answer in that language.
+    If the user wrote in German, answer in German. If in English, in English. Match exactly.
+- QUALITY: Write a thorough, well-structured explanation - not a verbatim copy of the docs.
+    * Explain WHY each step matters, not just WHAT to do.
+    * Use headings (##) for major sections when appropriate.
+    * Use numbered lists for step-by-step instructions.
+    * Use bullet points for lists of options or features.
+    * Add a brief intro sentence and a closing note where helpful.
+- Keep all links from the observations intact and clickable.
+- Do not mention "documentation", "observations", or internal system details.
+- Do not invent steps or features not supported by the provided observations.
 PROMPT;
         }
 
@@ -454,6 +484,9 @@ PROMPT;
         if ($normalized === self::STEP_TYPE_FINAL_REASONING) {
             return self::STEP_TYPE_FINAL_REASONING;
         }
+        if ($normalized === self::STEP_TYPE_FINAL_SYNTHESIS) {
+            return self::STEP_TYPE_FINAL_SYNTHESIS;
+        }
         if ($normalized === self::STEP_TYPE_SIMPLE_RETRIEVAL) {
             return self::STEP_TYPE_SIMPLE_RETRIEVAL;
         }
@@ -469,6 +502,9 @@ PROMPT;
     private function get_initial_prompt_config_key(string $steptype): string {
         if ($steptype === self::STEP_TYPE_FINAL_REASONING) {
             return 'aiinitialprompt_final_reasoning';
+        }
+        if ($steptype === self::STEP_TYPE_FINAL_SYNTHESIS) {
+            return 'aiinitialprompt_final_synthesis';
         }
         if ($steptype === self::STEP_TYPE_SIMPLE_RETRIEVAL) {
             return 'aiinitialprompt_simple_retrieval';
@@ -546,7 +582,7 @@ PROMPT;
             ];
         }
 
-        if ($steptype === self::STEP_TYPE_FINAL_REASONING) {
+        if ($steptype === self::STEP_TYPE_FINAL_REASONING || $steptype === self::STEP_TYPE_FINAL_SYNTHESIS) {
             if ($this->is_action_available_in_context($manager, $context, generate_text::class)) {
                 return [
                     'actionclass' => generate_text::class,
@@ -651,6 +687,7 @@ PROMPT;
             self::STEP_TYPE_TOOL_CALL_PARSE => 'tcp',
             self::STEP_TYPE_SIMPLE_RETRIEVAL => 'sr',
             self::STEP_TYPE_FINAL_REASONING => 'fr',
+            self::STEP_TYPE_FINAL_SYNTHESIS => 'syn',
         ];
         $actionmap = [
             generate_text::class => 'gen',

@@ -230,7 +230,15 @@ class planner_service {
                 . "topic_hint, doc_path_candidates, retrieval_goal.\n"
                 . "- topic_hint should be a concise topic id or folder-like hint.\n"
                 . "- doc_path_candidates should contain up to 3 exact paths from docs_index.\n"
-                . "- retrieval_goal should be one of: configure_howto, concept_explanation, troubleshooting, api_reference.\n\n"
+                . "- retrieval_goal should be one of: configure_howto, concept_explanation, troubleshooting, api_reference.\n"
+                . "- search_queries MUST always be in English, regardless of the user's language.\n"
+                . "- SEMANTIC ROUTING: if the question is about restrictions, limitations, who can book, "
+                . "when bookable, booking window, or time limit -> prefer booking_conditions/ "
+                . "and booking-option/04-availability.md above all other paths.\n"
+                . "- SEMANTIC ROUTING: if the question is about reminders, notifications, emails, "
+                . "message automation, or event triggers -> prefer booking_rules/.\n"
+                . "- For booking window / time questions, prioritise booking_conditions/booking_time.md "
+                . "above all other paths.\n\n"
                 . "docs_index:\n"
                 . implode("\n", $docsindexlines);
         }

@@ -8,6 +8,8 @@ A rule watches for a specific trigger (a date-based schedule or a Moodle event) 
 For messaging in booking, this is the authoritative system: reminders, notification emails, and message automation are handled via booking rules.
 For message-related questions, consult Booking Rules; Actions After Booking (bo_actions) is a separate post-booking action system.
 
+> **NOT this page:** If the question is about booking eligibility, booking time window, or who is allowed to book — go to [Booking Conditions](../booking_conditions/README.md) and [Availability](../booking-option/04-availability.md) instead.
+
 ---
 ## Quick setup path
 
