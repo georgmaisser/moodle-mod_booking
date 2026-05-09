@@ -57,27 +57,49 @@ class prompt_policy_builder {
     ): string {
         $policies = [];
 
-        // 1. LANGUAGE POLICY (universal, always appended).
+        // 1. RESPONSE CONTRACT POLICY (universal, always appended).
+        $policies[] = self::build_response_contract_policy();
+
+        // 2. LANGUAGE POLICY (universal, always appended).
         $policies[] = self::build_language_policy();
 
-        // 2. TRIGGER POLICY (universal, always appended).
+        // 3. TRIGGER POLICY (universal, always appended).
         $policies[] = self::build_trigger_policy($triggerjson);
 
-        // 3. STEP INTENT POLICY (universal, always appended).
+        // 4. STEP INTENT POLICY (universal, always appended).
         $policies[] = self::build_step_intent_policy();
 
-        // 4. DOCS ANSWER POLICY (universal, always appended).
+        // 5. DOCS ANSWER POLICY (universal, always appended).
         $policies[] = self::build_docs_answer_policy();
 
-        // 5. SUFFICIENCY POLICY (universal, always appended).
+        // 6. SUFFICIENCY POLICY (universal, always appended).
         $policies[] = self::build_sufficiency_policy();
 
-        // 6. FOLLOW-UP STATE POLICY (only for FINAL_REASONING).
+        // 7. FOLLOW-UP STATE POLICY (only for FINAL_REASONING).
         if ($steptype === 'final_reasoning' && !empty($assistantstateblocks)) {
             $policies[] = self::build_follow_up_state_policy();
         }
 
         return "\n\n" . implode("\n\n", $policies);
+    }
+
+    /**
+     * Build NON-OPTIONAL RESPONSE CONTRACT POLICY.
+     *
+     * @return string
+     */
+    private static function build_response_contract_policy(): string {
+        return "NON-OPTIONAL RESPONSE CONTRACT POLICY:\n"
+            . "- Return valid JSON only (no markdown code fences).\n"
+            . "- Every response MUST include a top-level field 'response_type'.\n"
+            . "- Every response MUST include a top-level string field 'message'.\n"
+            . "- Allowed response_type values: task_call, confirmation_request, confirm_pending, clarification, error.\n"
+            . "- Every response MUST include: used_triggers, next_step_intent, lang, user_lang.\n"
+            . "- user_lang MUST be the detected language of the latest user message (ISO 639-1).\n"
+            . "- lang MUST match user_lang unless the user explicitly asks for another language.\n"
+            . "- For response_type=task_call or confirmation_request, include a non-empty commands array.\n"
+            . "- For response_type=clarification, confirm_pending, or error, commands MUST be [].\n"
+            . "- In commands entries, use keys: task (string), version (integer), input (object).";
     }
 
     /**
@@ -90,6 +112,7 @@ class prompt_policy_builder {
             . "- Use the same language as the latest user message for all user-facing text in JSON fields (especially 'message').\n"
             . "- Do not switch language unless the user switches language.\n"
             . "- Return a valid ISO 639-1 value in 'lang' for the latest user-message language.\n"
+            . "- Return a valid ISO 639-1 value in 'user_lang' for the detected latest user-message language.\n"
             . "- The field 'next_step_intent' MUST be in exactly the same language as 'message' "
             . "and must align with 'lang'.\n"
             . "- If lang='cs', answer in Czech; if lang='de', answer in German; if lang='en', answer in English; etc.";

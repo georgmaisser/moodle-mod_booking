@@ -301,6 +301,7 @@ class interpreter implements agent_interpreter {
     private function normalize_task_like_response(array $parsed, string $lastusermessage = ''): ?array {
         $allowedtasks = $this->registry->get_task_names();
         $nextstepintent = $this->safe_string($parsed['next_step_intent'] ?? '');
+        $modeluserlang = $this->safe_string($parsed['user_lang'] ?? $parsed['userlang'] ?? '');
 
         $responsetype = (string)($parsed['response_type'] ?? '');
         $responsereferencedtask = $this->resolve_task_name_alias($responsetype, $allowedtasks);
@@ -400,9 +401,14 @@ class interpreter implements agent_interpreter {
         // triggering an unnecessary recovery loop iteration.
         $fallbackmessage = $this->safe_string($parsed['message'] ?? '');
         if ($fallbackmessage !== '') {
+            $modellang = $this->safe_string($parsed['lang'] ?? '');
+            if ($modellang === '' && $modeluserlang !== '') {
+                $modellang = $modeluserlang;
+            }
             return [
                 'response_type'     => 'clarification',
-                'lang'              => $this->safe_string($parsed['lang'] ?? ''),
+                'lang'              => $modellang,
+                'user_lang'         => $modeluserlang,
                 'message'           => $this->strip_command_prefix($fallbackmessage),
                 'used_triggers'     => $this->extract_used_triggers($parsed),
                 'commands'          => [],
@@ -410,6 +416,7 @@ class interpreter implements agent_interpreter {
                 'ambiguity_options' => [],
                 'errors'            => [],
                 'issue_codes'       => ['CONTRACT_MISSING_RESPONSE_TYPE_HEALED'],
+                'next_step_intent'  => $nextstepintent,
             ];
         }
 
