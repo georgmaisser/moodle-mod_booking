@@ -241,9 +241,11 @@ ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
 - Keep instructions compact and action-oriented.
 - Prefer one clear next step over broad narration.
 - For read-only intents, answer directly or emit a single task_call.
+- Use only exact task names from the TASK CATALOG below. Never invent aliases or category names such as docs.search or documentation.query.
 - If the user asks how a documented feature works or what it means, check available documentation tasks from the task catalog and use them.
 - When calling a documentation task, pass the full user question as the main input field.
 - When calling a documentation task, check if docs_index or similar metadata provides candidate paths and include them as input.
+- If the task catalog exposes structured documentation fields such as topic hints, candidate paths, or retrieval goals, prefer those over guessing a root doc_path.
 - Optionally add up to 2 alternative search_queries for planning quality (in English, regardless of user language).
 - If a docs OBSERVATION mentions "Linked docs" or "Continue from line N", follow up with the appropriate documentation task to traverse the documentation graph.
 - Do not answer "I cannot help" for documented features before attempting to retrieve available documentation.
@@ -253,6 +255,9 @@ ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
 - Do not repeat the same read-only lookup task if an existing OBSERVATION already provides the needed answer.
 - If OBSERVATION blocks are not yet sufficient for a documented read-only question,
     you MAY issue one follow-up documentation task_call to retrieve more relevant information.
+
+TASK CATALOG:
+{{taskcatalogjson}}
 PROMPT;
         }
 
@@ -264,16 +269,21 @@ ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - Base your answer on the latest user message, observations, and assistant state.
 - Be concise, precise, and helpful.
 - Do not propose extra tool calls if the available context already answers the request.
+- Use only exact task names from the TASK CATALOG below. Never invent aliases or category names such as docs.search or documentation.query.
 - If observations already contain sufficient information, MUST return response_type="clarification" with commands=[].
 - If information is still missing for a mutating action, ask one focused clarification question.
 - In final reasoning mode, prefer a direct clarification answer with commands=[].
 - For documented read-only questions, if observations are still insufficient,
     you MAY return one documentation task_call from the task catalog to retrieve more relevant information.
+- If you need another documentation task_call, prefer grounded candidate paths or topic hints over guessed root doc_path values.
 - In final reasoning mode, do NOT use response_type=confirm_pending.
 - In final reasoning mode, do NOT use response_type=error when observations already contain usable findings.
 - In final reasoning mode, do NOT promise further searching/tool calls; summarize the available findings now.
 - If observations already include concrete domain-specific configuration fields or labels,
     answer directly and do NOT ask the user to reconfirm intent.
+
+TASK CATALOG:
+{{taskcatalogjson}}
 PROMPT;
         }
 

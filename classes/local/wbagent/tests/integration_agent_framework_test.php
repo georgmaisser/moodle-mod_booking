@@ -179,6 +179,16 @@ class integration_agent_framework_test extends TestCase {
             $summariseprompt,
             'Action prompt should use generic term "documentation task"'
         );
+        $this->assertStringContainsString(
+            '{{taskcatalogjson}}',
+            $summariseprompt,
+            'Action prompt should embed the task catalog placeholder'
+        );
+        $this->assertStringContainsString(
+            'Never invent aliases or category names such as docs.search or documentation.query',
+            $summariseprompt,
+            'Action prompt should explicitly forbid invented task aliases'
+        );
 
         // Test explain_text action prompt.
         $explainprompt = $method->invoke(null, \core_ai\aiactions\explain_text::class);
@@ -186,6 +196,11 @@ class integration_agent_framework_test extends TestCase {
             'booking.',
             $explainprompt,
             'Explain prompt should not hardcode booking-specific names'
+        );
+        $this->assertStringContainsString(
+            '{{taskcatalogjson}}',
+            $explainprompt,
+            'Explain prompt should embed the task catalog placeholder'
         );
     }
 

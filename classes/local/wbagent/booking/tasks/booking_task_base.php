@@ -90,7 +90,16 @@ abstract class booking_task_base extends base_task {
             'anchor_fields' => [],
         ],
         'booking.explain_docs_topic' => [
-            'input_fields_for_prompt' => ['question', 'search_queries', 'doc_path', 'line_start', 'line_count'],
+            'input_fields_for_prompt' => [
+                'question',
+                'search_queries',
+                'topic_hint',
+                'doc_path_candidates',
+                'retrieval_goal',
+                'doc_path',
+                'line_start',
+                'line_count',
+            ],
             'anchor_fields' => [],
         ],
         'booking.diagnose_booking_issue' => [

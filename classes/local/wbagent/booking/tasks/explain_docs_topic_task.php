@@ -223,7 +223,8 @@ class explain_docs_topic_task extends booking_task_base implements task_trigger_
         $directdoc = null;
 
         // Deterministic path mode: direct doc_path has highest priority.
-        if ($docpath !== '') {
+        // Ignore ungrounded root doc placeholders so semantic retrieval can choose better docs.
+        if ($this->should_use_direct_doc_path($docpath, $docpathcandidates, $linestart)) {
             $directdoc = $service->read_doc_by_path($docpath, $linestart, $effectivelinecount);
             if ($directdoc !== null) {
                 return $this->build_direct_doc_result(
@@ -452,6 +453,37 @@ class explain_docs_topic_task extends booking_task_base implements task_trigger_
             . '|bookable\s+from|bookingopeningtime|ab\s+einem\s+zeitpunkt)/u',
             $normalized
         );
+    }
+
+    /**
+     * Decide whether a provided doc_path should be used as deterministic direct path.
+     *
+     * Prevents weak placeholders like root README.md from bypassing semantic routing
+     * when the planner did not provide grounded candidates.
+     *
+     * @param string $docpath
+     * @param array $docpathcandidates
+     * @param int $linestart
+     * @return bool
+     */
+    private function should_use_direct_doc_path(string $docpath, array $docpathcandidates, int $linestart): bool {
+        $path = trim($docpath);
+        if ($path === '') {
+            return false;
+        }
+
+        // Allow explicit continuation requests on already selected docs.
+        if ($linestart > 1) {
+            return true;
+        }
+
+        $normalizedpath = strtolower($path);
+        $isrootreadme = $normalizedpath === 'readme.md' || $normalizedpath === '/readme.md';
+        if ($isrootreadme && empty($docpathcandidates)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

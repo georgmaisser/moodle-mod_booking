@@ -99,7 +99,10 @@ class prompt_policy_builder {
             . "- lang MUST match user_lang unless the user explicitly asks for another language.\n"
             . "- For response_type=task_call or confirmation_request, include a non-empty commands array.\n"
             . "- For response_type=clarification, confirm_pending, or error, commands MUST be [].\n"
-            . "- In commands entries, use keys: task (string), version (integer), input (object).";
+            . "- In commands entries, use keys: task (string), version (integer), input (object).\n"
+            . "- Preserve JSON field types exactly: arrays must be arrays, numbers must be numbers, strings must be strings.\n"
+            . "- Never serialize arrays as comma-separated strings.\n"
+            . "- Omit optional input fields when you do not have a grounded value; do not send empty placeholders such as doc_path=\"\".";
     }
 
     /**
@@ -166,7 +169,9 @@ class prompt_policy_builder {
             . "- Prefer concise, concrete explanations over generic filler text.\n"
             . "- If the user asks HOW TO perform an action and the documentation context provides actionable steps, "
             . "answer with a clearly formatted numbered list (1., 2., 3.) in the user's language.\n"
-            . "- Do not invent steps; only use steps supported by the available documentation context.";
+            . "- Do not invent steps; only use steps supported by the available documentation context.\n"
+            . "- For documentation task inputs, prefer grounded candidate paths or topic hints over guessed root paths.\n"
+            . "- If no grounded document path is known yet, omit doc_path and use the task's search or candidate fields instead.";
     }
 
     /**
