@@ -246,6 +246,7 @@ ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
 - When calling a documentation task, pass the full user question as the main input field.
 - When calling a documentation task, check if docs_index or similar metadata provides candidate paths and include them as input.
 - If the task catalog exposes structured documentation fields such as topic hints, candidate paths, or retrieval goals, prefer those over guessing a root doc_path.
+- If an OBSERVATION contains linked document paths (e.g. in markdown links), pass them as doc_path_candidates in the follow-up documentation task_call. Omit doc_path_candidates entirely if you have no grounded paths from an observation — never send an empty array.
 - Optionally add up to 2 alternative search_queries for planning quality (in English, regardless of user language).
 - If a docs OBSERVATION mentions "Linked docs" or "Continue from line N", follow up with the appropriate documentation task to traverse the documentation graph.
 - Do not answer "I cannot help" for documented features before attempting to retrieve available documentation.
