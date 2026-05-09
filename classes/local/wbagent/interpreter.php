@@ -624,6 +624,7 @@ class interpreter implements agent_interpreter {
      */
     private function validate_commands(array $commands, int $cmid, int $userid): array {
         $validated = [];
+        $seencommandsigs = [];
         $errors = [];
         $ambiguities = [];
         $ambiguityoptions = [];
@@ -697,7 +698,13 @@ class interpreter implements agent_interpreter {
                 }
             }
 
-            // Stage 7: Emit structurally-valid command.
+            // Stage 7: Deduplicate identical commands (same task + input) and emit.
+            $commandsig = $taskname . '|' . json_encode($input, JSON_UNESCAPED_UNICODE);
+            if (isset($seencommandsigs[$commandsig])) {
+                continue;
+            }
+            $seencommandsigs[$commandsig] = true;
+
             $validated[] = [
                 'task'    => $taskname,
                 'version' => $cmd['version'] ?? 1,
@@ -805,7 +812,22 @@ class interpreter implements agent_interpreter {
      * @return array
      */
     private function canonicalize_command_input(string $taskname, array $input): array {
-        return $this->slotbookingnormalizer->normalize($taskname, $input);
+        $input = $this->slotbookingnormalizer->normalize($taskname, $input);
+
+        // Normalize search_queries: LLMs sometimes serialize arrays as comma-separated strings.
+        if (isset($input['search_queries']) && is_string($input['search_queries'])) {
+            $parts = array_values(array_filter(array_map('trim', explode(',', $input['search_queries']))));
+            $input['search_queries'] = $parts;
+        }
+
+        // Remove empty arrays that LLMs send as placeholders (e.g. doc_path_candidates: []).
+        foreach ($input as $key => $value) {
+            if (is_array($value) && count($value) === 0) {
+                unset($input[$key]);
+            }
+        }
+
+        return $input;
     }
 
     /**
