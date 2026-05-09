@@ -296,6 +296,11 @@ SYNTHESIS TASK:
 - Retrieved information is provided in the OBSERVATION blocks. Your job is to write a high-quality final answer.
 - Do NOT call any tools or issue task_calls.
 - Always return response_type="clarification" with commands=[].
+- OUTPUT FORMAT IS STRICT: return exactly one JSON object and nothing else.
+- The first non-whitespace character MUST be "{" and the last non-whitespace character MUST be "}".
+- Never output markdown, code fences, headings, or prose outside JSON.
+- Put the complete user-facing explanation only into the JSON field "message".
+- Required top-level keys: response_type, message, used_triggers, next_step_intent, lang, user_lang, commands.
 - LANGUAGE: Detect the language from the [USER] message and write the entire answer in that language.
     If the user wrote in German, answer in German. If in English, in English. Match exactly.
 - QUALITY: Write a thorough, well-structured explanation - not a verbatim copy of observations.
