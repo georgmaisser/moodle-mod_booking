@@ -29,7 +29,7 @@ use mod_booking\local\wbagent\task_preflight_result;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class update_option_task extends base_booking_task implements task_trigger_provider_interface {
+class update_option_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'booking.update_option';
 

@@ -27,7 +27,7 @@ use mod_booking\local\wbagent\interfaces\task_trigger_provider_interface;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class search_options_task extends base_booking_task implements task_trigger_provider_interface {
+class search_options_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'booking.search_options';
 
@@ -53,7 +53,7 @@ class search_options_task extends base_booking_task implements task_trigger_prov
      * @return array
      */
     public function get_schema(): array {
-        return [
+        $schema = [
             'version' => 1,
             'description' => 'Search booking options via the existing booking table fulltext/filter pipeline.',
             'readonly' => $this->is_read_only(),
@@ -83,6 +83,8 @@ class search_options_task extends base_booking_task implements task_trigger_prov
                 ],
             ],
         ];
+
+        return $this->enrich_schema_with_prompt_meta($schema);
     }
 
     /**

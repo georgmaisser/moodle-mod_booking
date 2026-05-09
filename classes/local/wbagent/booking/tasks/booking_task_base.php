@@ -28,12 +28,84 @@ use mod_booking\local\wbagent\task_preflight_result;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-abstract class base_booking_task extends base_task {
+abstract class booking_task_base extends base_task {
     /** @var booking_task_support|null */
     private static ?booking_task_support $sharedsupport = null;
 
     /** @var booking_task_support */
     protected booking_task_support $support;
+
+    /**
+     * Prompt metadata map for all booking tasks.
+     *
+     * Maps task names to their input_fields_for_prompt and anchor_fields.
+     * This allows task_registry to use these fields for prompt generation
+     * instead of relying on hardcoded fallback logic.
+     *
+     * @var array<string,array<string,array<int,string>>>
+     */
+    protected static array $prompt_meta_map = [
+        'booking.create_option' => [
+            'input_fields_for_prompt' => ['text', 'optiontype', 'optiondates', 'maxanswers'],
+            'anchor_fields' => ['option'],
+        ],
+        'booking.create_user' => [
+            'input_fields_for_prompt' => ['firstname', 'lastname', 'email'],
+            'anchor_fields' => ['user'],
+        ],
+        'booking.update_option' => [
+            'input_fields_for_prompt' => ['optionquery', 'optionid', 'text', 'optiondates'],
+            'anchor_fields' => ['option'],
+        ],
+        'booking.bulk_update_options' => [
+            'input_fields_for_prompt' => ['optionquery', 'optionids', 'changes'],
+            'anchor_fields' => ['option'],
+        ],
+        'booking.search_options' => [
+            'input_fields_for_prompt' => ['query'],
+            'anchor_fields' => [],
+        ],
+        'booking.search_users' => [
+            'input_fields_for_prompt' => ['query'],
+            'anchor_fields' => [],
+        ],
+        'booking.search_courses' => [
+            'input_fields_for_prompt' => ['query'],
+            'anchor_fields' => [],
+        ],
+        'booking.add_price_category' => [
+            'input_fields_for_prompt' => ['name'],
+            'anchor_fields' => [],
+        ],
+        'booking.list_option_properties' => [
+            'input_fields_for_prompt' => ['scope'],
+            'anchor_fields' => [],
+        ],
+        'booking.list_actions' => [
+            'input_fields_for_prompt' => ['scope'],
+            'anchor_fields' => [],
+        ],
+        'booking.get_current_user' => [
+            'input_fields_for_prompt' => [],
+            'anchor_fields' => [],
+        ],
+        'booking.explain_docs_topic' => [
+            'input_fields_for_prompt' => ['question', 'search_queries', 'doc_path', 'line_start', 'line_count'],
+            'anchor_fields' => [],
+        ],
+        'booking.diagnose_booking_issue' => [
+            'input_fields_for_prompt' => ['question', 'optionquery', 'optionid', 'userquery'],
+            'anchor_fields' => ['option', 'user'],
+        ],
+        'booking.diagnose_cancellation_issue' => [
+            'input_fields_for_prompt' => ['question', 'optionquery', 'optionid', 'userquery'],
+            'anchor_fields' => ['option', 'user'],
+        ],
+        'booking.book_users' => [
+            'input_fields_for_prompt' => ['optionquery', 'optionid', 'userquery', 'userids'],
+            'anchor_fields' => ['option', 'user'],
+        ],
+    ];
 
     /**
      * Constructor.
@@ -67,6 +139,37 @@ abstract class base_booking_task extends base_task {
             'readonly' => $this->is_read_only(),
             'properties' => [],
         ];
+    }
+
+    /**
+     * Optionally enrich a schema with prompt_meta if declared in $prompt_meta_map.
+     *
+     * Subclasses can call this helper at the end of get_schema() to automatically
+     * inject input_fields_for_prompt and anchor_fields without manual duplication:
+     *
+     *   public function get_schema(): array {
+     *       $schema = [ ... ];
+     *       return $this->enrich_schema_with_prompt_meta($schema);
+     *   }
+     *
+     * If the task is not in $prompt_meta_map, returns schema unchanged.
+     * If schema already has prompt_meta, does not override it.
+     *
+     * @param  array $schema
+     * @return array Enriched schema (or unchanged if no metadata found).
+     */
+    protected function enrich_schema_with_prompt_meta(array $schema): array {
+        if (!empty($schema['prompt_meta'])) {
+            return $schema;
+        }
+
+        $taskname = $this->get_name();
+        if (!isset(self::$prompt_meta_map[$taskname])) {
+            return $schema;
+        }
+
+        $schema['prompt_meta'] = self::$prompt_meta_map[$taskname];
+        return $schema;
     }
 
     /**

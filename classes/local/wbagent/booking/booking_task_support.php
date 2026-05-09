@@ -28,7 +28,7 @@ use core_component;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\interfaces\task_interface;
 use mod_booking\local\wbagent\booking\tasks\add_price_category_task;
-use mod_booking\local\wbagent\booking\tasks\base_booking_task;
+use mod_booking\local\wbagent\booking\tasks\booking_task_base;
 use mod_booking\local\wbagent\booking\tasks\create_option_task;
 use mod_booking\local\wbagent\booking\tasks\create_user_task;
 use mod_booking\local\wbagent\booking\tasks\list_actions_task;
@@ -223,7 +223,7 @@ class booking_task_support {
         try {
             $support = new self();
             $task = $support->get_task_instances()[$taskname] ?? null;
-            if (!$task instanceof base_booking_task) {
+            if (!$task instanceof booking_task_base) {
                 return [];
             }
 

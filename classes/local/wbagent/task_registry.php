@@ -149,6 +149,9 @@ class task_registry {
     /**
      * Build compact prompt metadata for one task.
      *
+     * Attempts to extract input_fields and anchor_fields from schema['prompt_meta'].
+     * Falls back to legacy detection logic for tasks that don't declare prompt_meta.
+     *
      * @param string $taskname
      * @param task_interface $task
      * @return array<string,mixed>
@@ -156,14 +159,31 @@ class task_registry {
     private function build_prompt_contract(string $taskname, task_interface $task): array {
         $schema = (array)$task->get_schema();
         $properties = (array)($schema['properties'] ?? []);
+        $promptmeta = (array)($schema['prompt_meta'] ?? []);
+
+        // Extract input fields: prefer schema metadata, fall back to legacy detection.
+        $minimalinput = [];
+        if (!empty($promptmeta['input_fields_for_prompt']) && is_array($promptmeta['input_fields_for_prompt'])) {
+            $minimalinput = array_values(array_filter($promptmeta['input_fields_for_prompt']));
+        } else {
+            $minimalinput = $this->build_minimal_input_fields($taskname, $properties);
+        }
+
+        // Extract anchor fields: prefer schema metadata, fall back to legacy detection.
+        $anchorfields = [];
+        if (!empty($promptmeta['anchor_fields']) && is_array($promptmeta['anchor_fields'])) {
+            $anchorfields = array_values(array_filter($promptmeta['anchor_fields']));
+        } else {
+            $anchorfields = $this->extract_anchor_fields($properties);
+        }
 
         return [
             'task' => $taskname,
             'description' => trim((string)($schema['description'] ?? '')),
             'readonly' => (bool)($schema['readonly'] ?? $task->is_read_only()),
             'intent' => $this->detect_task_intent($taskname, $schema),
-            'anchors' => $this->extract_anchor_fields($properties),
-            'minimal_input' => $this->build_minimal_input_fields($taskname, $properties),
+            'anchors' => $anchorfields,
+            'minimal_input' => $minimalinput,
         ];
     }
 
@@ -216,6 +236,13 @@ class task_registry {
     /**
      * Extract anchor fields from schema properties.
      *
+     * DEPRECATED: Tasks should declare anchor_fields in schema['prompt_meta']['anchor_fields'].
+     * This method is only used as a fallback when prompt_meta is not present.
+     *
+     * Maps property names to domain concepts (option, user, course, etc.).
+     * Specific to mod_booking domain; other plugins should use prompt_meta instead.
+     *
+     * @deprecated Use schema['prompt_meta']['anchor_fields'] instead
      * @param array $properties
      * @return array<int,string>
      */
@@ -245,6 +272,12 @@ class task_registry {
     /**
      * Build a short list of the most relevant input keys for prompt routing.
      *
+     * DEPRECATED: Tasks should declare input_fields_for_prompt in schema['prompt_meta']['input_fields_for_prompt'].
+     * This method is only used as a fallback when prompt_meta is not present.
+     *
+     * Specific to mod_booking; other plugins should use prompt_meta instead.
+     *
+     * @deprecated Use schema['prompt_meta']['input_fields_for_prompt'] instead
      * @param string $taskname
      * @param array $properties
      * @return array<int,string>

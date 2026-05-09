@@ -28,6 +28,7 @@ namespace mod_booking\local\wbagent;
 
 use core_text;
 use mod_booking\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\interfaces\issue_code_provider_interface;
 
 /**
  * Routing and decision layer for the agent runtime.
@@ -69,13 +70,13 @@ class agent_decision_service {
     /** Response type constant for unknown/invalid responses from normalization. */
     private const RESPONSE_TYPE_UNKNOWN = 'UNKNOWN_TYPE';
 
-    /** Issue codes indicating a duplicate-title confirmation context. */
+    /** @deprecated Use issue_code_provider::get_duplicate_confirmation_issue_codes() instead. */
     public const DUPLICATE_TITLE_ISSUE_CODES = [
         'DUPLICATE_TITLE_CONFIRM_REQUIRED',
         'DUPLICATE_TITLE_MULTI_CONFIRM_REQUIRED',
     ];
 
-    /** Issue codes that may remain confirmation-gated despite pre-validation errors. */
+    /** @deprecated Use issue_code_provider::get_prevalidation_confirmable_issue_codes() instead. */
     public const PREVALIDATION_CONFIRMABLE_ISSUE_CODES = [
         'DUPLICATE_TITLE_CONFIRM_REQUIRED',
         'DUPLICATE_TITLE_MULTI_CONFIRM_REQUIRED',
@@ -95,24 +96,30 @@ class agent_decision_service {
     /** @var authorization_service */
     private authorization_service $authz;
 
+    /** @var issue_code_provider_interface */
+    private issue_code_provider_interface $issuecodeprovider;
+
     /** @var recovery_enrichment_service */
     private recovery_enrichment_service $recoverysvc;
 
     /**
      * Constructor.
      *
-     * @param task_registry         $registry
-     * @param conversation_store    $store
-     * @param authorization_service $authz
+     * @param task_registry                   $registry
+     * @param conversation_store              $store
+     * @param authorization_service          $authz
+     * @param issue_code_provider_interface   $issuecodeprovider
      */
     public function __construct(
         task_registry $registry,
         conversation_store $store,
-        authorization_service $authz
+        authorization_service $authz,
+        issue_code_provider_interface $issuecodeprovider = null
     ) {
         $this->registry = $registry;
         $this->store    = $store;
         $this->authz    = $authz;
+        $this->issuecodeprovider = $issuecodeprovider ?? new booking_issue_code_provider();
         $this->recoverysvc = new recovery_enrichment_service($registry);
     }
 
@@ -1456,7 +1463,8 @@ class agent_decision_service {
             static fn($code): string => trim(core_text::strtoupper((string)$code)),
             $issuecodes
         );
-        return !empty(array_intersect(self::PREVALIDATION_CONFIRMABLE_ISSUE_CODES, $normalized));
+        $confirmablecodes = $this->issuecodeprovider->get_prevalidation_confirmable_issue_codes();
+        return !empty(array_intersect($confirmablecodes, $normalized));
     }
 
     // -------------------------------------------------------------------------
@@ -1515,7 +1523,8 @@ class agent_decision_service {
                 static fn($code): string => strtoupper(trim((string)$code)),
                 $issuecodes
             )));
-            if (!empty(array_intersect(self::DUPLICATE_TITLE_ISSUE_CODES, $normalizedcodes))) {
+            $duplicatecodeprovider = $this->issuecodeprovider->get_duplicate_confirmation_issue_codes();
+            if (!empty(array_intersect($duplicatecodeprovider, $normalizedcodes))) {
                 return true;
             }
         }

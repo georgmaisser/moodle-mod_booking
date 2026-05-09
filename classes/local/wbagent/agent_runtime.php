@@ -28,6 +28,7 @@ namespace mod_booking\local\wbagent;
 
 use core_text;
 use mod_booking\local\wbagent\agent_state;
+use mod_booking\local\wbagent\interfaces\issue_code_provider_interface;
 
 /**
  * Owns the complete agent execution loop: plan → execute → observe → decide.
@@ -56,13 +57,13 @@ class agent_runtime {
     /** Maximum agent loop steps before bailing out. */
     public const MAX_LOOP_STEPS = 6;
 
-    /** Issue codes indicating a duplicate-title confirmation context. */
+    /** @deprecated Use issue_code_provider::get_duplicate_confirmation_issue_codes() instead. */
     public const DUPLICATE_TITLE_ISSUE_CODES = [
         'DUPLICATE_TITLE_CONFIRM_REQUIRED',
         'DUPLICATE_TITLE_MULTI_CONFIRM_REQUIRED',
     ];
 
-    /** Issue codes that indicate an invalid/expired token or required subscription. */
+    /** @deprecated Use issue_code_provider::get_token_subscription_issue_codes() instead. */
     public const TOKEN_SUBSCRIPTION_ISSUE_CODES = [
         'TRIAL_TOKEN_INVALID',
         'TRIAL_TOKEN_EXPIRED',
@@ -71,7 +72,7 @@ class agent_runtime {
         'AI_PROVIDER_QUOTA_EXCEEDED',
     ];
 
-    /** Issue codes that may remain confirmation-gated despite pre-validation errors. */
+    /** @deprecated Use issue_code_provider::get_prevalidation_confirmable_issue_codes() instead. */
     public const PREVALIDATION_CONFIRMABLE_ISSUE_CODES = [
         'DUPLICATE_TITLE_CONFIRM_REQUIRED',
         'DUPLICATE_TITLE_MULTI_CONFIRM_REQUIRED',
@@ -82,11 +83,11 @@ class agent_runtime {
         'TEACHER_USER_NOT_FOUND',
     ];
 
-    /** Basic subscription purchase URL. */
+    /** @deprecated Use issue_code_provider::get_basic_subscription_url() instead. */
     public const BASIC_SUBSCRIPTION_URL =
         'https://showroom.wunderbyte.at/mod/booking/optionview.php?optionid=73&cmid=938&userid=1';
 
-    /** Privacy Plus subscription purchase URL. */
+    /** @deprecated Use issue_code_provider::get_premium_subscription_url() instead. */
     public const PRIVACY_PLUS_SUBSCRIPTION_URL =
         'https://showroom.wunderbyte.at/mod/booking/optionview.php?optionid=74&cmid=938&userid=1';
 
@@ -102,6 +103,9 @@ class agent_runtime {
     /** @var authorization_service */
     private authorization_service $authz;
 
+    /** @var issue_code_provider_interface */
+    private issue_code_provider_interface $issuecodeprovider;
+
     /** @var agent_decision_service */
     private agent_decision_service $decisionsvc;
 
@@ -114,22 +118,25 @@ class agent_runtime {
     /**
      * Constructor.
      *
-     * @param task_registry         $registry
-     * @param orchestrator          $orchestrator
-     * @param conversation_store    $store
-     * @param authorization_service $authz
+     * @param task_registry                   $registry
+     * @param orchestrator                    $orchestrator
+     * @param conversation_store              $store
+     * @param authorization_service          $authz
+     * @param issue_code_provider_interface   $issuecodeprovider
      */
     public function __construct(
         task_registry $registry,
         orchestrator $orchestrator,
         conversation_store $store,
-        authorization_service $authz
+        authorization_service $authz,
+        issue_code_provider_interface $issuecodeprovider = null
     ) {
         $this->registry     = $registry;
         $this->orchestrator = $orchestrator;
         $this->store        = $store;
         $this->authz        = $authz;
-        $this->decisionsvc  = new agent_decision_service($registry, $store, $authz);
+        $this->issuecodeprovider = $issuecodeprovider ?? new booking_issue_code_provider();
+        $this->decisionsvc  = new agent_decision_service($registry, $store, $authz, $this->issuecodeprovider);
         $this->messagepersistence = new message_persistence_service($store);
         $this->loopfinalizer = new loop_finalizer();
     }

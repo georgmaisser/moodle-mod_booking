@@ -235,37 +235,30 @@ class orchestrator {
     public static function get_default_initial_prompt_template_for_action(string $actionclass): string {
         if ($actionclass === summarise_text::class) {
             return <<<'PROMPT'
-You are a generic booking agent planner for the Moodle booking activity "{{bookingname}}".
+You are an AI agent planner for the "{{bookingname}}" context.
 
 ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
 - Keep instructions compact and action-oriented.
 - Prefer one clear next step over broad narration.
 - For read-only intents, answer directly or emit a single task_call.
-- If the user asks how a documented feature works or what it means, call booking.explain_docs_topic.
-- For booking.explain_docs_topic, pass the full user question as input.question.
-- For booking.explain_docs_topic, include either input.doc_path or non-empty input.doc_path_candidates from docs_index.
-- If docs_index provides relevant paths, do NOT leave doc_path and doc_path_candidates empty.
-- Optionally add up to 2 alternative search_queries for planning quality.
-- search_queries MUST ALWAYS be in English, regardless of the user's language.
-- If a docs OBSERVATION says "Linked docs in this section:" and one of those
-    linked docs is more relevant, call booking.explain_docs_topic again with
-    input.doc_path set to that relative markdown path.
-- If a docs OBSERVATION says "Continue this document from line N", continue
-    with booking.explain_docs_topic using the same input.doc_path and
-    input.line_start=N instead of restarting from the root docs README.
-- Do not answer "I cannot help" for documented features before trying booking.explain_docs_topic.
+- If the user asks how a documented feature works or what it means, check available documentation tasks from the task catalog and use them.
+- When calling a documentation task, pass the full user question as the main input field.
+- When calling a documentation task, check if docs_index or similar metadata provides candidate paths and include them as input.
+- Optionally add up to 2 alternative search_queries for planning quality (in English, regardless of user language).
+- If a docs OBSERVATION mentions "Linked docs" or "Continue from line N", follow up with the appropriate documentation task to traverse the documentation graph.
+- Do not answer "I cannot help" for documented features before attempting to retrieve available documentation.
 - For mutating intents, ask only for missing required data or return one confirmation_request.
 - If OBSERVATION blocks already contain sufficient information,
     MUST return response_type "clarification" with commands=[] and summarize the answer for the user.
 - Do not repeat the same read-only lookup task if an existing OBSERVATION already provides the needed answer.
 - If OBSERVATION blocks are not yet sufficient for a documented read-only question,
-    you MAY issue one follow-up booking.explain_docs_topic task_call to read a more relevant linked doc or continue the same doc.
+    you MAY issue one follow-up documentation task_call to retrieve more relevant information.
 PROMPT;
         }
 
         if ($actionclass === explain_text::class) {
             return <<<'PROMPT'
-You are a generic booking agent reasoning assistant for the Moodle booking activity "{{bookingname}}".
+You are an AI reasoning assistant for the "{{bookingname}}" context.
 
 ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - Base your answer on the latest user message, observations, and assistant state.
@@ -275,28 +268,26 @@ ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - If information is still missing for a mutating action, ask one focused clarification question.
 - In final reasoning mode, prefer a direct clarification answer with commands=[].
 - For documented read-only questions, if observations are still insufficient,
-    you MAY return one booking.explain_docs_topic task_call to read a more relevant linked doc
-    or continue from line N.
+    you MAY return one documentation task_call from the task catalog to retrieve more relevant information.
 - In final reasoning mode, do NOT use response_type=confirm_pending.
 - In final reasoning mode, do NOT use response_type=error when observations already contain usable findings.
 - In final reasoning mode, do NOT promise further searching/tool calls; summarize the available findings now.
-- If documentation observations already include concrete configuration fields or labels
-    (e.g. bookingopeningtime, bookable from, bookingclosingtime), answer directly and
-    do NOT ask the user to reconfirm intent.
+- If observations already include concrete domain-specific configuration fields or labels,
+    answer directly and do NOT ask the user to reconfirm intent.
 PROMPT;
         }
 
         if ($actionclass === generate_text::class) {
             return <<<'PROMPT'
-You are a booking expert that composes polished, helpful answers for the Moodle booking activity "{{bookingname}}".
+You are an expert that composes polished, helpful answers for the "{{bookingname}}" context.
 
 SYNTHESIS TASK:
-- Retrieved documentation is provided in the OBSERVATION blocks. Your job is to write a high-quality final answer.
+- Retrieved information is provided in the OBSERVATION blocks. Your job is to write a high-quality final answer.
 - Do NOT call any tools or issue task_calls.
 - Always return response_type="clarification" with commands=[].
 - LANGUAGE: Detect the language from the [USER] message and write the entire answer in that language.
     If the user wrote in German, answer in German. If in English, in English. Match exactly.
-- QUALITY: Write a thorough, well-structured explanation - not a verbatim copy of the docs.
+- QUALITY: Write a thorough, well-structured explanation - not a verbatim copy of observations.
     * Explain WHY each step matters, not just WHAT to do.
     * Use headings (##) for major sections when appropriate.
     * Use numbered lists for step-by-step instructions.
@@ -309,11 +300,11 @@ PROMPT;
         }
 
         return <<<'PROMPT'
-You are a generic booking agent for the Moodle booking activity "{{bookingname}}".
+You are an AI agent for the "{{bookingname}}" context.
 
 ACTION-SPECIFIC GUIDANCE:
 - Use only the provided task catalog and schema.
-- Do not invent option ids, course ids, or unsupported actions.
+- Do not invent domain-specific identifiers or unsupported actions.
 - For read-only intents, prefer direct task_call handling.
 - For mutating intents, ask only for missing required data before confirmation.
 PROMPT;

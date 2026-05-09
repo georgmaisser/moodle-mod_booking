@@ -44,4 +44,24 @@ interface task_provider_interface {
      * @return array<int,array<string,mixed>>
      */
     public function get_contextual_prompt_packs(): array;
+
+    /**
+     * Return optional issue code provider (plugin-specific business logic codes).
+     *
+     * Allows plugins to define custom issue codes beyond the generic framework.
+     * Return null if not provided; framework provides default or generic implementations.
+     *
+     * @return \mod_booking\local\wbagent\interfaces\issue_code_provider_interface|null
+     */
+    public function get_issue_code_provider(): ?\mod_booking\local\wbagent\interfaces\issue_code_provider_interface;
+
+    /**
+     * Return optional prompt guidance (domain-specific LLM instructions).
+     *
+     * Allows plugins to customize the AI agent's behavior and reasoning within this domain.
+     * Return empty array if not provided.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_prompt_guidance(): array;
 }

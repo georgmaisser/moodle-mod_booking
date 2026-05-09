@@ -27,7 +27,7 @@ use moodle_url;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class explain_docs_topic_task extends base_booking_task implements task_trigger_provider_interface {
+class explain_docs_topic_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'booking.explain_docs_topic';
 
@@ -80,7 +80,7 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
      * @return array
      */
     public function get_schema(): array {
-        return [
+        $schema = [
             'version' => 1,
             'description' => 'Explain documented features by searching local markdown documentation '
                 . 'and using the two best matches.',
@@ -145,6 +145,8 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
                 ],
             ],
         ];
+
+        return $this->enrich_schema_with_prompt_meta($schema);
     }
 
     /**
@@ -434,90 +436,6 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
     }
 
     /**
-     * Determine whether docs candidates are too ambiguous for a silent pick.
-     *
-     * @param array $docs
-     * @param string $question
-     * @param string $retrievalgoal
-     * @return bool
-     */
-    private function should_disambiguate_docs(array $docs, string $question, string $retrievalgoal = ''): bool {
-        if (count($docs) < 2) {
-            return false;
-        }
-
-        $top = (array)$docs[0];
-        $second = (array)$docs[1];
-        $topscore = (int)($top['score'] ?? 0);
-        $secondscore = (int)($second['score'] ?? 0);
-        if ($topscore <= 0 || $secondscore <= 0) {
-            return false;
-        }
-
-        $ratio = $secondscore / max(1, $topscore);
-        if ($ratio >= self::DISAMBIGUATION_RATIO) {
-            return true;
-        }
-
-        $toptopic = strtolower(trim(strtok((string)($top['path'] ?? ''), '/')));
-        $secondtopic = strtolower(trim(strtok((string)($second['path'] ?? ''), '/')));
-        $mixedtopics = $toptopic !== '' && $secondtopic !== '' && $toptopic !== $secondtopic;
-
-        if ($mixedtopics && $ratio >= self::DISAMBIGUATION_MIXED_TOPIC_RATIO) {
-            return true;
-        }
-
-        // For clear how-to requests, avoid disambiguation if top doc already looks config-specific.
-        if ($this->looks_like_configuration_question($question) || strtolower(trim($retrievalgoal)) === 'configure_howto') {
-            $toppath = strtolower((string)($top['path'] ?? ''));
-            if (
-                str_contains($toppath, 'booking_conditions/booking_time.md')
-                || str_contains($toppath, 'booking-option/04-availability.md')
-            ) {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Build a short user-facing disambiguation question.
-     *
-     * @param array $docs
-     * @param string $outputlang
-     * @return string
-     */
-    private function build_disambiguation_message(array $docs, string $outputlang): string {
-        $titles = [];
-        foreach ($docs as $doc) {
-            $title = trim((string)($doc['title'] ?? ''));
-            if ($title === '') {
-                $title = trim((string)($doc['path'] ?? ''));
-            }
-            if ($title !== '') {
-                $titles[] = $title;
-            }
-        }
-
-        $titles = array_slice(array_values(array_unique($titles)), 0, 2);
-        if (empty($titles)) {
-            return $this->looks_like_german($outputlang)
-                ? 'Ich habe zwei nahe Treffer gefunden. Soll ich auf die '
-                    . 'Verfugbarkeitseinstellungen oder auf Bedingungen fokussieren?'
-                : 'I found two close matches. Should I focus on availability settings or booking conditions?';
-        }
-
-        if ($this->looks_like_german($outputlang)) {
-            return 'Ich habe zwei nahe Treffer gefunden: "' . implode('" und "', $titles)
-                . '". Welchen davon soll ich als Grundlage nehmen?';
-        }
-
-        return 'I found two close matches: "' . implode('" and "', $titles)
-            . '". Which one should I use as the primary source?';
-    }
-
-    /**
      * Detect configuration-style questions.
      *
      * @param string $question
@@ -534,16 +452,6 @@ class explain_docs_topic_task extends base_booking_task implements task_trigger_
             . '|bookable\s+from|bookingopeningtime|ab\s+einem\s+zeitpunkt)/u',
             $normalized
         );
-    }
-
-    /**
-     * Check whether the output language is German.
-     *
-     * @param string $outputlang
-     * @return bool
-     */
-    private function looks_like_german(string $outputlang): bool {
-        return str_starts_with(strtolower(trim($outputlang)), 'de');
     }
 
     /**

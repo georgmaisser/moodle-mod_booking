@@ -99,4 +99,28 @@ class task_provider implements task_provider_interface {
 
         return $packs;
     }
+
+    /**
+     * Return optional issue code provider for domain-specific business logic codes.
+     *
+     * @return \mod_booking\local\wbagent\interfaces\issue_code_provider_interface|null
+     */
+    public function get_issue_code_provider(): ?\mod_booking\local\wbagent\interfaces\issue_code_provider_interface {
+        try {
+            return new booking_issue_code_provider();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Return optional prompt guidance (domain-specific LLM instructions).
+     *
+     * @return array<string,mixed>
+     */
+    public function get_prompt_guidance(): array {
+        // For now, no custom prompt guidance beyond what orchestrator provides.
+        // Plugins can override to inject domain-specific instructions.
+        return [];
+    }
 }

@@ -26,7 +26,7 @@ use mod_booking\local\wbagent\interfaces\task_trigger_provider_interface;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class search_courses_task extends base_booking_task implements task_trigger_provider_interface {
+class search_courses_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'booking.search_courses';
 

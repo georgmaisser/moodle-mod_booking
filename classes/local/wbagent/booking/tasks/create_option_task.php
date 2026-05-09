@@ -28,7 +28,7 @@ use mod_booking\local\wbagent\task_preflight_result;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class create_option_task extends base_booking_task implements task_trigger_provider_interface {
+class create_option_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'booking.create_option';
 
@@ -75,7 +75,7 @@ class create_option_task extends base_booking_task implements task_trigger_provi
         // New options are always created hidden. Visibility can be changed later via booking.update_option only.
         unset($properties['invisible'], $properties['visibility']);
 
-        return [
+        $schema = [
             'version' => 1,
             'description' => 'Create a new booking option inside the current booking instance. '
                 . 'New options are always created as invisible.',
@@ -84,6 +84,8 @@ class create_option_task extends base_booking_task implements task_trigger_provi
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_create_option',
             'properties' => $properties,
         ];
+
+        return $this->enrich_schema_with_prompt_meta($schema);
     }
 
     /**

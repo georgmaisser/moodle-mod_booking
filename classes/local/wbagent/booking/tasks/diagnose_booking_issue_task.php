@@ -29,7 +29,7 @@ use mod_booking\singleton_service;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class diagnose_booking_issue_task extends base_booking_task implements task_trigger_provider_interface {
+class diagnose_booking_issue_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'booking.diagnose_booking_issue';
 

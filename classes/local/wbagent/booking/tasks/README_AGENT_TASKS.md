@@ -50,7 +50,7 @@ Hinweis: issue_codes bleiben task-nahe und in ai_send_message relevant, steuern 
 
 1. Datei in booking/tasks anlegen, z. B. my_new_task.php.
 2. Klasse erstellen:
-   - extends base_booking_task
+   - extends booking_task_base
    - im Konstruktor read-only korrekt setzen (true/false)
 3. Pflichtmethoden implementieren:
    - get_name
