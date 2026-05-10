@@ -61,10 +61,9 @@ class create_rule_from_template_task extends booking_task_base implements task_t
             'version' => 1,
             'description' => 'Create a booking rule from a booking-rule template '
                 . 'via the existing server-side rules form pipeline. '
-                . 'Use this for requests like adding a booking confirmation, reminder, or cancellation notification rule.',
+                . 'Use this for requests like adding a booking confirmation, reminder, or cancellation notification rule. '
+                . 'If the user says "mit dem Namen ...", map that value to rulename (not to optionquery).',
             'readonly' => $this->is_read_only(),
-            'fallback_confirm_string_key' => 'ai_status_confirm_booking_create_option',
-            'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_create_option',
             'properties' => [
                 'templateid' => [
                     'type' => 'integer',
@@ -112,6 +111,9 @@ class create_rule_from_template_task extends booking_task_base implements task_t
                     'Create a confirmation email rule for bookings.',
                     'Add a reminder rule for this booking.',
                     'Create a cancellation notification rule.',
+                    'Kannst du für mich eine Buchungsbestätigung erstellen?',
+                    'Kannst du für mich eine Buchungsbestätigung erstellen? Mit dem Namen "Bestätigung 8".',
+                    'Erstelle bitte eine Buchungsbestaetigung mit dem Namen "Bestaetigung 8".',
                     'Fuege eine einfache Buchungsbestaetigung hinzu.',
                 ],
             ],
@@ -178,6 +180,18 @@ class create_rule_from_template_task extends booking_task_base implements task_t
         }
 
         if (($resolved['status'] ?? '') === 'ambiguity') {
+            $autoselected = $this->try_autoselect_confirmation_template(
+                $templatequery,
+                trim((string)($input['rulename'] ?? '')),
+                (array)($resolved['candidates'] ?? [])
+            );
+            if (is_array($autoselected)) {
+                $prepared = $input;
+                $prepared['templateid'] = (int)($autoselected['templateid'] ?? 0);
+                $prepared['template_name_resolved'] = (string)($autoselected['name'] ?? '');
+                return task_preflight_result::ok($prepared);
+            }
+
             $issues[] = [
                 'code' => 'TEMPLATE_RESOLUTION_AMBIGUOUS',
                 'severity' => 'needs_clarification',
@@ -209,6 +223,85 @@ class create_rule_from_template_task extends booking_task_base implements task_t
         $prepared['template_name_resolved'] = (string)($template['name'] ?? '');
 
         return task_preflight_result::ok($prepared);
+    }
+
+    /**
+     * Task-specific ambiguity resolver for booking confirmation intents.
+     *
+     * Keeps generic resolver untouched and applies only to
+     * booking.create_rule_from_template.
+     *
+     * @param string $templatequery
+     * @param string $rulename
+     * @param array<int,array<string,mixed>> $candidates
+     * @return array<string,mixed>|null
+     */
+    private function try_autoselect_confirmation_template(
+        string $templatequery,
+        string $rulename,
+        array $candidates
+    ): ?array {
+        if (empty($candidates)) {
+            return null;
+        }
+
+        $intenttext = $this->normalize_intent_text(trim($templatequery . ' ' . $rulename));
+        if ($intenttext === '') {
+            return null;
+        }
+
+        $isconfirmationintent = false;
+        $confirmationneedles = [
+            'buchungsbestaetigung',
+            'buchungsbestatigung',
+            'bestaetigung',
+            'bestatigung',
+            'booking confirmation',
+            'confirm booking',
+            'confirmation',
+        ];
+        foreach ($confirmationneedles as $needle) {
+            if (strpos($intenttext, $needle) !== false) {
+                $isconfirmationintent = true;
+                break;
+            }
+        }
+
+        if (!$isconfirmationintent) {
+            return null;
+        }
+
+        foreach ($candidates as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+
+            $name = $this->normalize_intent_text((string)($candidate['name'] ?? ''));
+            if (strpos($name, 'confirm booking') !== false || strpos($name, 'booking confirmation') !== false) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Normalize free text for task-local intent matching.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_intent_text(string $value): string {
+        $value = trim(mb_strtolower($value));
+        if ($value === '') {
+            return '';
+        }
+
+        $value = str_replace(['ä', 'ö', 'ü', 'ß'], ['ae', 'oe', 'ue', 'ss'], $value);
+        $value = preg_replace('/[^\pL\pN]+/u', ' ', $value);
+        $value = preg_replace('/\s+/u', ' ', (string)$value);
+
+        return trim((string)$value);
     }
 
     /**

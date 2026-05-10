@@ -31,6 +31,7 @@ use core_ai\aiactions\generate_text;
 use core_ai\manager as ai_manager;
 use mod_booking\local\wbagent\result_payload_summarizer;
 use context_module;
+use core_text;
 
 /**
  * Generates post-execution feedback and client-safe run results.
@@ -205,12 +206,19 @@ class execution_feedback_service {
                 return $this->fallback_message_for_results($results, $outputlang);
             }
 
+            $debugsource = $this->build_execution_feedback_debug_source(
+                $manager,
+                count($recentmessages),
+                count($results),
+                generate_text::class
+            );
+
             $llm = new llm_call_service($this->store);
             $call = $llm->invoke(
                 $threadid,
                 $cmid,
                 $userid,
-                'execution_feedback.generate_llm_feedback',
+                $debugsource,
                 $prompt,
                 generate_text::class
             );
@@ -219,7 +227,7 @@ class execution_feedback_service {
             }
 
             $rawcontent = (string)($call['rawcontent'] ?? '');
-            $message = trim($rawcontent);
+            $message = $this->extract_message_from_feedback_response($rawcontent);
             if ($message === '') {
                 return $this->fallback_message_for_results($results, $outputlang);
             }
@@ -478,16 +486,26 @@ class execution_feedback_service {
     ): string {
         $commandsjson = json_encode($commands, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $resultsjson = json_encode($results, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $lang = trim($outputlang) !== '' ? trim($outputlang) : 'de';
 
         return "You are the final user-facing assistant message writer for Moodle Booking.\n"
             . "The internal tasks have already been executed successfully or with structured result data.\n"
-            . "Write exactly the assistant message that should be shown to the end user now.\n\n"
+            . "Return exactly one JSON object and nothing else.\n\n"
+            . "JSON contract:\n"
+            . "- response_type: must be \"clarification\".\n"
+            . "- message: final user-facing answer text.\n"
+            . "- used_triggers: array (use [] if unknown).\n"
+            . "- next_step_intent: one short sentence in user language.\n"
+            . "- lang: ISO 639-1 language code.\n"
+            . "- user_lang: ISO 639-1 language code.\n"
+            . "- commands: must be [].\n\n"
             . "Rules:\n"
-            . "- Output plain text only.\n"
-            . "- Do not output JSON, bullet lists, code fences, or internal metadata.\n"
-            . "- Use the same language as the latest user message. If unclear, prefer this language code: "
-            . ($outputlang !== '' ? $outputlang : 'current') . ".\n"
-            . "- Do not mention task names, command numbers, run ids, response types, or raw JSON.\n"
+            . "- Keep response language aligned with latest user message.\n"
+            . "- Prefer this language code when uncertain: " . $lang . ".\n"
+            . "- Do not mention task names, command numbers, run ids, or raw JSON.\n"
+            . "- CRITICAL: message must be PLAIN TEXT ONLY. NO HTML TAGS. NO <p>, <div>, <br>, <span>, or any markup.\n"
+            . "- CRITICAL: Do not use markdown formatting (no bold, italic, code blocks, lists).\n"
+            . "- message is UTF-8 plain text, period.\n"
             . "- If there are zero matches, say that clearly.\n"
             . "- If there are matches, summarize them naturally and concisely.\n"
             . "- If booking options are included, use their real option ids from the structured results.\n"
@@ -500,6 +518,214 @@ class execution_feedback_service {
             . ($commandsjson !== false ? $commandsjson : '[]') . "\n\n"
             . "Structured results:\n"
             . ($resultsjson !== false ? $resultsjson : '[]');
+    }
+
+    /**
+     * Extract user-facing message from feedback model output.
+     *
+     * Accepts structured JSON payloads and keeps a plain-text fallback for safety.
+     *
+     * @param string $rawcontent
+     * @return string
+     */
+    private function extract_message_from_feedback_response(string $rawcontent): string {
+        $rawcontent = trim($rawcontent);
+        if ($rawcontent === '') {
+            return '';
+        }
+
+        foreach ($this->extract_json_candidates($rawcontent) as $candidate) {
+            $decoded = json_decode($candidate, true);
+            if (!is_array($decoded)) {
+                continue;
+            }
+
+            $message = trim((string)($decoded['message'] ?? ''));
+            $message = strip_tags($message);
+            if ($message !== '') {
+                return $message;
+            }
+        }
+
+        // Backward-compatible fallback in case a provider returns plain text.
+        return strip_tags($rawcontent);
+    }
+
+    /**
+     * Extract likely JSON object candidates from raw model text.
+     *
+     * Handles plain JSON, markdown-fenced JSON blocks and prefixed content such as "json {...}".
+     *
+     * @param string $text
+     * @return array<int,string>
+     */
+    private function extract_json_candidates(string $text): array {
+        $candidates = [];
+
+        $trimmed = trim($text);
+        if ($trimmed !== '') {
+            $candidates[] = $trimmed;
+        }
+
+        if (preg_match_all('/\x60\x60\x60(?:json)?\s*([\s\S]*?)\s*\x60\x60\x60/i', $text, $matches) > 0) {
+            foreach (($matches[1] ?? []) as $block) {
+                $block = trim((string)$block);
+                if ($block !== '') {
+                    $candidates[] = $block;
+                }
+            }
+        }
+
+        foreach ($this->extract_balanced_json_objects($text) as $json) {
+            $candidates[] = $json;
+        }
+
+        return array_values(array_unique(array_filter(array_map('trim', $candidates), static function (string $value): bool {
+            return $value !== '';
+        })));
+    }
+
+    /**
+     * Extract balanced top-level JSON object snippets from arbitrary text.
+     *
+     * @param string $text
+     * @return array<int,string>
+     */
+    private function extract_balanced_json_objects(string $text): array {
+        $objects = [];
+        $length = strlen($text);
+        $depth = 0;
+        $start = -1;
+        $instring = false;
+        $escaped = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($instring) {
+                if ($escaped) {
+                    $escaped = false;
+                    continue;
+                }
+
+                if ($char === '\\') {
+                    $escaped = true;
+                    continue;
+                }
+
+                if ($char === '"') {
+                    $instring = false;
+                }
+                continue;
+            }
+
+            if ($char === '"') {
+                $instring = true;
+                continue;
+            }
+
+            if ($char === '{') {
+                if ($depth === 0) {
+                    $start = $i;
+                }
+                $depth++;
+                continue;
+            }
+
+            if ($char === '}') {
+                if ($depth > 0) {
+                    $depth--;
+                    if ($depth === 0 && $start >= 0) {
+                        $objects[] = substr($text, $start, $i - $start + 1);
+                        $start = -1;
+                    }
+                }
+            }
+        }
+
+        return $objects;
+    }
+
+    /**
+     * Build compact debug source telemetry aligned with orchestrator format.
+     *
+     * Example: orc|st=tcp|ac=sum|rt=oa|fb=0|pv=oai|hm=1|ob=0|ex=0
+     *
+     * @param ai_manager $manager
+     * @param int $historycount
+     * @param int $observationcount
+     * @param string $actionclass
+     * @return string
+     */
+    private function build_execution_feedback_debug_source(
+        ai_manager $manager,
+        int $historycount,
+        int $observationcount,
+        string $actionclass
+    ): string {
+        $provider = $this->resolve_primary_provider_for_action($manager, $actionclass);
+        $providershort = $this->short_provider_for_debug($provider);
+        $route = ($providershort === 'oai') ? 'oa' : 'df';
+
+        $source = 'orc'
+            . '|st=tcp'
+            . '|ac=sum'
+            . '|rt=' . $route
+            . '|fb=0'
+            . '|pv=' . $providershort
+            . '|hm=' . max(0, $historycount)
+            . '|ob=' . max(0, $observationcount)
+            . '|ex=0';
+
+        if (core_text::strlen($source) > 100) {
+            return core_text::substr($source, 0, 100);
+        }
+
+        return $source;
+    }
+
+    /**
+     * Resolve the primary enabled provider plugin for an action.
+     *
+     * @param ai_manager $manager
+     * @param string $actionclass
+     * @return string
+     */
+    private function resolve_primary_provider_for_action(ai_manager $manager, string $actionclass): string {
+        try {
+            $providers = $manager->get_providers_for_actions([$actionclass], true);
+            $list = (array)($providers[$actionclass] ?? []);
+            if (empty($list)) {
+                return '';
+            }
+            $primary = reset($list);
+            return (string)($primary->provider ?? '');
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * Convert provider plugin names to short debug tokens.
+     *
+     * @param string $provider
+     * @return string
+     */
+    private function short_provider_for_debug(string $provider): string {
+        $value = trim(core_text::strtolower($provider));
+        if ($value === '') {
+            return 'na';
+        }
+        if ($value === 'aiprovider_openai') {
+            return 'oai';
+        }
+        if (str_starts_with($value, 'aiprovider_')) {
+            $value = substr($value, 11);
+        }
+        if ($value === '') {
+            return 'na';
+        }
+        return core_text::substr($value, 0, 10);
     }
 
     /**

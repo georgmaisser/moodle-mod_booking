@@ -274,18 +274,7 @@ class agent_runtime {
                     $observation
                 );
 
-                // Write an ephemeral step label for frontend polling.
-                $steptask = implode(', ', $this->extract_step_task_names($commands, (array)($result['results'] ?? [])));
-                $steplabel = $this->build_step_label(
-                    $step + 1,
-                    $commands,
-                    $result['results'] ?? [],
-                    (string)($result['next_step_intent'] ?? '')
-                );
-                $displaylabelresult = $anonymizer->deanonymize_message_for_display($threadid, $steplabel);
-                $displaylabel = (string)($displaylabelresult['message'] ?? $steplabel);
-                $displaytask = (string)($anonymizer->deanonymize_message_for_display($threadid, $steptask)['message'] ?? $steptask);
-                $this->store->add_step_message($threadid, $step + 1, $displaylabel, $displaytask);
+                $this->write_step_progress_message($threadid, $step + 1, $result, $anonymizer);
 
                 $final = $this->loopfinalizer->finalize(
                     $result,
@@ -337,6 +326,12 @@ class agent_runtime {
                     $missingcommandsretryused = true;
                     continue;
                 }
+            }
+
+            // Confirmation path should also expose a visible step label so the
+            // frontend progress stream is consistent with readonly execution steps.
+            if ((string)($result['response_type'] ?? '') === 'confirmation_request') {
+                $this->write_step_progress_message($threadid, $step + 1, $result, $anonymizer);
             }
 
             // Persist the SINGLE final assistant message and return.
@@ -1027,6 +1022,36 @@ class agent_runtime {
         }
 
         return 'Step ' . $stepnum . ': Processing';
+    }
+
+    /**
+     * Write one ephemeral step-progress message for frontend polling.
+     *
+     * @param int $threadid
+     * @param int $stepnum
+     * @param array $result
+     * @param privacy_anonymizer $anonymizer
+     * @return void
+     */
+    private function write_step_progress_message(
+        int $threadid,
+        int $stepnum,
+        array $result,
+        privacy_anonymizer $anonymizer
+    ): void {
+        $commands = (array)($result['commands'] ?? []);
+        $results = (array)($result['results'] ?? []);
+        $steptask = implode(', ', $this->extract_step_task_names($commands, $results));
+        $steplabel = $this->build_step_label(
+            $stepnum,
+            $commands,
+            $results,
+            (string)($result['next_step_intent'] ?? '')
+        );
+        $displaylabelresult = $anonymizer->deanonymize_message_for_display($threadid, $steplabel);
+        $displaylabel = (string)($displaylabelresult['message'] ?? $steplabel);
+        $displaytask = (string)($anonymizer->deanonymize_message_for_display($threadid, $steptask)['message'] ?? $steptask);
+        $this->store->add_step_message($threadid, $stepnum, $displaylabel, $displaytask);
     }
 
     /**
