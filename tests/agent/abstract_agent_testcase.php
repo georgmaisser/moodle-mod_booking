@@ -26,7 +26,9 @@
 namespace mod_booking;
 
 use mod_booking\local\testing\booking_advanced_testcase;
+use core_ai\aiactions\explain_text;
 use core_ai\aiactions\generate_text;
+use core_ai\aiactions\summarise_text;
 use mod_booking\local\wbagent\agent_runtime;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
@@ -76,6 +78,12 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
       */
     protected bool $hasliveprovider = false;
 
+    /** @var bool Enforce generate_text debug assertion in tearDown for real-LLM tests. */
+    protected bool $enforcegeneratetextassertion = false;
+
+    /** @var array<int,int> Threads used by run_loop/chat in this test. */
+    protected array $trackedllmthreadids = [];
+
     // -------------------------------------------------------------------------
     // Life-cycle.
 
@@ -122,8 +130,8 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
       *   BOOKING_TEST_AI_MODEL
       *   BOOKING_TEST_AI_ENDPOINT
       *
-      * Endpoint values may be either a full chat-completions URL or a base URL.
-      * When only a base URL is given, "/v1/chat/completions" is appended.
+    * Endpoint values may be either a full chat-completions URL or a base URL.
+    * When only a base URL is given, "/chat/completions" is appended.
       *
       * When all three are set the provider is created and enabled so that every
       * core_ai generate_text call inside the test actually hits the real API.
@@ -143,10 +151,9 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
             return;
         }
 
-        $parsedendpoint = parse_url($endpoint);
-        $path = (string)($parsedendpoint['path'] ?? '');
-        if ($path === '' || $path === '/') {
-            $endpoint = rtrim($endpoint, '/') . '/v1/chat/completions';
+        $endpoint = rtrim($endpoint, '/');
+        if (!preg_match('#/chat/completions$#', $endpoint)) {
+            $endpoint .= '/chat/completions';
         }
 
         $manager = \core\di::get(\core_ai\manager::class);
@@ -159,7 +166,23 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
                 generate_text::class => [
                     'enabled'  => true,
                     'settings' => [
-                        'model'             => $model,
+                        'model'             => 'wunderbyte-trial',
+                        'endpoint'          => $endpoint,
+                        'systeminstruction' => '',
+                    ],
+                ],
+                summarise_text::class => [
+                    'enabled'  => true,
+                    'settings' => [
+                        'model'             => 'wunderbyte-trial-mini',
+                        'endpoint'          => $endpoint,
+                        'systeminstruction' => '',
+                    ],
+                ],
+                explain_text::class => [
+                    'enabled'  => true,
+                    'settings' => [
+                        'model'             => 'wunderbyte-trial-mini',
                         'endpoint'          => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -298,6 +321,8 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
         if (!$this->hasliveprovider) {
             $this->fail('Real-LLM credentials exist, but provider registration is not active.');
         }
+
+        $this->enforcegeneratetextassertion = true;
     }
 
     /**
@@ -318,7 +343,9 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
             (int)$this->booking->cmid,
             (int)$this->booking->id
         );
-        return [$store, $runtime, (int)$thread->id];
+        $threadid = (int)$thread->id;
+        $this->trackedllmthreadids[] = $threadid;
+        return [$store, $runtime, $threadid];
     }
 
     /**
@@ -383,6 +410,9 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
      * @return array Executor result for this command.
      */
     protected function execute_command(array $command): array {
+        if (empty($command['input']) && !empty($command['args']['input']) && is_array($command['args']['input'])) {
+            $command['input'] = $command['args']['input'];
+        }
         $command['version'] = $command['version'] ?? 1;
         $key     = hash('sha256', 'test:exec:' . serialize($command) . ':' . uniqid('', true));
         $results = $this->make_executor()->execute_commands(
@@ -407,6 +437,9 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
             return [];
         }
         foreach ($commands as &$cmd) {
+            if (empty($cmd['input']) && !empty($cmd['args']['input']) && is_array($cmd['args']['input'])) {
+                $cmd['input'] = $cmd['args']['input'];
+            }
             $cmd['version'] = $cmd['version'] ?? 1;
         }
         unset($cmd);
@@ -418,5 +451,52 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
             $key,
             0
         );
+    }
+
+    /**
+     * Assert that at least one generate_text call was logged for the given thread.
+     *
+     * @param int $threadid
+     * @return void
+     */
+    protected function assert_generate_text_logged_for_thread(int $threadid): void {
+        global $DB;
+
+        $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => $threadid], 'id ASC');
+        $this->assertNotEmpty($entries, 'booking_ai_llm_debug must contain entries for thread ' . $threadid . '.');
+
+        $hasgenerate = false;
+        foreach ($entries as $entry) {
+            $source = (string)($entry->source ?? '');
+            if (strpos($source, 'ac=gen') !== false) {
+                $hasgenerate = true;
+                break;
+            }
+        }
+
+        $this->assertTrue(
+            $hasgenerate,
+            'Expected at least one generate_text LLM debug entry (source contains ac=gen) in booking_ai_llm_debug.'
+        );
+    }
+
+    /**
+     * Enforce generate_text debug assertions for all tracked threads in real-LLM tests.
+     *
+     * @return void
+     */
+    protected function tearDown(): void {
+        if ($this->enforcegeneratetextassertion) {
+            $this->assertNotEmpty(
+                $this->trackedllmthreadids,
+                'Real-LLM test must create at least one thread via build_runtime() to validate LLM debug logging.'
+            );
+
+            foreach (array_values(array_unique($this->trackedllmthreadids)) as $threadid) {
+                $this->assert_generate_text_logged_for_thread((int)$threadid);
+            }
+        }
+
+        parent::tearDown();
     }
 }

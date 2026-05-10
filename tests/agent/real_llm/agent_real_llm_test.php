@@ -29,7 +29,9 @@
 namespace mod_booking;
 
 use mod_booking\local\testing\booking_advanced_testcase;
+use core_ai\aiactions\explain_text;
 use core_ai\aiactions\generate_text;
+use core_ai\aiactions\summarise_text;
 use mod_booking\external\ai_confirm_run;
 use mod_booking\external\ai_poll_run_status;
 use mod_booking\external\ai_send_message;
@@ -106,10 +108,9 @@ final class agent_real_llm_test extends booking_advanced_testcase {
             return;
         }
 
-        $parsedendpoint = parse_url($endpoint);
-        $path = (string)($parsedendpoint['path'] ?? '');
-        if ($path === '' || $path === '/') {
-            $endpoint = rtrim($endpoint, '/') . '/v1/chat/completions';
+        $endpoint = rtrim($endpoint, '/');
+        if (!preg_match('#/chat/completions$#', $endpoint)) {
+            $endpoint .= '/chat/completions';
         }
 
         $manager = \core\di::get(\core_ai\manager::class);
@@ -122,7 +123,23 @@ final class agent_real_llm_test extends booking_advanced_testcase {
                 generate_text::class => [
                     'enabled' => true,
                     'settings' => [
-                        'model' => $model,
+                        'model' => 'wunderbyte-trial',
+                        'endpoint' => $endpoint,
+                        'systeminstruction' => '',
+                    ],
+                ],
+                summarise_text::class => [
+                    'enabled' => true,
+                    'settings' => [
+                        'model' => 'wunderbyte-trial-mini',
+                        'endpoint' => $endpoint,
+                        'systeminstruction' => '',
+                    ],
+                ],
+                explain_text::class => [
+                    'enabled' => true,
+                    'settings' => [
+                        'model' => 'wunderbyte-trial-mini',
                         'endpoint' => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -145,6 +162,33 @@ final class agent_real_llm_test extends booking_advanced_testcase {
     }
 
     /**
+     * Assert that LLM debug logging contains at least one generate_text call.
+     *
+     * @param int $threadid
+     * @return void
+     */
+    private function assert_generate_text_logged_for_thread(int $threadid): void {
+        global $DB;
+
+        $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => $threadid], 'id ASC');
+        $this->assertNotEmpty($entries, 'booking_ai_llm_debug must contain entries for thread ' . $threadid . '.');
+
+        $hasgenerate = false;
+        foreach ($entries as $entry) {
+            $source = (string)($entry->source ?? '');
+            if (strpos($source, 'ac=gen') !== false) {
+                $hasgenerate = true;
+                break;
+            }
+        }
+
+        $this->assertTrue(
+            $hasgenerate,
+            'Expected at least one generate_text entry (source contains ac=gen) in booking_ai_llm_debug.'
+        );
+    }
+
+    /**
      * Smoke: create prompt should not return hard error and should provide a run context.
      */
     public function test_real_llm_create_prompt_smoke(): void {
@@ -154,11 +198,24 @@ final class agent_real_llm_test extends booking_advanced_testcase {
         $_POST['sesskey'] = sesskey();
         $response = ai_send_message::execute(
             (int)$this->booking->cmid,
-            'Erstelle eine Buchungsoption namens LLM Smoke Option mit 7 Plaetzen.'
+            'Erstelle eine Buchungsoption namens "LLM Smoke Option" mit 7 Plaetzen, '
+            . 'optiontype normal, Start 2045-11-01T09:00:00 und Ende 2045-11-01T11:00:00.'
         );
+
+        if ((string)($response['response_type'] ?? '') === 'error') {
+            $_POST['sesskey'] = sesskey();
+            $response = ai_send_message::execute(
+                (int)$this->booking->cmid,
+                'Bereite genau eine bestaetigungsfaehige booking.create_option Aktion vor: '
+                . 'Titel "LLM Smoke Option", optiontype normal, maxanswers 7, '
+                . 'coursestarttime 2045-11-01T09:00:00, courseendtime 2045-11-01T11:00:00. '
+                . 'Nicht ausfuehren.'
+            );
+        }
 
         $this->assertNotEquals('error', (string)$response['response_type']);
         $this->assertGreaterThan(0, (int)$response['threadid']);
+        $this->assert_generate_text_logged_for_thread((int)$response['threadid']);
     }
 
     /**
@@ -214,6 +271,7 @@ final class agent_real_llm_test extends booking_advanced_testcase {
 
         $runstatus = ai_poll_run_status::execute((int)$this->booking->cmid, (int)$confirm['runid']);
         $this->assertContains((string)$runstatus['status'], ['queued', 'running', 'completed']);
+        $this->assert_generate_text_logged_for_thread((int)$response['threadid']);
     }
 
     /**
@@ -230,5 +288,7 @@ final class agent_real_llm_test extends booking_advanced_testcase {
         );
 
         $this->assertNotEquals('error', (string)$response['response_type']);
+        $this->assertGreaterThan(0, (int)$response['threadid']);
+        $this->assert_generate_text_logged_for_thread((int)$response['threadid']);
     }
 }

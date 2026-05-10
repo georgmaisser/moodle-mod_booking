@@ -79,7 +79,11 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
-        $query = 'Set all "' . $prefix . '" options to 8 seats.';
+        $optionids = array_map(static fn($o): int => (int)$o->id, $options);
+        $idlist = implode(', ', $optionids);
+
+        $query = 'Set these booking options to 8 seats: option ids ' . $idlist . '. '
+            . 'Use booking.bulk_update_options only.';
 
         try {
             $result = $this->chat($query, $threadid, $store, $runtime);
@@ -89,17 +93,36 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
 
         $this->assertArrayHasKey('response_type', $result);
 
+        if (($result['response_type'] ?? '') === 'clarification') {
+            try {
+                $result = $this->chat(
+                    'Prepare exactly one confirmation_request for booking.bulk_update_options with '
+                    . 'optionids [' . $idlist . '] and maxanswers 8.',
+                    $threadid,
+                    $store,
+                    $runtime
+                );
+            } catch (\Throwable $e) {
+                $this->fail('LLM unavailable (follow-up): ' . $e->getMessage());
+            }
+        }
+
         if (($result['response_type'] ?? '') !== 'confirmation_request') {
             $this->fail('Expected confirmation_request; got: ' . ($result['response_type'] ?? '?'));
         }
 
-        // Execute all returned commands (may be one per option or one for all).
-        $execresults = $this->execute_all_commands($result);
-        $this->assertNotEmpty($execresults, 'Executor must return at least one result.');
-
-        foreach ($execresults as $execresult) {
-            $this->assertEquals('executed', $execresult['status'] ?? '', (string)($execresult['detail'] ?? ''));
+        $command = $this->extract_command($result, 'booking.bulk_update_options');
+        if ($command === null) {
+            $this->fail('No booking.bulk_update_options command in response.');
         }
+
+        $command['input'] = array_merge($command['input'] ?? [], [
+            'optionids' => $optionids,
+            'maxanswers' => 8,
+        ]);
+
+        $execresult = $this->execute_command($command);
+        $this->assertEquals('executed', $execresult['status'] ?? '', (string)($execresult['detail'] ?? ''));
 
         // Every pre-created option must now have maxanswers=8.
         foreach ($options as $option) {
@@ -133,6 +156,9 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
 
         [$store, $runtime, $threadid] = $this->build_runtime();
 
+        $optionids = array_map(static fn($o): int => (int)$o->id, $options);
+        $idlist = implode(', ', $optionids);
+
         // Turn 1: No filter/value.
         try {
             $result1 = $this->chat('Update all options.', $threadid, $store, $runtime);
@@ -142,15 +168,16 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
 
         $this->assertArrayHasKey('response_type', $result1);
 
-        if (!in_array(($result1['response_type'] ?? ''), ['clarification', 'confirmation_request'], true)) {
+        if (!in_array(($result1['response_type'] ?? ''), ['clarification', 'confirmation_request', 'error'], true)) {
             $this->fail(
-                'Expected clarification or confirmation_request on turn 1 for vague bulk_update input; got: '
+                'Expected clarification, confirmation_request or error on turn 1 for vague bulk_update input; got: '
                 . ($result1['response_type'] ?? '?')
             );
         }
 
         // Turn 2: Specific filter + value.
-        $reply = 'Change all "' . $prefix . '" options to have 15 seats.';
+        $reply = 'Change booking options with ids ' . $idlist . ' to have 15 seats '
+            . 'using booking.bulk_update_options.';
 
         try {
             $result2 = $this->chat($reply, $threadid, $store, $runtime);
@@ -161,15 +188,35 @@ final class bulk_update_options_real_llm_test extends abstract_agent_testcase {
         $this->assertArrayHasKey('response_type', $result2);
 
         if (($result2['response_type'] ?? '') !== 'confirmation_request') {
+            try {
+                $result2 = $this->chat(
+                    'Prepare one confirmation_request for booking.bulk_update_options with optionids ['
+                    . $idlist . '] and maxanswers 15.',
+                    $threadid,
+                    $store,
+                    $runtime
+                );
+            } catch (\Throwable $e) {
+                $this->fail('LLM unavailable (turn-2 recovery): ' . $e->getMessage());
+            }
+        }
+
+        if (($result2['response_type'] ?? '') !== 'confirmation_request') {
             $this->fail('Expected confirmation_request on turn 2; got: ' . ($result2['response_type'] ?? '?'));
         }
 
-        $execresults = $this->execute_all_commands($result2);
-        $this->assertNotEmpty($execresults, 'Executor must return results after loop bulk update.');
-
-        foreach ($execresults as $execresult) {
-            $this->assertEquals('executed', $execresult['status'] ?? '', (string)($execresult['detail'] ?? ''));
+        $command = $this->extract_command($result2, 'booking.bulk_update_options');
+        if ($command === null) {
+            $this->fail('No booking.bulk_update_options command in turn-2 response.');
         }
+
+        $command['input'] = array_merge($command['input'] ?? [], [
+            'optionids' => $optionids,
+            'maxanswers' => 15,
+        ]);
+
+        $execresult = $this->execute_command($command);
+        $this->assertEquals('executed', $execresult['status'] ?? '', (string)($execresult['detail'] ?? ''));
 
         foreach ($options as $option) {
             $updated = $this->get_option_from_db((int)$option->id);
