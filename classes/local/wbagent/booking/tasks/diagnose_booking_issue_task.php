@@ -564,18 +564,25 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         global $DB;
 
         $optionid = (int)($input['optionid'] ?? 0);
+        $optionquery = trim((string)($input['optionquery'] ?? ''));
         if ($optionid > 0) {
             $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
             if ($DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])) {
                 return ['status' => 'ok', 'optionid' => $optionid];
             }
+
+            // If a model provided a stale/wrong optionid but also a concrete title,
+            // prefer resolving by query over failing hard.
+            if ($optionquery !== '') {
+                return booking_task_support::resolve_single_option($cmid, $optionquery, '');
+            }
+
             return [
                 'status' => 'error',
                 'message' => $this->localized_string('agent_booking_diagnose_error_option_not_in_instance', null, $lang),
             ];
         }
 
-        $optionquery = trim((string)($input['optionquery'] ?? ''));
         if ($optionquery === '') {
             return [
                 'status' => 'ambiguity',
