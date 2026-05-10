@@ -549,6 +549,14 @@ class execution_feedback_service {
                 $entry['options'] = $result['options'];
             }
 
+            if (!empty($result['optiondetails']) && is_array($result['optiondetails'])) {
+                $entry['optiondetails'] = $result['optiondetails'];
+            }
+
+            if (!empty($result['detail_capabilities']) && is_array($result['detail_capabilities'])) {
+                $entry['detail_capabilities'] = $result['detail_capabilities'];
+            }
+
             if (!empty($result['users']) && is_array($result['users'])) {
                 $entry['users'] = $result['users'];
             }
@@ -662,6 +670,10 @@ class execution_feedback_service {
                 return $this->localized_string('ai_result_detail_options_none', null, $outputlang);
             }
             return $this->localized_string('ai_result_detail_options_found', $count, $outputlang);
+        }
+
+        if ($category === 'option_details') {
+            return result_payload_summarizer::describe_entry($result);
         }
 
         if ($category === 'current_user') {

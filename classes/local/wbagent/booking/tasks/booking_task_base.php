@@ -65,6 +65,18 @@ abstract class booking_task_base extends base_task {
             'input_fields_for_prompt' => ['query'],
             'anchor_fields' => [],
         ],
+        'booking.get_option_details' => [
+            'input_fields_for_prompt' => [
+                'optionquery',
+                'optionid',
+                'optionids',
+                'includesessions',
+                'requested_fields',
+                'include_customfields',
+                'customfield_keys',
+            ],
+            'anchor_fields' => ['option'],
+        ],
         'booking.search_users' => [
             'input_fields_for_prompt' => ['query'],
             'anchor_fields' => [],

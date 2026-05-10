@@ -108,8 +108,6 @@ class result_payload_summarizer {
      *  'docs'         — entry contains a docs/documentation array
      *  'diagnosis'    — entry contains a diagnosis object
      *  'capabilities' — entry contains a capabilities array
-     *  'properties'   — entry contains a properties array (list_option_properties result)
-     *  'current_user' — entry has fullname or email keys (get_current_user result)
      *  'generic'      — none of the above
      *
      * @param  array $entry  A single raw task result payload.
@@ -136,6 +134,9 @@ class result_payload_summarizer {
         }
         if (!empty($entry['properties']) && is_array($entry['properties'])) {
             return 'properties';
+        }
+        if (!empty($entry['optiondetails']) && is_array($entry['optiondetails'])) {
+            return 'option_details';
         }
         if (array_key_exists('fullname', $entry) || array_key_exists('email', $entry)) {
             return 'current_user';
@@ -243,6 +244,67 @@ class result_payload_summarizer {
                     $propsummary .= ': ' . implode(', ', $propnames);
                 }
                 return $propsummary . '.';
+
+            case 'option_details':
+                $details = (array)$entry['optiondetails'];
+                $dcount = count($details);
+                $titles = array_slice(array_values(array_filter(array_map(
+                    static fn($d): string => trim((string)($d['title'] ?? $d['standard_fields']['title'] ?? '')),
+                    $details
+                ))), 0, 3);
+                $teachernames = [];
+                $sessioncount = 0;
+                foreach ($details as $detail) {
+                    $standard = (array)($detail['standard_fields'] ?? []);
+                    $sessions = (array)($standard['sessions'] ?? $detail['sessions'] ?? []);
+                    $sessioncount += count($sessions);
+                    $teachers = (array)($standard['teachers'] ?? $detail['teachers'] ?? []);
+                    foreach ($teachers as $teacher) {
+                        $name = trim((string)($teacher['name'] ?? $teacher['fullname'] ?? ''));
+                        if ($name === '') {
+                            $firstname = trim((string)($teacher['firstname'] ?? ''));
+                            $lastname = trim((string)($teacher['lastname'] ?? ''));
+                            $name = trim($firstname . ' ' . $lastname);
+                        }
+                        if ($name !== '') {
+                            $teachernames[] = $name;
+                        }
+                    }
+                }
+                $teachernames = array_slice(array_values(array_unique($teachernames)), 0, 5);
+                $detailsummary = "Loaded detailed data for {$dcount} option(s)";
+                if (!empty($titles)) {
+                    $detailsummary .= ': ' . implode(', ', $titles);
+                }
+                $detailsummary .= ". Sessions: {$sessioncount}.";
+                if (!empty($teachernames)) {
+                    $detailsummary .= ' Teachers: ' . implode(', ', $teachernames) . '.';
+                }
+                $capabilities = (array)($entry['detail_capabilities'] ?? []);
+                $supported = array_slice(array_values(array_filter(array_map(
+                    static fn($f): string => trim((string)$f),
+                    (array)($capabilities['supported_standard_fields'] ?? [])
+                ))), 0, 8);
+                if (!empty($supported)) {
+                    $detailsummary .= ' Supported detail fields: ' . implode(', ', $supported) . '.';
+                }
+                $customfieldcaps = (array)($capabilities['available_customfields'] ?? []);
+                if (!empty($customfieldcaps)) {
+                    $labels = [];
+                    foreach (array_slice($customfieldcaps, 0, 6) as $cf) {
+                        if (!is_array($cf)) {
+                            continue;
+                        }
+                        $label = trim((string)($cf['label'] ?? $cf['key'] ?? ''));
+                        if ($label !== '') {
+                            $labels[] = $label;
+                        }
+                    }
+                    if (!empty($labels)) {
+                        $detailsummary .= ' Available custom fields: ' . implode(', ', $labels) . '.';
+                    }
+                }
+                return $detailsummary;
 
             case 'current_user':
                 $name = trim((string)($entry['fullname'] ?? ''));

@@ -123,6 +123,8 @@ class search_options_task extends booking_task_base implements task_trigger_prov
                     '- If the user asks to find booking options, use booking.search_options.',
                     '- Prefer exact title matches when the user mentions a quoted title or the word "title"/"titel".',
                     '- Return a short structured list with id, name and link for preview.',
+                    '- If the follow-up asks for specific option fields (trainer/teacher, sessions, times),',
+                    '  use booking.get_option_details for the resolved option instead of re-running search.',
                     '- If observations already contain exactly one resolved option and the user asks for preview/details,
                       do not call booking.search_options again; answer directly from that resolved option context.',
                 ],
