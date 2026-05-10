@@ -288,20 +288,47 @@ class result_payload_summarizer {
                 if (!empty($supported)) {
                     $detailsummary .= ' Supported detail fields: ' . implode(', ', $supported) . '.';
                 }
-                $customfieldcaps = (array)($capabilities['available_customfields'] ?? []);
-                if (!empty($customfieldcaps)) {
-                    $labels = [];
-                    foreach (array_slice($customfieldcaps, 0, 6) as $cf) {
-                        if (!is_array($cf)) {
-                            continue;
-                        }
-                        $label = trim((string)($cf['label'] ?? $cf['key'] ?? ''));
-                        if ($label !== '') {
-                            $labels[] = $label;
+                // Collect loaded custom field values across all detail entries.
+                $loadedcustomfields = [];
+                foreach ($details as $detail) {
+                    foreach ((array)($detail['customfields'] ?? []) as $cfkey => $cfval) {
+                        $strval = is_array($cfval) ? implode(', ', $cfval) : (string)$cfval;
+                        if ($strval !== '') {
+                            $loadedcustomfields[trim((string)$cfkey)] = $strval;
                         }
                     }
-                    if (!empty($labels)) {
-                        $detailsummary .= ' Available custom fields: ' . implode(', ', $labels) . '.';
+                }
+                if (!empty($loadedcustomfields)) {
+                    $cfparts = [];
+                    foreach ($loadedcustomfields as $cfkey => $cfval) {
+                        $cfparts[] = "{$cfkey}: {$cfval}";
+                    }
+                    $detailsummary .= ' Custom fields: ' . implode('; ', $cfparts) . '.';
+                } else {
+                    $customfieldcaps = (array)($capabilities['available_customfields'] ?? []);
+                    if (!empty($customfieldcaps)) {
+                        $labels = [];
+                        $keys = [];
+                        foreach (array_slice($customfieldcaps, 0, 6) as $cf) {
+                            if (!is_array($cf)) {
+                                continue;
+                            }
+                            $label = trim((string)($cf['label'] ?? $cf['key'] ?? ''));
+                            $key = trim((string)($cf['key'] ?? ''));
+                            if ($label !== '') {
+                                $labels[] = $label;
+                            }
+                            if ($key !== '') {
+                                $keys[] = $key;
+                            }
+                        }
+                        if (!empty($labels)) {
+                            $keylist = implode(', ', $keys);
+                            $detailsummary .= ' Custom field values NOT loaded (only keys known): '
+                                . implode(', ', $labels) . '.'
+                                . " To retrieve a custom field value, call booking.get_option_details again"
+                                . " with include_customfields=true and customfield_keys=[{$keylist}].";
+                        }
                     }
                 }
                 return $detailsummary;

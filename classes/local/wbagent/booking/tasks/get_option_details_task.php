@@ -445,15 +445,37 @@ class get_option_details_task extends booking_task_base implements task_trigger_
             return [];
         }
 
-        $rawcustomfields = (array)($settings->customfields ?? []);
+        // Use customfieldsfortemplates for processed/readable values (resolves select option labels etc.).
+        $templates = (array)($settings->customfieldsfortemplates ?? []);
+
+        // Build case-insensitive lookup map: lowercase_key => [key, value].
+        $lookup = [];
+        foreach ($templates as $shortname => $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            $val = $field['value'] ?? '';
+            $lookup[strtolower((string)$shortname)] = [
+                'key' => (string)$shortname,
+                'value' => $val,
+            ];
+        }
+
         if (empty($customfieldkeys)) {
-            return $rawcustomfields;
+            // Return all processed values.
+            $selected = [];
+            foreach ($lookup as $entry) {
+                $selected[$entry['key']] = $entry['value'];
+            }
+            return $selected;
         }
 
         $selected = [];
         foreach ($customfieldkeys as $key) {
-            if (array_key_exists($key, $rawcustomfields)) {
-                $selected[$key] = $rawcustomfields[$key];
+            $lkey = strtolower(trim((string)$key));
+            if (isset($lookup[$lkey])) {
+                $entry = $lookup[$lkey];
+                $selected[$entry['key']] = $entry['value'];
             }
         }
 

@@ -425,12 +425,14 @@ class agent_runtime {
             $summary = $this->build_loop_repeat_summary($accumulated, $current);
             $result['message'] = $this->is_low_information_message($current) ? $summary : ($summary !== '' ? $summary : $current);
         } else {
-            // Even without a repeat, enrich a generic LLM message with actual option names
-            // so callers and follow-up turns can refer to them by name.
-            $result['message'] = $this->maybe_enrich_message_from_results(
-                (string)($result['message'] ?? ''),
-                $accumulated
-            );
+            // Keep rich final synthesis answers untouched; only enrich low-information
+            // fallback messages so we don't append tool summaries to polished replies.
+            $current = trim((string)($result['message'] ?? ''));
+            if ($this->is_low_information_message($current)) {
+                $result['message'] = $this->maybe_enrich_message_from_results($current, $accumulated);
+            } else {
+                $result['message'] = $current;
+            }
         }
 
         return $result;
