@@ -161,25 +161,7 @@ $ADMIN->add('modbookingfolder', $aisettingspage);
 if ($ADMIN->fulltree) {
     // Seed prompt defaults once when config entries are missing so admin textareas are prefilled.
     $promptdefaults = [
-        'aiinitialprompt' => orchestrator::get_default_initial_prompt_template(),
-        'aiinitialprompt_generate_text' => orchestrator::get_default_initial_prompt_template_for_action(
-            \core_ai\aiactions\generate_text::class
-        ),
-        'aiinitialprompt_summarise_text' => orchestrator::get_default_initial_prompt_template_for_action(
-            \core_ai\aiactions\summarise_text::class
-        ),
-        'aiinitialprompt_explain_text' => orchestrator::get_default_initial_prompt_template_for_action(
-            \core_ai\aiactions\explain_text::class
-        ),
-        'aiinitialprompt_tool_call_parse' => orchestrator::get_default_initial_prompt_template_for_action(
-            \core_ai\aiactions\summarise_text::class
-        ),
-        'aiinitialprompt_simple_retrieval' => orchestrator::get_default_initial_prompt_template_for_action(
-            \core_ai\aiactions\summarise_text::class
-        ),
-        'aiinitialprompt_final_reasoning' => orchestrator::get_default_initial_prompt_template_for_action(
-            \core_ai\aiactions\explain_text::class
-        ),
+        'aiinitialprompt_summarise_text' => orchestrator::get_default_summary_prompt_prefix(),
     ];
     foreach ($promptdefaults as $configkey => $defaultvalue) {
         if (get_config('booking', $configkey) === false) {
@@ -331,93 +313,11 @@ if ($ADMIN->fulltree) {
     );
 
     $aisettingspage->add(
-        new admin_setting_configtext(
-            'booking/airepairmax',
-            get_string('airepairmax', 'mod_booking'),
-            get_string('airepairmax_desc', 'mod_booking'),
-            1,
-            PARAM_INT
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configtextarea(
-            'booking/aiinitialprompt',
-            get_string('aiinitialprompt', 'mod_booking'),
-            get_string('aiinitialprompt_desc', 'mod_booking'),
-            orchestrator::get_default_initial_prompt_template(),
-            PARAM_RAW,
-            120,
-            12
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configtextarea(
-            'booking/aiinitialprompt_generate_text',
-            get_string('aiinitialprompt_generate_text', 'mod_booking'),
-            get_string('aiinitialprompt_generate_text_desc', 'mod_booking'),
-            orchestrator::get_default_initial_prompt_template_for_action(\core_ai\aiactions\generate_text::class),
-            PARAM_RAW,
-            120,
-            8
-        )
-    );
-
-    $aisettingspage->add(
         new admin_setting_configtextarea(
             'booking/aiinitialprompt_summarise_text',
             get_string('aiinitialprompt_summarise_text', 'mod_booking'),
             get_string('aiinitialprompt_summarise_text_desc', 'mod_booking'),
-            orchestrator::get_default_initial_prompt_template_for_action(\core_ai\aiactions\summarise_text::class),
-            PARAM_RAW,
-            120,
-            8
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configtextarea(
-            'booking/aiinitialprompt_explain_text',
-            get_string('aiinitialprompt_explain_text', 'mod_booking'),
-            get_string('aiinitialprompt_explain_text_desc', 'mod_booking'),
-            orchestrator::get_default_initial_prompt_template_for_action(\core_ai\aiactions\explain_text::class),
-            PARAM_RAW,
-            120,
-            8
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configtextarea(
-            'booking/aiinitialprompt_tool_call_parse',
-            get_string('aiinitialprompt_tool_call_parse', 'mod_booking'),
-            get_string('aiinitialprompt_tool_call_parse_desc', 'mod_booking'),
-            orchestrator::get_default_initial_prompt_template_for_action(\core_ai\aiactions\summarise_text::class),
-            PARAM_RAW,
-            120,
-            8
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configtextarea(
-            'booking/aiinitialprompt_simple_retrieval',
-            get_string('aiinitialprompt_simple_retrieval', 'mod_booking'),
-            get_string('aiinitialprompt_simple_retrieval_desc', 'mod_booking'),
-            orchestrator::get_default_initial_prompt_template_for_action(\core_ai\aiactions\summarise_text::class),
-            PARAM_RAW,
-            120,
-            8
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configtextarea(
-            'booking/aiinitialprompt_final_reasoning',
-            get_string('aiinitialprompt_final_reasoning', 'mod_booking'),
-            get_string('aiinitialprompt_final_reasoning_desc', 'mod_booking'),
-            orchestrator::get_default_initial_prompt_template_for_action(\core_ai\aiactions\explain_text::class),
+            orchestrator::get_default_summary_prompt_prefix(),
             PARAM_RAW,
             120,
             8

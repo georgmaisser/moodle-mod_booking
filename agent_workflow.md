@@ -161,8 +161,8 @@ Legende:
 - Jeder geaenderte Plan benoetigt zwingend eine neue Bestaetigung durch den User.
 - In der Reparaturphase werden keine schreibenden Tasks ohne erneute Confirmation ausgefuehrt.
 - Follow-up Confirmation wird ueber `ai_poll_run_status` an das UI geliefert (`followupconfirmation`, `followupcommandsjson`).
-- Der Workflow kann mehrfach neu berechnet werden, solange `airepairmax` nicht erreicht ist und jeder neue Plan erneut bestaetigt wird.
-- Terminierung erfolgt, wenn: Erfolg erreicht, Fehler nicht auto-korrigierbar, User nicht bestaetigt, `airepairmax` erreicht, oder kein valider Repair-Plan erzeugt werden kann.
+- Der Workflow kann mehrfach neu berechnet werden, solange jeder neue Plan erneut bestaetigt wird.
+- Terminierung erfolgt, wenn: Erfolg erreicht, Fehler nicht auto-korrigierbar, User nicht bestaetigt, oder kein valider Repair-Plan erzeugt werden kann.
 
 ## Test-Strategie (verpflichtend)
 
@@ -173,4 +173,4 @@ Alle neuen Funktionen in diesem Ablauf muessen durch Tests abgedeckt werden:
 - Integrationstests fuer Confirmation #1 -> Fehler -> Follow-up Confirmation #2 -> Retry.
 - Negativtests fuer Tamper/Mismatch und fehlende pending intents.
 - Regressionstests, dass nicht-korrigierbare Fehler weiterhin in clarification/error enden.
-- Guardrail-Tests fuer Abbruch bei erreichtem `airepairmax`.
+- Guardrail-Tests fuer sauberen Abbruch im Fehler-/Retry-Pfad.

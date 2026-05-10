@@ -2,6 +2,8 @@
 
 # Campaigns — Overview
 
+> **Primary page** for: temporary price changes, temporary capacity/place changes, and time-boxed booking behavior changes (for example "only for two days").
+
 **Booking campaigns** let you modify how a booking option behaves during a defined time window, based on a booking custom field value and an optional user profile condition. You can use campaigns to:
 
 - **Block** booking access for a subset of options during a specific period

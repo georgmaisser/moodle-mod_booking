@@ -327,6 +327,15 @@ PROMPT;
     }
 
     /**
+     * Return the safe default prefix for final synthesis style customization.
+     *
+     * @return string
+     */
+    public static function get_default_summary_prompt_prefix(): string {
+        return 'You are an expert that composes polished, helpful answers for the "ai" context.';
+    }
+
+    /**
      * Return absolute path to the default initial prompt markdown file.
      *
      * @return string
@@ -368,39 +377,16 @@ PROMPT;
         $cm = get_coursemodule_from_id('booking', $cmid);
         $bookingname = $cm ? format_string($cm->name) : 'this booking instance';
 
-        $legacydefault = trim(self::get_default_initial_prompt_template());
-        $configkey = $this->get_initial_prompt_config_key($steptype);
-        $steptemplate = $this->normalize_config_prompt_template(
-            (string)(get_config('booking', $configkey) ?? ''),
-            $legacydefault
-        );
-        $actiontemplate = '';
-        $actionconfigkey = $this->get_action_initial_prompt_config_key($actionclass);
-        if ($actionconfigkey !== '') {
-            $actiontemplate = $this->normalize_config_prompt_template(
-                (string)(get_config('booking', $actionconfigkey) ?? ''),
-                $legacydefault
-            );
-        }
-        $globaltemplate = $this->normalize_config_prompt_template(
-            (string)(get_config('booking', 'aiinitialprompt') ?? ''),
-            $legacydefault
-        );
+        // Keep core operational prompts fixed to avoid admin misconfiguration risks.
+        // Only a single optional synthesis prefix is allowed via aiinitialprompt_summarise_text.
+        $template = self::get_default_initial_prompt_template_for_action($actionclass);
 
-        // Fallback order:
-        // 1) explicit step template (if custom),
-        // 2) explicit action template,
-        // 3) explicit global template,
-        // 4) built-in action-specific slim default.
-        $template = $steptemplate;
-        if ($template === '') {
-            $template = $actiontemplate;
-        }
-        if ($template === '') {
-            $template = $globaltemplate;
-        }
-        if ($template === '') {
-            $template = self::get_default_initial_prompt_template_for_action($actionclass);
+        if ($actionclass === generate_text::class) {
+            $summaryprefix = trim((string)(get_config('booking', 'aiinitialprompt_summarise_text') ?? ''));
+            if ($summaryprefix === '') {
+                $summaryprefix = self::get_default_summary_prompt_prefix();
+            }
+            $template = $summaryprefix . "\n\n" . ltrim($template);
         }
 
         $prompt = strtr($template, [
