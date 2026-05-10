@@ -1314,6 +1314,15 @@ class agent_runtime {
         array $planningresult
     ): array {
         $observations = $state->get_observations();
+        // Append an explicit language reminder so the synthesis model does not anchor
+        // on the (English) observation texts when the user wrote in another language.
+        $threadlang = trim(core_text::strtolower(
+            (string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang')
+        ));
+        if ($threadlang !== '' && preg_match('/^[a-z]{2}$/', $threadlang)) {
+            $observations[] = "Language reminder: the user's language is \"{$threadlang}\". "
+                . "Write the entire 'message' field in that language.";
+        }
         $synthesis = $this->call_orchestrator_step(
             $threadid,
             $cmid,
