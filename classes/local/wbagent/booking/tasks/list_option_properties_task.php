@@ -17,7 +17,7 @@
 namespace mod_booking\local\wbagent\booking\tasks;
 
 use mod_booking\local\wbagent\booking\booking_task_support;
-use mod_booking\local\wbagent\task_registry;
+use mod_booking\local\wbagent\task_registry_factory;
 use mod_booking\local\wbagent\interfaces\task_trigger_provider_interface;
 
 /**
@@ -153,7 +153,7 @@ class list_option_properties_task extends booking_task_base implements task_trig
     public function execute(array $input, int $cmid, int $userid): array {
         $question = trim((string)($input['question'] ?? ''));
         $outputlang = $this->get_output_language($input);
-        $registry = task_registry::make_default();
+        $registry = task_registry_factory::get_default();
         $createtask = $registry->get_task(create_option_task::TASK_NAME);
         $updatetask = $registry->get_task(update_option_task::TASK_NAME);
 

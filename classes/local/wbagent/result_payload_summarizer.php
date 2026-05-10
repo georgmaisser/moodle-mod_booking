@@ -157,61 +157,12 @@ class result_payload_summarizer {
     public static function describe_entry(array $entry, int $step = 0): string {
         $category = self::detect_result_category($entry);
 
+        $contributed = self::summarize_with_contributors($category, $entry, $step);
+        if ($contributed !== '') {
+            return $contributed;
+        }
+
         switch ($category) {
-            case 'options':
-                $count  = count($entry['options']);
-                $titles = array_slice(
-                    array_filter(array_map(
-                        static fn($o): string => trim((string)($o['name'] ?? $o['text'] ?? '')),
-                        $entry['options']
-                    )),
-                    0,
-                    5
-                );
-                $summary = "Found {$count} booking option(s)";
-                if (!empty($titles)) {
-                    $summary .= ': ' . implode(', ', $titles);
-                }
-                return $summary . '.';
-
-            case 'users':
-                $ucount = count($entry['users']);
-                $unames = array_slice(
-                    array_filter(array_map(
-                        static fn($u): string => trim((string)($u['fullname'] ?? $u['username'] ?? '')),
-                        $entry['users']
-                    )),
-                    0,
-                    5
-                );
-                $usummary = "Found {$ucount} user(s)";
-                if (!empty($unames)) {
-                    $usummary .= ': ' . implode(', ', $unames);
-                }
-                return $usummary . '.';
-
-            case 'courses':
-                $ccount = count($entry['courses']);
-                $cnames = array_slice(
-                    array_filter(array_map(
-                        static fn($c): string => trim((string)($c['fullname'] ?? $c['shortname'] ?? '')),
-                        $entry['courses']
-                    )),
-                    0,
-                    5
-                );
-                $csummary = "Found {$ccount} course(s)";
-                if (!empty($cnames)) {
-                    $csummary .= ': ' . implode(', ', $cnames);
-                }
-                return $csummary . '.';
-
-            case 'docs':
-                return self::describe_docs_entry($entry['docs'], $step);
-
-            case 'diagnosis':
-                return self::describe_diagnosis_entry($entry['diagnosis']);
-
             case 'capabilities':
                 $capcount = count($entry['capabilities']);
                 $actcount = count($entry['actions'] ?? []);
@@ -333,10 +284,6 @@ class result_payload_summarizer {
                 }
                 return $detailsummary;
 
-            case 'current_user':
-                $name = trim((string)($entry['fullname'] ?? ''));
-                return 'Current user identified' . ($name !== '' ? ": {$name}" : '') . '.';
-
             default:
                 // Fallback: use task-authored user message or detail string.
                 return trim((string)($entry['usermessage'] ?? $entry['detail'] ?? ''));
@@ -344,147 +291,27 @@ class result_payload_summarizer {
     }
 
     /**
-     * Build a rich observation string for a docs-category result.
+     * Try task/domain-specific summary contributors first.
      *
-     * Format:
-     *   ## <title>
-     *   <excerpt up to 500 chars>[...]
-     *
-     *   (repeated per doc)
-     *
-     *   Links:
-     *   - <title>: <url>
-     *
-     * Hard maximum: 2000 characters total. Truncated sections get a "[...]" suffix.
-     *
-     * @param  array $docs  Array of doc entries: {title, excerpt, url, path, score}
-     * @param  int   $step
+     * @param string $category
+     * @param array $entry
+     * @param int $step
      * @return string
      */
-    private static function describe_docs_entry(array $docs, int $step = 0): string {
-        $isfirststep = $step > 0 && $step <= 1;
-        // Prefer chunk-based reading payloads; keep enough budget for one or two chunks.
-        $hasrichcontent = !empty(array_filter(
-            $docs,
-            static fn(array $d): bool => trim((string)($d['chunk_content'] ?? $d['full_content'] ?? '')) !== ''
-        ));
-        $maxobservation  = $isfirststep ? 1400 : ($hasrichcontent ? 4500 : 2000);
-        $maxperdoc       = $isfirststep ? 700 : ($hasrichcontent ? 2500 : 500);
-        $parts           = [];
-        $linklines       = [];
+    private static function summarize_with_contributors(string $category, array $entry, int $step): string {
+        $contributors = task_registry_factory::get_default()->get_result_summary_contributors();
 
-        foreach ($docs as $doc) {
-            $title       = trim((string)($doc['title'] ?? ''));
-            $chunkcontent = trim((string)($doc['chunk_content'] ?? ''));
-            $fullcontent = trim((string)($doc['full_content'] ?? ''));
-            $excerpt     = trim((string)($doc['excerpt'] ?? ''));
-            $url         = trim((string)($doc['url'] ?? ''));
-            $hasmore     = !empty($doc['has_more']);
-            $nextline    = (int)($doc['next_line_start'] ?? 0);
-            $chunklinks  = array_values(array_filter(array_map(
-                static fn($item): string => trim((string)$item),
-                (array)($doc['chunk_links'] ?? [])
-            )));
-
-            // Prefer current chunk text; keep fallback compatibility.
-            $body = $chunkcontent !== '' ? $chunkcontent : ($fullcontent !== '' ? $fullcontent : $excerpt);
-
-            if ($body !== '') {
-                $block = '';
-                if ($title !== '') {
-                    $block .= "## {$title}\n";
-                }
-                if (mb_strlen($body) > $maxperdoc) {
-                    $block .= mb_substr($body, 0, $maxperdoc) . '[...]';
-                } else {
-                    $block .= $body;
-                }
-                $parts[] = $block;
+        foreach ($contributors as $contributor) {
+            if (!$contributor->supports($category, $entry)) {
+                continue;
             }
 
-            if (!$isfirststep && $hasmore && $nextline > 0) {
-                $parts[] = 'Continue this document from line ' . $nextline . ' if more detail is needed.';
-            }
-
-            if (!$isfirststep && !empty($chunklinks)) {
-                $parts[] = 'Linked docs in this section: ' . implode(', ', array_slice($chunklinks, 0, 4));
-            }
-
-            if (!$isfirststep && $url !== '') {
-                $linkline = $title !== '' ? "- {$title}: {$url}" : "- {$url}";
-                $linklines[] = $linkline;
+            $summary = trim($contributor->summarize($entry, $step));
+            if ($summary !== '') {
+                return $summary;
             }
         }
 
-        $body = implode("\n\n", $parts);
-
-        if (!empty($linklines)) {
-            $linksblock = "Links:\n" . implode("\n", $linklines);
-            $separator  = $body !== '' ? "\n\n" : '';
-            $body      .= $separator . $linksblock;
-        }
-
-        if ($body === '') {
-            return 'Retrieved ' . count($docs) . ' documentation chunk(s) (no text available).';
-        }
-
-        // Hard truncation to stay within max observation budget.
-        if (mb_strlen($body) > $maxobservation) {
-            $body = mb_substr($body, 0, $maxobservation) . '[...]';
-        }
-
-        return $body;
-    }
-
-    /**
-     * Build a rich observation string for a diagnosis-category result.
-     *
-     * Includes: option name, user name, user booking status, issue type,
-     * and ALL reason lines so the LLM has complete information to answer.
-     *
-     * @param  array $diagnosis  The diagnosis sub-array from the task result.
-     * @return string
-     */
-    private static function describe_diagnosis_entry(array $diagnosis): string {
-        $optionname = trim((string)($diagnosis['optionname'] ?? ''));
-        $issue      = trim((string)($diagnosis['issue'] ?? ''));
-        $userstatus = trim((string)($diagnosis['userstatus'] ?? ''));
-
-        $reasons = array_values(array_filter(array_map(
-            static fn($r): string => trim((string)$r),
-            (array)($diagnosis['reasons'] ?? [])
-        )));
-
-        // Header line.
-        $header = 'Diagnosis';
-        if ($optionname !== '') {
-            $header .= " for option \"{$optionname}\"";
-        }
-        if ($issue !== '') {
-            $header .= " (issue: {$issue})";
-        }
-        $header .= '.';
-
-        $lines = [$header];
-
-        if ($userstatus !== '') {
-            $lines[] = "User booking status: {$userstatus}.";
-        }
-
-        if (!empty($reasons)) {
-            $lines[] = 'Findings:';
-            foreach ($reasons as $i => $reason) {
-                $lines[] = '- ' . $reason;
-                // Stay within a reasonable observation budget.
-                if ($i >= 9) {
-                    $lines[] = '- [' . (count($reasons) - 10) . ' more finding(s) omitted]';
-                    break;
-                }
-            }
-        } else {
-            $lines[] = 'No specific blocking reasons detected.';
-        }
-
-        return implode("\n", $lines);
+        return '';
     }
 }

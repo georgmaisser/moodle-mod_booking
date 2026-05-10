@@ -25,6 +25,8 @@
 namespace mod_booking\local\wbagent;
 
 use core_component;
+use mod_booking\local\wbagent\interfaces\result_summary_provider_interface;
+use mod_booking\local\wbagent\interfaces\summarizer\result_summary_contributor_interface;
 use mod_booking\local\wbagent\interfaces\task_interface;
 use mod_booking\local\wbagent\interfaces\task_provider_interface;
 use mod_booking\local\wbagent\interfaces\task_trigger_provider_interface;
@@ -47,6 +49,9 @@ class task_registry {
     /** @var array<string, task_interface> task name => task instance */
     private array $tasks = [];
 
+    /** @var array<int,result_summary_contributor_interface> */
+    private array $resultsummarycontributors = [];
+
     /**
      * Register a task provider.  All tasks it declares are mapped to it.
      *
@@ -55,6 +60,28 @@ class task_registry {
      */
     public function register(task_provider_interface $provider): void {
         $this->providers[$provider->get_component()] = $provider;
+
+        if ($provider instanceof result_summary_provider_interface) {
+            foreach ($provider->get_result_summary_contributors() as $contributor) {
+                if (!$contributor instanceof result_summary_contributor_interface) {
+                    continue;
+                }
+
+                $class = get_class($contributor);
+                $alreadyregistered = false;
+                foreach ($this->resultsummarycontributors as $existing) {
+                    if (get_class($existing) === $class) {
+                        $alreadyregistered = true;
+                        break;
+                    }
+                }
+
+                if (!$alreadyregistered) {
+                    $this->resultsummarycontributors[] = $contributor;
+                }
+            }
+        }
+
         foreach ($provider->get_tasks() as $task) {
             $taskname = trim($task->get_name());
             if ($taskname === '') {
@@ -104,6 +131,15 @@ class task_registry {
      */
     public function get_tasks(): array {
         return $this->tasks;
+    }
+
+    /**
+     * Return all registered result summary contributors.
+     *
+     * @return array<int,result_summary_contributor_interface>
+     */
+    public function get_result_summary_contributors(): array {
+        return $this->resultsummarycontributors;
     }
 
     /**

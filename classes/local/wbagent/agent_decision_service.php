@@ -1232,7 +1232,7 @@ class agent_decision_service {
             ): array {
                 $exec = new executor($this->registry, $this->store, $this->authz);
                 $rawresults = $exec->execute_commands($preparedcommands, $cmid, $userid, $idempotencykey, $runid);
-                $feedbackservice = new execution_feedback_service($this->store);
+                $feedbackservice = new execution_feedback_service($this->store, $this->registry);
                 return $feedbackservice->build_completion_feedback(
                     $threadid,
                     $cmid,

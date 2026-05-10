@@ -42,13 +42,18 @@ class execution_feedback_service {
     /** @var conversation_store */
     private conversation_store $store;
 
+    /** @var task_registry */
+    private task_registry $registry;
+
     /**
      * Constructor.
      *
      * @param conversation_store $store
+     * @param task_registry|null $registry
      */
-    public function __construct(conversation_store $store) {
+    public function __construct(conversation_store $store, ?task_registry $registry = null) {
         $this->store = $store;
+        $this->registry = $registry ?? task_registry_factory::get_default();
     }
 
     /**
@@ -129,7 +134,6 @@ class execution_feedback_service {
             return true;
         }
 
-        $registry = task_registry::make_default();
         foreach ($commands as $command) {
             if (!is_array($command)) {
                 continue;
@@ -140,7 +144,7 @@ class execution_feedback_service {
                 continue;
             }
 
-            if (!$registry->is_read_only_task($taskname)) {
+            if (!$this->registry->is_read_only_task($taskname)) {
                 return true;
             }
         }
@@ -250,10 +254,9 @@ class execution_feedback_service {
         $context = context_module::instance($cmid);
         $latestusermessage = $this->extract_latest_user_message($threadid);
         $anonymizer = new privacy_anonymizer($this->store);
-        $registry = task_registry::make_default();
         $taskschemas = [];
-        foreach ($registry->get_task_names() as $taskname) {
-            $task = $registry->get_task($taskname);
+        foreach ($this->registry->get_task_names() as $taskname) {
+            $task = $this->registry->get_task($taskname);
             if (!$task) {
                 continue;
             }

@@ -18,7 +18,7 @@ namespace mod_booking\local\wbagent\booking\tasks;
 
 use mod_booking\local\wbagent\booking\booking_task_support;
 use mod_booking\local\wbagent\interfaces\task_trigger_provider_interface;
-use mod_booking\local\wbagent\task_registry;
+use mod_booking\local\wbagent\task_registry_factory;
 
 /**
  * Task definition for booking.list_actions.
@@ -154,7 +154,7 @@ class list_actions_task extends booking_task_base implements task_trigger_provid
         $scope = strtolower(trim((string)($input['scope'] ?? 'all')));
         $actions = [];
         $selectedtasknames = [];
-        $registry = task_registry::make_default();
+        $registry = task_registry_factory::get_default();
         foreach ($registry->get_task_names() as $name) {
             if ($scope === 'readonly' && !$registry->is_read_only_task($name)) {
                 continue;

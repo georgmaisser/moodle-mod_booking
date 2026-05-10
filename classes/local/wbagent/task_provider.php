@@ -17,8 +17,12 @@
 namespace mod_booking\local\wbagent;
 
 use core_component;
+use mod_booking\local\wbagent\interfaces\result_summary_provider_interface;
 use mod_booking\local\wbagent\interfaces\task_interface;
 use mod_booking\local\wbagent\interfaces\task_provider_interface;
+use mod_booking\local\wbagent\summarizer\basic_collection_result_summary_contributor;
+use mod_booking\local\wbagent\summarizer\diagnosis_result_summary_contributor;
+use mod_booking\local\wbagent\summarizer\docs_result_summary_contributor;
 
 /**
  * mod_booking task provider entrypoint.
@@ -27,7 +31,7 @@ use mod_booking\local\wbagent\interfaces\task_provider_interface;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class task_provider implements task_provider_interface {
+class task_provider implements result_summary_provider_interface, task_provider_interface {
     /**
      * Return the component name.
      *
@@ -122,5 +126,18 @@ class task_provider implements task_provider_interface {
         // For now, no custom prompt guidance beyond what orchestrator provides.
         // Plugins can override to inject domain-specific instructions.
         return [];
+    }
+
+    /**
+     * Return result summary contributors for this component.
+     *
+     * @return array<int,\mod_booking\local\wbagent\interfaces\summarizer\result_summary_contributor_interface>
+     */
+    public function get_result_summary_contributors(): array {
+        return [
+            new basic_collection_result_summary_contributor(),
+            new docs_result_summary_contributor(),
+            new diagnosis_result_summary_contributor(),
+        ];
     }
 }
