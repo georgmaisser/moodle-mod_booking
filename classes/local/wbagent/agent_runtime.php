@@ -203,6 +203,7 @@ class agent_runtime {
     public function run_loop(int $threadid, int $cmid, int $userid, int $maxsteps = 0): array {
         $limit = ($maxsteps > 0) ? $maxsteps : self::MAX_LOOP_STEPS;
         $missingcommandsretryused = false;
+        $preflightclarificationretryused = false;
 
         // Check whether the previous call hit the step limit and stored its observations
         // for resumption.  If the resume payload is still fresh, pre-load those observations
@@ -318,6 +319,14 @@ class agent_runtime {
                 && !empty($state->get_observations())
             ) {
                 $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
+            }
+
+            // One-shot self-healing retry for preflight clarification responses that
+            // include actionable error details (e.g. ambiguity candidates).
+            if ($this->should_retry_preflight_clarification($result, $state, $preflightclarificationretryused)) {
+                $preflightclarificationretryused = true;
+                $state->record_step([], [], $this->build_preflight_retry_observation($result, $step + 1));
+                continue;
             }
 
             // Any other response type requires user interaction or signals completion.
@@ -841,6 +850,104 @@ class agent_runtime {
             'results'                   => [],
             'lang'                      => (string)($result['lang'] ?? ''),
         ];
+    }
+
+    /**
+     * Decide whether a clarification should trigger one internal retry.
+     *
+     * Reuses the existing loop/observation mechanism without introducing a
+     * separate retry subsystem. Guarded to run at most once per request.
+     *
+     * @param array $result
+     * @param agent_state $state
+     * @param bool $alreadyused
+     * @return bool
+     */
+    private function should_retry_preflight_clarification(
+        array $result,
+        agent_state $state,
+        bool $alreadyused
+    ): bool {
+        if ($alreadyused) {
+            return false;
+        }
+
+        if ((string)($result['response_type'] ?? '') !== 'clarification') {
+            return false;
+        }
+
+        if (!empty((array)($result['commands'] ?? []))) {
+            return false;
+        }
+
+        $attemptedtasks = (array)($result['attempted_tasks'] ?? []);
+        $errors = array_values(array_filter(array_map('trim', (array)($result['errors'] ?? []))));
+        $issuecodes = array_values(array_filter(array_map('trim', (array)($result['issue_codes'] ?? []))));
+
+        if (empty($attemptedtasks) || empty($errors)) {
+            return false;
+        }
+
+        // Do not retry mutating preflight clarifications. A blind retry can
+        // drift into unrelated readonly recovery paths (e.g. docs), while the
+        // correct behavior is to ask the user for the missing clarification.
+        foreach ($attemptedtasks as $taskname) {
+            $taskname = trim((string)$taskname);
+            if ($taskname === '') {
+                continue;
+            }
+            if (!$this->registry->is_read_only_task($taskname)) {
+                return false;
+            }
+        }
+
+        // Never retry loop-control/system conditions.
+        foreach ($issuecodes as $code) {
+            if (str_starts_with((string)$code, 'LOOP_')) {
+                return false;
+            }
+        }
+
+        // When there is no prior tool observation yet, one retry can let the planner
+        // leverage the synthesized error observation for a corrected command.
+        return empty($state->get_observations());
+    }
+
+    /**
+     * Build a compact synthetic observation from a preflight clarification.
+     *
+     * @param array $result
+     * @param int $step
+     * @return string
+     */
+    private function build_preflight_retry_observation(array $result, int $step): string {
+        $parts = [];
+
+        $message = trim((string)($result['message'] ?? ''));
+        if ($message !== '') {
+            $parts[] = $message;
+        }
+
+        $errors = array_values(array_filter(array_map('trim', (array)($result['errors'] ?? []))));
+        if (!empty($errors)) {
+            $parts[] = 'Errors: ' . implode(' || ', array_slice($errors, 0, 12));
+        }
+
+        $issuecodes = array_values(array_filter(array_map('trim', (array)($result['issue_codes'] ?? []))));
+        if (!empty($issuecodes)) {
+            $parts[] = 'issue_codes=' . implode(',', array_slice($issuecodes, 0, 12));
+        }
+
+        $attemptedtasks = array_values(array_filter(array_map('trim', (array)($result['attempted_tasks'] ?? []))));
+        if (!empty($attemptedtasks)) {
+            $parts[] = 'attempted_tasks=' . implode(',', array_slice($attemptedtasks, 0, 4));
+        }
+
+        if (empty($parts)) {
+            return 'Step ' . $step . ': Preflight clarification without details.';
+        }
+
+        return 'Step ' . $step . ': Preflight clarification. ' . implode(' ', $parts);
     }
 
     /**

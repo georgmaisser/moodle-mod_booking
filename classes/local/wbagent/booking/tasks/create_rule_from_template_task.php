@@ -60,7 +60,8 @@ class create_rule_from_template_task extends booking_task_base implements task_t
         return [
             'version' => 1,
             'description' => 'Create a booking rule from a booking-rule template '
-                . 'via the existing server-side rules form pipeline.',
+                . 'via the existing server-side rules form pipeline. '
+                . 'Use this for requests like adding a booking confirmation, reminder, or cancellation notification rule.',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_create_option',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_create_option',
@@ -72,7 +73,8 @@ class create_rule_from_template_task extends booking_task_base implements task_t
                 ],
                 'templatequery' => [
                     'type' => 'string',
-                    'description' => 'Template name fragment if templateid is unknown.',
+                    'description' => 'Template name fragment if templateid is unknown. '
+                        . 'Use the user phrasing directly (e.g. "booking confirmation", "reminder", "cancellation").',
                     'required' => false,
                 ],
                 'rulename' => [
@@ -103,7 +105,15 @@ class create_rule_from_template_task extends booking_task_base implements task_t
         return [
             [
                 'id' => 'booking.create_rule_from_template',
-                'description' => 'User asks to create a booking rule using a known rule template.',
+                'description' => 'User asks to create/add a new booking rule, especially notification rules '
+                    . 'such as booking confirmation, reminder, cancellation or waitlist email.',
+                'examples' => [
+                    'Add a simple booking confirmation.',
+                    'Create a confirmation email rule for bookings.',
+                    'Add a reminder rule for this booking.',
+                    'Create a cancellation notification rule.',
+                    'Fuege eine einfache Buchungsbestaetigung hinzu.',
+                ],
             ],
         ];
     }
@@ -115,16 +125,9 @@ class create_rule_from_template_task extends booking_task_base implements task_t
      * @return array{valid:bool,errors:array<int,string>}
      */
     public function check_structure(array $input): array {
-        $hasid = !empty($input['templateid']);
-        $hasquery = trim((string)($input['templatequery'] ?? '')) !== '';
-
-        if (!$hasid && !$hasquery) {
-            return [
-                'valid' => false,
-                'errors' => ['Bitte templateid oder templatequery angeben.'],
-            ];
-        }
-
+        // Keep structure validation permissive here.
+        // Missing template selection is handled in preflight as a clarification
+        // with concrete candidate templates.
         return ['valid' => true, 'errors' => []];
     }
 
@@ -139,9 +142,30 @@ class create_rule_from_template_task extends booking_task_base implements task_t
     public function preflight(array $input, int $cmid, int $userid): task_preflight_result {
         $issues = [];
 
+        $templateid = (int)($input['templateid'] ?? 0);
+        $templatequery = trim((string)($input['templatequery'] ?? ''));
+        if ($templateid === 0 && $templatequery === '') {
+            $issues[] = [
+                'code' => 'TEMPLATE_SELECTION_REQUIRED',
+                'severity' => 'needs_clarification',
+                'message' => 'Which of the following templates would you like to use as the base?',
+            ];
+
+            foreach ($this->ruleservice->list_templates() as $candidate) {
+                $issues[] = [
+                    'code' => 'TEMPLATE_CANDIDATE',
+                    'severity' => 'needs_clarification',
+                    'message' => 'templateid=' . (int)($candidate['templateid'] ?? 0)
+                        . ' name=' . (string)($candidate['name'] ?? ''),
+                ];
+            }
+
+            return task_preflight_result::invalid($issues);
+        }
+
         $resolved = $this->ruleservice->resolve_template(
-            (int)($input['templateid'] ?? 0),
-            trim((string)($input['templatequery'] ?? ''))
+            $templateid,
+            $templatequery
         );
 
         if (($resolved['status'] ?? '') === 'error') {

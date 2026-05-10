@@ -229,6 +229,17 @@ class agent_decision_service {
             $hasobservationscontext
         );
 
+        $recentlinkresponse = $this->resolve_recent_link_lookup_response(
+            $threadid,
+            $usermessage,
+            $lookupintent,
+            $outputlang,
+            $result
+        );
+        if (is_array($recentlinkresponse)) {
+            return $recentlinkresponse;
+        }
+
         if ($iscontractincompleteintentonly) {
             $result['issue_codes'] = array_values(array_unique(array_merge(
                 (array)($result['issue_codes'] ?? []),
@@ -236,7 +247,8 @@ class agent_decision_service {
             )));
         }
 
-        if ($this->should_attempt_recovery($result, $hasobservationscontext)) {
+        $hasmutatingtriggerintent = $this->has_mutating_trigger_intent($result);
+        if (!$hasmutatingtriggerintent && $this->should_attempt_recovery($result, $hasobservationscontext)) {
             $hadcommandsbefore = !empty((array)($result['commands'] ?? []));
             $hadresultsbefore = !empty((array)($result['results'] ?? []));
             $result = $this->recoverysvc->promote(
@@ -309,6 +321,9 @@ class agent_decision_service {
         // this service as task_call; execute it here and return execution_result.
         $result = $this->enforce_task_boundary_invariants($result, $threadid, $cmid, $userid, $outputlang);
 
+        // 9d. Contract hardening: normalize impossible response_type/commands combinations.
+        $result = $this->enforce_response_contract_invariants($result);
+
         // 10. Ensure message is never empty before storing pending intent.
         $message = trim((string)($result['message'] ?? ''));
         if ($message === '') {
@@ -359,6 +374,42 @@ class agent_decision_service {
     }
 
     /**
+     * Enforce generic response-contract invariants independent of task semantics.
+     *
+     * @param array $result
+     * @return array
+     */
+    private function enforce_response_contract_invariants(array $result): array {
+        $responsetype = (string)($result['response_type'] ?? '');
+        $commands = (array)($result['commands'] ?? []);
+        $issuecodes = (array)($result['issue_codes'] ?? []);
+
+        $requirescommands = in_array(
+            $responsetype,
+            [self::RESPONSE_TYPE_TASK_CALL, self::RESPONSE_TYPE_CONFIRMATION_REQUEST],
+            true
+        );
+        if ($requirescommands && empty($commands)) {
+            $result['response_type'] = self::RESPONSE_TYPE_CLARIFICATION;
+            $result['commands'] = [];
+            $result['issue_codes'] = array_values(array_unique(array_merge($issuecodes, ['CONTRACT_COMMANDS_REQUIRED'])));
+            return $result;
+        }
+
+        $forbidscommands = in_array(
+            $responsetype,
+            [self::RESPONSE_TYPE_CLARIFICATION, self::RESPONSE_TYPE_CONFIRM_PENDING, self::RESPONSE_TYPE_ERROR],
+            true
+        );
+        if ($forbidscommands && !empty($commands)) {
+            $result['commands'] = [];
+            $result['issue_codes'] = array_values(array_unique(array_merge($issuecodes, ['CONTRACT_COMMANDS_FORBIDDEN'])));
+        }
+
+        return $result;
+    }
+
+    /**
      * Named routing condition for entering recovery enrichment.
      *
      * @param array $result
@@ -400,6 +451,38 @@ class agent_decision_service {
         }
 
         return true;
+    }
+
+    /**
+     * Detect whether current used_triggers indicate a mutating task intent.
+     *
+     * @param array $result
+     * @return bool
+     */
+    private function has_mutating_trigger_intent(array $result): bool {
+        $usedtriggers = (array)($result['used_triggers'] ?? []);
+        if (empty($usedtriggers)) {
+            return false;
+        }
+
+        $triggertotask = $this->registry->get_trigger_id_to_task_name_map();
+        foreach ($usedtriggers as $triggerid) {
+            $triggerid = trim((string)$triggerid);
+            if ($triggerid === '' || !isset($triggertotask[$triggerid])) {
+                continue;
+            }
+
+            $taskname = trim((string)$triggertotask[$triggerid]);
+            if ($taskname === '') {
+                continue;
+            }
+
+            if (!$this->registry->is_read_only_task($taskname)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -966,8 +1049,22 @@ class agent_decision_service {
         // If there were blocking errors, decide whether to allow confirmable continuation.
         if (!empty($blockingerrors)) {
             $validationmessage = trim(implode(' ', $blockingerrors));
+            $hasclarificationissues = false;
+            foreach ($allissues as $issue) {
+                if (!is_array($issue)) {
+                    continue;
+                }
+                if (trim((string)($issue['severity'] ?? '')) === 'needs_clarification') {
+                    $hasclarificationissues = true;
+                    break;
+                }
+            }
 
-            if ($this->has_confirmable_prevalidation_issues($allissuecodes) && !empty($result['commands'])) {
+            if (
+                $this->has_confirmable_prevalidation_issues($allissuecodes)
+                && !$hasclarificationissues
+                && !empty($result['commands'])
+            ) {
                 // Soft-confirmable: show confirmation_request with augmented message.
                 return [
                     'response_type'   => 'confirmation_request',
@@ -2082,6 +2179,134 @@ class agent_decision_service {
         }
 
         return false;
+    }
+
+    /**
+     * Resolve short link-follow-up requests from recent structured assistant results.
+     *
+     * @param int $threadid
+     * @param string $usermessage
+     * @param bool $lookupintent
+     * @param string $outputlang
+     * @param array $result
+     * @return array|null
+     */
+    private function resolve_recent_link_lookup_response(
+        int $threadid,
+        string $usermessage,
+        bool $lookupintent,
+        string $outputlang,
+        array $result
+    ): ?array {
+        if (!$lookupintent || !$this->looks_like_link_lookup_request($usermessage)) {
+            return null;
+        }
+
+        $link = $this->extract_recent_structured_link($threadid);
+        if ($link === '') {
+            return null;
+        }
+
+        $message = (trim(core_text::strtolower($outputlang)) === 'de')
+            ? 'Hier ist der Link: ' . $link
+            : 'Here is the link: ' . $link;
+
+        return [
+            'response_type'   => self::RESPONSE_TYPE_CLARIFICATION,
+            'message'         => $message,
+            'commands'        => [],
+            'ambiguities'     => array_values(array_unique((array)($result['ambiguities'] ?? []))),
+            'errors'          => array_values(array_unique((array)($result['errors'] ?? []))),
+            'attempted_tasks' => array_values(array_unique((array)($result['attempted_tasks'] ?? []))),
+            'issue_codes'     => array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                ['LOOKUP_RECENT_LINK_RESOLVED']
+            ))),
+            'used_triggers'   => (array)($result['used_triggers'] ?? []),
+        ];
+    }
+
+    /**
+     * Detect short user requests asking for a link/URL.
+     *
+     * @param string $message
+     * @return bool
+     */
+    private function looks_like_link_lookup_request(string $message): bool {
+        $normalized = core_text::strtolower(trim((string)preg_replace('/\s+/', ' ', $message)));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return (bool)preg_match('/\b(link|url|href)\b/u', $normalized);
+    }
+
+    /**
+     * Extract the most recent URL-like link from structured assistant payloads.
+     *
+     * @param int $threadid
+     * @return string
+     */
+    private function extract_recent_structured_link(int $threadid): string {
+        $messages = $this->store->get_recent_messages($threadid, 16);
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            if ((string)($messages[$i]->role ?? '') !== 'assistant') {
+                continue;
+            }
+
+            $structured = json_decode((string)($messages[$i]->structuredjson ?? ''), true);
+            if (!is_array($structured)) {
+                continue;
+            }
+
+            $link = $this->extract_link_from_value($structured);
+            if ($link !== '') {
+                return $link;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Recursively extract the first link-like string from structured values.
+     *
+     * @param mixed $value
+     * @return string
+     */
+    private function extract_link_from_value($value): string {
+        if (is_string($value)) {
+            $candidate = trim($value);
+            if ($candidate !== '' && preg_match('#^https?://#i', $candidate)) {
+                return $candidate;
+            }
+            return '';
+        }
+
+        if (!is_array($value)) {
+            return '';
+        }
+
+        $prioritykeys = ['link', 'url', 'editlink', 'viewlink', 'editurl', 'viewurl'];
+        foreach ($prioritykeys as $key) {
+            if (!array_key_exists($key, $value)) {
+                continue;
+            }
+
+            $candidate = $this->extract_link_from_value($value[$key]);
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        foreach ($value as $item) {
+            $candidate = $this->extract_link_from_value($item);
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
     }
 
     /**

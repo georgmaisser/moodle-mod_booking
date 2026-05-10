@@ -114,12 +114,24 @@ class booking_rules_agent_service {
         $exact = [];
         $contains = [];
         $needle = core_text::strtolower($query);
+        $normalizedneedle = $this->normalize_template_lookup_token($query);
+        $compactneedle = str_replace(' ', '', $normalizedneedle);
         foreach ($templates as $template) {
             $name = trim((string)($template['name'] ?? ''));
             $hay = core_text::strtolower($name);
-            if ($hay === $needle) {
+            $normalizedhay = $this->normalize_template_lookup_token($name);
+            $compacthay = str_replace(' ', '', $normalizedhay);
+
+            $isexact = ($hay === $needle)
+                || ($normalizedhay !== '' && $normalizedhay === $normalizedneedle)
+                || ($compacthay !== '' && $compacthay === $compactneedle);
+            if ($isexact) {
                 $exact[] = $template;
-            } else if ($hay !== '' && strpos($hay, $needle) !== false) {
+            } else if (
+                ($hay !== '' && strpos($hay, $needle) !== false)
+                || ($normalizedhay !== '' && $normalizedneedle !== '' && strpos($normalizedhay, $normalizedneedle) !== false)
+                || ($compacthay !== '' && $compactneedle !== '' && strpos($compacthay, $compactneedle) !== false)
+            ) {
                 $contains[] = $template;
             }
         }
@@ -141,23 +153,139 @@ class booking_rules_agent_service {
             ];
         }
 
-        return ['status' => 'error', 'message' => 'Kein passendes Template gefunden.'];
+        // No exact/contains match: try a generic fuzzy similarity pick.
+        // This keeps the resolver task-agnostic while avoiding unnecessary
+        // clarification loops for close variants like underscore/word-form input.
+        $scored = [];
+        foreach ($templates as $template) {
+            $name = trim((string)($template['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $scored[] = [
+                'template' => $template,
+                'score' => $this->score_template_similarity($query, $name),
+            ];
+        }
+
+        if (!empty($scored)) {
+            usort($scored, static function (array $a, array $b): int {
+                return ($b['score'] <=> $a['score']);
+            });
+
+            $topscore = (float)($scored[0]['score'] ?? 0.0);
+            $secondscore = (float)($scored[1]['score'] ?? 0.0);
+            if ($topscore >= 0.62 && ($topscore - $secondscore) >= 0.08) {
+                return ['status' => 'ok', 'template' => (array)$scored[0]['template']];
+            }
+        }
+
+        // No direct match: return a retryable ambiguity with available templates,
+        // so the existing preflight clarification flow can propose concrete choices.
+        $fallbackcandidates = array_slice(array_values(array_map(static function (array $item): array {
+            return [
+                'templateid' => (int)($item['templateid'] ?? 0),
+                'name' => (string)($item['name'] ?? ''),
+            ];
+        }, $templates)), 0, 12);
+
+        if (!empty($fallbackcandidates)) {
+            return [
+                'status' => 'ambiguity',
+                'message' => 'No template matched the query exactly. Retry with one of the available template names or templateid.',
+                'candidates' => $fallbackcandidates,
+            ];
+        }
+
+        return ['status' => 'error', 'message' => 'No matching template found.'];
     }
 
     /**
-     * List all rules visible in the given context path.
+     * Normalize a template lookup token for robust text matching.
      *
-     * @param int $contextid
+     * Converts to lowercase, replaces non-letter/digit separators with spaces,
+     * then collapses repeated whitespace.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_template_lookup_token(string $value): string {
+        $value = core_text::strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        $value = preg_replace('/[^\pL\pN]+/u', ' ', $value);
+        $value = preg_replace('/\s+/u', ' ', (string)$value);
+        return trim((string)$value);
+    }
+
+    /**
+     * Compute a generic similarity score between lookup query and template name.
+     *
+     * Score blends token overlap and normalized string similarity and returns
+     * a value in range [0,1].
+     *
+     * @param string $query
+     * @param string $name
+     * @return float
+     */
+    private function score_template_similarity(string $query, string $name): float {
+        $normalizedquery = $this->normalize_template_lookup_token($query);
+        $normalizedname = $this->normalize_template_lookup_token($name);
+        if ($normalizedquery === '' || $normalizedname === '') {
+            return 0.0;
+        }
+
+        $querytokens = array_values(array_filter(explode(' ', $normalizedquery), static function (string $token): bool {
+            return $token !== '';
+        }));
+        $nametokens = array_values(array_filter(explode(' ', $normalizedname), static function (string $token): bool {
+            return $token !== '';
+        }));
+
+        $queryset = array_fill_keys($querytokens, true);
+        $nameset = array_fill_keys($nametokens, true);
+        $intersectioncount = count(array_intersect_key($queryset, $nameset));
+        $unioncount = count($queryset + $nameset);
+        $tokenscore = $unioncount > 0 ? ($intersectioncount / $unioncount) : 0.0;
+
+        similar_text(
+            str_replace(' ', '', $normalizedquery),
+            str_replace(' ', '', $normalizedname),
+            $percent
+        );
+        $stringscore = max(0.0, min(1.0, ((float)$percent / 100.0)));
+
+        // Weighted blend: string similarity captures close wording variants,
+        // token overlap keeps ranking anchored in shared intent terms.
+        return (0.65 * $stringscore) + (0.35 * $tokenscore);
+    }
+
+    /**
+     * List rules visible in the context path of the given booking cmid.
+     *
+     * By default all rules are returned. Pass $activeonly = true to restrict
+     * to rules with isactive = 1 (e.g. to avoid showing disabled rules).
+     * Each entry contains localized names and a direct edit link.
+     *
+     * @param int  $cmid
+     * @param bool $activeonly When true only active rules are included.
      * @return array<int,array<string,mixed>>
      */
-    public function list_rules_for_context(int $contextid): array {
+    public function list_rules_for_context(int $cmid, bool $activeonly = false): array {
+        $contextid = $this->get_module_contextid($cmid);
         $records = booking_rules::get_list_of_saved_rules_by_context($contextid);
         $items = [];
+
         foreach ($records as $record) {
             if (!($record instanceof stdClass)) {
                 continue;
             }
-            $items[] = $this->normalize_rule_record($record);
+            if ($activeonly && (int)($record->isactive ?? 0) !== 1) {
+                continue;
+            }
+            $items[] = $this->normalize_rule_record($record, $cmid);
         }
 
         usort($items, static function (array $a, array $b): int {
@@ -170,13 +298,13 @@ class booking_rules_agent_service {
     /**
      * Resolve target rule by id or query.
      *
-     * @param int $contextid
-     * @param int $ruleid
+     * @param int    $cmid
+     * @param int    $ruleid
      * @param string $rulequery
      * @return array<string,mixed>
      */
-    public function resolve_rule(int $contextid, int $ruleid = 0, string $rulequery = ''): array {
-        $rules = $this->list_rules_for_context($contextid);
+    public function resolve_rule(int $cmid, int $ruleid = 0, string $rulequery = ''): array {
+        $rules = $this->list_rules_for_context($cmid);
         if (empty($rules)) {
             return ['status' => 'error', 'message' => 'Keine Buchungsregeln im aktuellen Kontext gefunden.'];
         }
@@ -196,7 +324,7 @@ class booking_rules_agent_service {
         }
 
         if (ctype_digit($query)) {
-            return $this->resolve_rule($contextid, (int)$query, '');
+            return $this->resolve_rule($cmid, (int)$query, '');
         }
 
         $needle = core_text::strtolower($query);
@@ -388,27 +516,105 @@ class booking_rules_agent_service {
     }
 
     /**
+     * List all ACTIVE rules visible in the context path of the given booking cmid.
+     *
+     * Only rules with isactive = 1 are included. Each entry contains localized
+     * names and a direct edit link for the booking rules page.
+     *
+     * @param int $cmid
+     * @return array<int,array<string,mixed>>
+     */
+    public function list_active_rules_for_context(int $cmid): array {
+        $contextid = $this->get_module_contextid($cmid);
+        $records = booking_rules::get_list_of_saved_rules_by_context($contextid);
+        $items = [];
+
+        foreach ($records as $record) {
+            if (!($record instanceof stdClass)) {
+                continue;
+            }
+            if ((int)($record->isactive ?? 0) !== 1) {
+                continue;
+            }
+            $items[] = $this->normalize_rule_record($record, $cmid);
+        }
+
+        usort($items, static function (array $a, array $b): int {
+            return strcmp((string)$a['name'], (string)$b['name']);
+        });
+
+        return $items;
+    }
+
+    /**
      * Normalize DB rule record for task output.
      *
+     * When $cmid > 0 the result includes an editlink pointing to
+     * edit_rules.php for the correct context:
+     *  - system rules  → edit_rules.php (no cmid)
+     *  - current module rules → edit_rules.php?cmid=$cmid
+     *  - rules from another module → edit_rules.php?cmid=<that module's cmid>
+     *
      * @param stdClass $record
+     * @param int      $cmid  Optional – current booking course module id.
      * @return array<string,mixed>
      */
-    private function normalize_rule_record(stdClass $record): array {
+    private function normalize_rule_record(stdClass $record, int $cmid = 0): array {
         $json = json_decode((string)($record->rulejson ?? '{}'));
         $name = '';
         if (!empty($json) && is_object($json) && !empty($json->name)) {
             $name = trim((string)$json->name);
         }
 
+        $rulename      = (string)($record->rulename ?? '');
+        $conditionname = is_object($json) ? (string)($json->conditionname ?? '') : '';
+        $actionname    = is_object($json) ? (string)($json->actionname ?? '') : '';
+
+        $rulecomponent      = (is_object($json) && isset($json->ruledata->component))
+            ? (string)$json->ruledata->component : 'mod_booking';
+        $conditioncomponent = (is_object($json) && isset($json->conditioncomponent))
+            ? (string)$json->conditioncomponent : 'mod_booking';
+        $actioncomponent    = (is_object($json) && isset($json->actiondata->component))
+            ? (string)$json->actiondata->component : 'mod_booking';
+
+        $lrulename      = str_replace('_', '', $rulename);
+        $lconditionname = str_replace('_', '', $conditionname);
+        $lactionname    = str_replace('_', '', $actionname);
+
+        $sm = get_string_manager();
+        $localizedrulename = ($lrulename !== '' && $sm->string_exists($lrulename, $rulecomponent))
+            ? get_string($lrulename, $rulecomponent) : $rulename;
+        $localizedconditionname = ($lconditionname !== '' && $sm->string_exists($lconditionname, $conditioncomponent))
+            ? get_string($lconditionname, $conditioncomponent) : $conditionname;
+        $localizedactionname = ($lactionname !== '' && $sm->string_exists($lactionname, $actioncomponent))
+            ? get_string($lactionname, $actioncomponent) : $actionname;
+
+        // Build edit link directly from the rule's own contextid.
+        $rulectxid    = (int)($record->contextid ?? 0);
+        $contextscope = 'unknown';
+        $editlink     = '';
+
+        if ($rulectxid > 0) {
+            $contextscope = ($cmid > 0 && $rulectxid === $this->get_module_contextid($cmid))
+                ? 'current'
+                : ($rulectxid === 1 ? 'system' : 'other');
+            $editlink = (new moodle_url('/mod/booking/edit_rules.php', ['contextid' => $rulectxid]))->out(false);
+        }
+
         return [
-            'id' => (int)($record->id ?? 0),
-            'contextid' => (int)($record->contextid ?? 0),
-            'name' => $name,
-            'rulename' => (string)($record->rulename ?? ''),
-            'eventname' => (string)($record->eventname ?? ''),
-            'conditionname' => (string)($json->conditionname ?? ''),
-            'actionname' => (string)($json->actionname ?? ''),
-            'isactive' => (int)($record->isactive ?? 0),
+            'id'                     => (int)($record->id ?? 0),
+            'contextid'              => $rulectxid,
+            'context_scope'          => $contextscope,
+            'name'                   => $name,
+            'rulename'               => $rulename,
+            'localizedrulename'      => $localizedrulename,
+            'eventname'              => (string)($record->eventname ?? ''),
+            'conditionname'          => $conditionname,
+            'localizedconditionname' => $localizedconditionname,
+            'actionname'             => $actionname,
+            'localizedactionname'    => $localizedactionname,
+            'isactive'               => (int)($record->isactive ?? 0),
+            'editlink'               => $editlink,
         ];
     }
 

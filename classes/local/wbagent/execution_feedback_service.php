@@ -83,6 +83,12 @@ class execution_feedback_service {
             $message = $this->fallback_message_for_results($results, $outputlang);
         }
 
+        $message = $this->append_link_to_message(
+            $message,
+            $this->extract_primary_link_from_results($results),
+            $outputlang
+        );
+
         $clientresults = $this->sanitize_results_for_client($results, $outputlang);
 
         // Follow-up suggestions are also part of the polish step and are therefore
@@ -119,7 +125,27 @@ class execution_feedback_service {
      * @return bool
      */
     private function should_apply_polish_step(array $commands): bool {
-        return empty($commands);
+        if (empty($commands)) {
+            return true;
+        }
+
+        $registry = task_registry::make_default();
+        foreach ($commands as $command) {
+            if (!is_array($command)) {
+                continue;
+            }
+
+            $taskname = trim((string)($command['task'] ?? ''));
+            if ($taskname === '') {
+                continue;
+            }
+
+            if (!$registry->is_read_only_task($taskname)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -493,6 +519,16 @@ class execution_feedback_service {
                 'resultid' => isset($result['resultid']) ? (int)$result['resultid'] : null,
             ];
 
+            foreach (['link', 'url', 'editlink', 'viewlink', 'editurl', 'viewurl'] as $linkkey) {
+                if (!isset($result[$linkkey]) || !is_string($result[$linkkey])) {
+                    continue;
+                }
+                $linkvalue = trim((string)$result[$linkkey]);
+                if ($linkvalue !== '') {
+                    $entry[$linkkey] = $linkvalue;
+                }
+            }
+
             if (isset($result['task']) && is_string($result['task']) && trim($result['task']) !== '') {
                 $entry['task'] = trim($result['task']);
             }
@@ -688,11 +724,11 @@ class execution_feedback_service {
         }
 
         $detail = trim((string)($result['detail'] ?? ''));
-        if ($detail !== '') {
-            return $detail;
+        if ($detail === '') {
+            $detail = $this->localized_string('ai_result_detail_action_executed', null, $outputlang);
         }
 
-        return $this->localized_string('ai_result_detail_action_executed', null, $outputlang);
+        return $this->append_link_to_message($detail, $this->extract_primary_link_from_result($result), $outputlang);
     }
 
     /**
@@ -743,11 +779,79 @@ class execution_feedback_service {
         }
 
         $detail = trim((string)($first['detail'] ?? ''));
-        if ($detail !== '') {
-            return $detail;
+        if ($detail === '') {
+            $detail = $this->localized_string('ai_result_feedback_complete', null, $outputlang);
         }
 
-        return $this->localized_string('ai_result_feedback_complete', null, $outputlang);
+        return $this->append_link_to_message($detail, $this->extract_primary_link_from_result($first), $outputlang);
+    }
+
+    /**
+     * Extract a primary link value from a task result entry.
+     *
+     * @param array $result
+     * @return string
+     */
+    private function extract_primary_link_from_result(array $result): string {
+        foreach (['link', 'url', 'editlink', 'viewlink', 'editurl', 'viewurl'] as $key) {
+            if (!isset($result[$key]) || !is_string($result[$key])) {
+                continue;
+            }
+            $candidate = trim((string)$result[$key]);
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Extract the first available link from a list of result entries.
+     *
+     * @param array $results
+     * @return string
+     */
+    private function extract_primary_link_from_results(array $results): string {
+        foreach ($results as $result) {
+            if (!is_array($result)) {
+                continue;
+            }
+
+            $link = $this->extract_primary_link_from_result($result);
+            if ($link !== '') {
+                return $link;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Append a link to a plain-text message once, localized and deterministic.
+     *
+     * @param string $message
+     * @param string $link
+     * @param string $outputlang
+     * @return string
+     */
+    private function append_link_to_message(string $message, string $link, string $outputlang): string {
+        $message = trim($message);
+        $link = trim($link);
+        if ($link === '') {
+            return $message;
+        }
+
+        if ($message !== '' && str_contains($message, $link)) {
+            return $message;
+        }
+
+        $prefix = (trim(strtolower($outputlang)) === 'de') ? 'Link: ' : 'Link: ';
+        if ($message === '') {
+            return $prefix . $link;
+        }
+
+        return $message . ' ' . $prefix . $link;
     }
 
     /**

@@ -59,15 +59,28 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Analyze booking rules visible in the current booking context '
-                . 'and optionally match them by text query.',
+            'description' => 'Analyze booking rules visible in the current booking context. '
+                . 'Booking rules define automated actions (e.g. sending e-mails / notifications) '
+                . 'triggered by booking events such as enrolment, cancellation or session reminders. '
+                . 'Use this task to list, inspect, filter or understand which rules are configured '
+                . 'and what notifications or messages they send.',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_search_options',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_search_options',
             'properties' => [
                 'query' => [
                     'type' => 'string',
-                    'description' => 'Optional text filter for rule name, rule type, condition or action.',
+                    'description' => 'Optional keyword filter applied to rule name, rule type, condition or action. '
+                        . 'Pass a short keyword (e.g. "cancellation", "reminder") NOT the full user question. '
+                        . 'Omit or leave empty when the user asks a general listing question.',
+                    'required' => false,
+                ],
+                'active_only' => [
+                    'type' => 'boolean',
+                    'description' => 'When true only active rules are returned. Default is false (show all rules). '
+                        . 'Set to true when the user says "currently", "active", "aktuell", "gerade aktiv", '
+                        . '"welche werden geschickt", "what is being sent", "which are active" '
+                        . 'or otherwise implies they only want rules that are switched on right now.',
                     'required' => false,
                 ],
                 'limit' => [
@@ -98,7 +111,19 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
         return [
             [
                 'id' => 'booking.analyze_rules',
-                'description' => 'User asks to inspect, understand, or summarize booking rules and their setup.',
+                'description' => 'User asks to inspect, understand, list or summarize booking rules, '
+                    . 'automated notifications, e-mails or messages that are sent by the booking instance, '
+                    . 'or wants to know which rules are active / configured.',
+                'examples' => [
+                    'Which messages are currently being sent here?',
+                    'What notifications does this booking send?',
+                    'Show me all active booking rules.',
+                    'What emails are triggered when someone books?',
+                    'Are there any rules configured for cancellations?',
+                    'List all rules in this booking.',
+                    'What automated actions are set up?',
+                    'Which rule sends reminder emails?',
+                ],
             ],
         ];
     }
@@ -112,15 +137,17 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
-        $contextid = $this->ruleservice->get_module_contextid($cmid);
         $query = trim((string)($input['query'] ?? ''));
         $needle = core_text::strtolower($query);
         $limit = isset($input['limit']) ? max(1, (int)$input['limit']) : 25;
 
-        $rules = $this->ruleservice->list_rules_for_context($contextid);
+        // Rules in the context path of the current booking instance.
+        $activeonly = !empty($input['active_only']);
+        $allrules = $this->ruleservice->list_rules_for_context($cmid, $activeonly);
         $filtered = [];
+        $usedfallback = false;
 
-        foreach ($rules as $rule) {
+        foreach ($allrules as $rule) {
             if (!is_array($rule)) {
                 continue;
             }
@@ -132,14 +159,23 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
             $haystack = core_text::strtolower(implode(' ', [
                 (string)($rule['name'] ?? ''),
                 (string)($rule['rulename'] ?? ''),
+                (string)($rule['localizedrulename'] ?? ''),
                 (string)($rule['conditionname'] ?? ''),
+                (string)($rule['localizedconditionname'] ?? ''),
                 (string)($rule['actionname'] ?? ''),
+                (string)($rule['localizedactionname'] ?? ''),
                 (string)($rule['eventname'] ?? ''),
             ]));
 
             if ($haystack !== '' && strpos($haystack, $needle) !== false) {
                 $filtered[] = $rule;
             }
+        }
+
+        // Fallback: wenn Suchbegriff vorhanden, aber kein Match – alle Regeln zurückgeben.
+        if ($needle !== '' && count($filtered) === 0) {
+            $filtered = $allrules;
+            $usedfallback = true;
         }
 
         $filtered = array_slice($filtered, 0, $limit);
@@ -155,9 +191,45 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
             }
         }
 
-        $summary = 'Regelanalyse: ' . count($filtered) . ' Regel(n) im Ergebnis.';
+        $suffix = $activeonly ? ' (active only)' : '';
+        $summary = count($filtered) . ' booking rule(s) in the current context' . $suffix . '.';
+        if ($usedfallback) {
+            $summary .= ' (No rules matched the search term — showing all rules.)';
+        }
         if (!empty($templates)) {
             $summary .= ' Templates: ' . count($templates) . '.';
+        }
+
+        // Serialize rules inline so the generic observation handler sees them.
+        $rulelines = [];
+        foreach ($filtered as $rule) {
+            $status   = !empty($rule['isactive']) ? '[active]' : '[inactive]';
+            $name     = (string)($rule['localizedrulename'] ?? $rule['name'] ?? $rule['rulename'] ?? '');
+            $scope    = (string)($rule['context_scope'] ?? '');
+            $event    = (string)($rule['eventname'] ?? '');
+            $cond     = (string)($rule['localizedconditionname'] ?? $rule['conditionname'] ?? '');
+            $action   = (string)($rule['localizedactionname'] ?? $rule['actionname'] ?? '');
+            $editlink = (string)($rule['editlink'] ?? '');
+            $line = "{$status} {$name}";
+            if ($scope !== '' && $scope !== 'current') {
+                $line .= " [context: {$scope}]";
+            }
+            if ($event !== '') {
+                $line .= " | event: {$event}";
+            }
+            if ($cond !== '') {
+                $line .= " | condition: {$cond}";
+            }
+            if ($action !== '') {
+                $line .= " | action: {$action}";
+            }
+            if ($editlink !== '') {
+                $line .= " | edit: {$editlink}";
+            }
+            $rulelines[] = $line;
+        }
+        if (!empty($rulelines)) {
+            $summary .= "\n" . implode("\n", $rulelines);
         }
 
         return [
@@ -169,8 +241,11 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
             'templates' => $templates,
             'link' => $this->ruleservice->build_rules_link($cmid),
             'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $input, [
-                'Context id: ' . $contextid,
+                'cmid: ' . $cmid,
+                'active_only: ' . ($activeonly ? 'yes' : 'no'),
+                'Rules in context: ' . count($allrules),
                 'Returned rules: ' . count($filtered),
+                'Used fallback: ' . ($usedfallback ? 'yes' : 'no'),
                 'Returned templates: ' . count($templates),
             ]),
         ];
