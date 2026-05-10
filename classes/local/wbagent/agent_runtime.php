@@ -247,6 +247,7 @@ class agent_runtime {
         // so the frontend (which resets lastSeenStepId=0 each send) never
         // re-fetches stale Step 1 / Step 2 / … bubbles from earlier runs.
         $this->store->clear_step_messages($threadid);
+        $anonymizer = new privacy_anonymizer($this->store);
 
         for ($step = 0; $step < $limit; $step++) {
             $state->currentstep = $step + 1;
@@ -264,6 +265,7 @@ class agent_runtime {
                     $result['results'] ?? [],
                     $step + 1
                 );
+                $observation = (string)$anonymizer->anonymize_value_for_llm($threadid, $observation);
                 $commands = (array)($result['commands'] ?? []);
                 $state->record_step(
                     $commands,
@@ -279,7 +281,10 @@ class agent_runtime {
                     $result['results'] ?? [],
                     (string)($result['next_step_intent'] ?? '')
                 );
-                $this->store->add_step_message($threadid, $step + 1, $steplabel, $steptask);
+                $displaylabelresult = $anonymizer->deanonymize_message_for_display($threadid, $steplabel);
+                $displaylabel = (string)($displaylabelresult['message'] ?? $steplabel);
+                $displaytask = (string)($anonymizer->deanonymize_message_for_display($threadid, $steptask)['message'] ?? $steptask);
+                $this->store->add_step_message($threadid, $step + 1, $displaylabel, $displaytask);
 
                 $final = $this->loopfinalizer->finalize(
                     $result,
