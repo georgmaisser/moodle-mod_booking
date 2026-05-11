@@ -53,6 +53,7 @@ class prompt_policy_builder {
     public static function build_all_policies(
         string $triggerjson,
         string $steptype = 'tool_call_parse',
+        bool $hasobservations = false,
         array $assistantstateblocks = []
     ): string {
         $policies = [];
@@ -69,11 +70,17 @@ class prompt_policy_builder {
         // 4. STEP INTENT POLICY (universal, always appended).
         $policies[] = self::build_step_intent_policy();
 
-        // 5. DOCS ANSWER POLICY (universal, always appended).
-        $policies[] = self::build_docs_answer_policy();
+        // 5. DOCS ANSWER POLICY (only for non-initial steps with observations).
+        // Skip for tool_call_parse (initial routing) to keep prompt lean.
+        if ($steptype !== 'tool_call_parse') {
+            $policies[] = self::build_docs_answer_policy();
+        }
 
-        // 6. SUFFICIENCY POLICY (universal, always appended).
-        $policies[] = self::build_sufficiency_policy();
+        // 6. SUFFICIENCY POLICY (append if observations exist or if not initial step).
+        // This guides the LLM to know when to stop searching and provide an answer.
+        if ($hasobservations || $steptype !== 'tool_call_parse') {
+            $policies[] = self::build_sufficiency_policy();
+        }
 
         // 7. FOLLOW-UP STATE POLICY (only for FINAL_REASONING).
         if ($steptype === 'final_reasoning' && !empty($assistantstateblocks)) {

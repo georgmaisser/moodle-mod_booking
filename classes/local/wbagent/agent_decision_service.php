@@ -1008,7 +1008,10 @@ class agent_decision_service {
                 );
             }
 
-            $preflightresult = $task->preflight($input, $cmid, $userid);
+            $preflightresult = $this->with_output_language(
+                $outputlang,
+                fn() => $task->preflight($input, $cmid, $userid)
+            );
 
             // Collect issue codes.
             foreach ($preflightresult->get_issue_codes() as $code) {

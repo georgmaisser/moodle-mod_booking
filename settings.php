@@ -313,6 +313,16 @@ if ($ADMIN->fulltree) {
     );
 
     $aisettingspage->add(
+        new admin_setting_configtext(
+            'booking/aifollowupsuggestionscount',
+            get_string('aifollowupsuggestionscount', 'mod_booking'),
+            get_string('aifollowupsuggestionscount_desc', 'mod_booking'),
+            '0',
+            PARAM_INT
+        )
+    );
+
+    $aisettingspage->add(
         new admin_setting_configtextarea(
             'booking/aiinitialprompt_summarise_text',
             get_string('aiinitialprompt_summarise_text', 'mod_booking'),

@@ -170,7 +170,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             $issues[] = [
                 'code'           => 'DUPLICATE_TITLE_CONFIRM_REQUIRED',
                 'severity'       => 'needs_confirmation',
-                'message'        => get_string('agent_booking_create_option_exists_single', 'booking', $existingid),
+                'message'        => $this->localized_string('agent_booking_create_option_exists_single', $existingid, $lang),
                 'user_question'  => $this->localized_string(
                     'agent_booking_create_option_duplicate_exists_single_question',
                     null,
@@ -183,10 +183,10 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             $issues[] = [
                 'code'           => 'DUPLICATE_TITLE_MULTI_CONFIRM_REQUIRED',
                 'severity'       => 'needs_confirmation',
-                'message'        => get_string(
+                'message'        => $this->localized_string(
                     'agent_booking_create_option_exists_multiple',
-                    'booking',
-                    (string)($duplicatecheck['candidates'] ?? '')
+                    (string)($duplicatecheck['candidates'] ?? ''),
+                    $lang
                 ),
                 'user_question'  => $this->localized_string(
                     'agent_booking_create_option_duplicate_exists_multiple_question',
@@ -224,8 +224,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             $issues[] = [
                 'code'           => 'MISSING_LOCATION_CONFIRM_REQUIRED',
                 'severity'       => 'needs_confirmation',
-                'message'        => get_string('agent_booking_create_confirm_without_location', 'mod_booking'),
-                'user_question'  => get_string('agent_booking_create_confirm_without_location', 'mod_booking'),
+                'message'        => $this->localized_string('agent_booking_create_confirm_without_location', null, $lang),
+                'user_question'  => $this->localized_string('agent_booking_create_confirm_without_location', null, $lang),
                 'remedy_options' => ['CONFIRM_CREATE_WITHOUT_LOCATION', 'PROVIDE_LOCATION'],
             ];
         }
@@ -234,8 +234,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             $issues[] = [
                 'code'           => 'MISSING_REQUIRED_FIELDS',
                 'severity'       => 'needs_clarification',
-                'message'        => get_string('agent_booking_create_missing_required_fields', 'mod_booking'),
-                'user_question'  => get_string('agent_booking_create_missing_required_fields', 'mod_booking'),
+                'message'        => $this->localized_string('agent_booking_create_missing_required_fields', null, $lang),
+                'user_question'  => $this->localized_string('agent_booking_create_missing_required_fields', null, $lang),
                 'remedy_options' => ['PROVIDE_FIELDS', 'CONFIRM_EMPTY_DEFAULTS'],
             ];
             // Surface individual errors as separate issues so caller can display them.

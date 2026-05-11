@@ -37,9 +37,6 @@ use core_text;
  * Generates post-execution feedback and client-safe run results.
  */
 class execution_feedback_service {
-    /** @var int Maximum number of follow-up prompt suggestions. */
-    private const MAX_FOLLOW_UP_SUGGESTIONS = 3;
-
     /** @var conversation_store */
     private conversation_store $store;
 
@@ -80,6 +77,7 @@ class execution_feedback_service {
         string $outputlang = ''
     ): array {
         $allowpolish = $this->should_apply_polish_step($commands);
+        $followupsuggestionslimit = $this->get_follow_up_suggestions_limit();
 
         // Only final clarification payloads (commands=[]) may be polished via LLM.
         // Command-bearing execution flows stay deterministic by design.
@@ -99,7 +97,7 @@ class execution_feedback_service {
 
         // Follow-up suggestions are also part of the polish step and are therefore
         // disabled for command-bearing execution responses.
-        if ($allowpolish) {
+        if ($allowpolish && $followupsuggestionslimit > 0) {
             $followups = $this->generate_llm_follow_up_suggestions(
                 $threadid,
                 $cmid,
@@ -107,7 +105,8 @@ class execution_feedback_service {
                 $message,
                 $commands,
                 $results,
-                $outputlang
+                $outputlang,
+                $followupsuggestionslimit
             );
             if (!empty($followups['suggestions']) && is_array($followups['suggestions']) && !empty($clientresults)) {
                 $clientresults[0]['suggestions'] = $followups['suggestions'];
@@ -257,8 +256,13 @@ class execution_feedback_service {
         string $finalmessage,
         array $commands,
         array $results,
-        string $outputlang
+        string $outputlang,
+        int $limit
     ): array {
+        if ($limit <= 0) {
+            return ['followupmessage' => '', 'suggestions' => []];
+        }
+
         $context = context_module::instance($cmid);
         $latestusermessage = $this->extract_latest_user_message($threadid);
         $anonymizer = new privacy_anonymizer($this->store);
@@ -284,7 +288,8 @@ class execution_feedback_service {
             $finalmessage,
             $taskschemas,
             $sanitizedcommands,
-            $sanitizedresults
+            $sanitizedresults,
+            $limit
         );
 
         try {
@@ -322,7 +327,7 @@ class execution_feedback_service {
                 return ['followupmessage' => '', 'suggestions' => []];
             }
 
-            return $this->parse_follow_up_suggestions_json($rawcontent, $taskschemas);
+            return $this->parse_follow_up_suggestions_json($rawcontent, $taskschemas, $limit);
         } catch (\Throwable $e) {
             return ['followupmessage' => '', 'suggestions' => []];
         }
@@ -345,7 +350,8 @@ class execution_feedback_service {
         string $finalmessage,
         array $taskschemas,
         array $commands,
-        array $results
+        array $results,
+        int $limit
     ): string {
         $tasksjson = json_encode($taskschemas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $commandsjson = json_encode($commands, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -358,7 +364,7 @@ class execution_feedback_service {
             . "- Output ONLY valid JSON object.\n"
             . "- JSON format: {\"followupmessage\":\"...\",\"suggestions\":[{\"query\":\"...\",\"task\":\"...\","
             . "\"label\":\"...\"}]}.\n"
-            . "- suggestions length: 1 to " . self::MAX_FOLLOW_UP_SUGGESTIONS . ".\n"
+            . "- suggestions length: 1 to " . $limit . ".\n"
             . "- query must be a natural language prompt the user can edit and send.\n"
             . "- Do not output commands or internal metadata.\n"
             . "- task must be one of the allowed task names.\n"
@@ -382,9 +388,14 @@ class execution_feedback_service {
      *
      * @param string $raw
      * @param array $taskschemas
+     * @param int $limit
      * @return array{followupmessage:string,suggestions:array<int,array<string,string>>}
      */
-    private function parse_follow_up_suggestions_json(string $raw, array $taskschemas): array {
+    private function parse_follow_up_suggestions_json(string $raw, array $taskschemas, int $limit): array {
+        if ($limit <= 0) {
+            return ['followupmessage' => '', 'suggestions' => []];
+        }
+
         $allowedtasks = [];
         foreach ($taskschemas as $task) {
             $name = trim((string)($task['task'] ?? ''));
@@ -441,7 +452,7 @@ class execution_feedback_service {
                 'label' => $label,
             ];
 
-            if (count($suggestions) >= self::MAX_FOLLOW_UP_SUGGESTIONS) {
+            if (count($suggestions) >= $limit) {
                 break;
             }
         }
@@ -450,6 +461,22 @@ class execution_feedback_service {
             'followupmessage' => $followupmessage,
             'suggestions' => $suggestions,
         ];
+    }
+
+    /**
+     * Resolve configured follow-up suggestion count.
+     *
+     * 0 disables follow-up suggestion generation entirely.
+     *
+     * @return int
+     */
+    private function get_follow_up_suggestions_limit(): int {
+        $configured = get_config('booking', 'aifollowupsuggestionscount');
+        if ($configured === false) {
+            return 0;
+        }
+
+        return max(0, (int)$configured);
     }
 
     /**

@@ -545,6 +545,8 @@ $string['ai_followup_search_related_options_query'] = 'Bitte finden Sie aehnlich
 $string['ai_followup_suggestion_query'] = 'Bitte helfen Sie mir bei: {$a}';
 $string['ai_followup_update_option_query'] = 'Bitte aktualisieren Sie diese Buchungsoption: {$a}';
 $string['ai_lookup_detected_blocked_mutation'] = 'Ich habe Ihre Nachricht als Such-/Listenanfrage verstanden und deshalb keine Aenderung vorbereitet. Bitte sagen Sie, was ich genau suchen soll.';
+$string['ai_optiontype_help_message'] = 'Mit Typ meine ich die Art der Buchungsoption. Sie koennen waehlen zwischen: 1) normal: regulaere Buchung mit Termin(en), Ort und optional Lehrperson, 2) selbstgesteuert: Selbstlern-Option ohne feste Termine, 3) Slot-Buchung: buchbare Zeitslots. Nennen Sie bitte einen Typ (normal, selbstgesteuert oder Slot-Buchung), dann erstelle ich die Option weiter.';
+$string['ai_optiontype_help_next_step_intent'] = 'Ich warte jetzt auf Ihre Typ-Auswahl (normal, selbstgesteuert oder Slot-Buchung).';
 $string['ai_preview_latest_option'] =
     'Hier ist die zuletzt erstellte oder aktualisierte Buchungsoption.';
 $string['ai_preview_no_commands'] = 'Keine Befehlsvorschau verfuegbar.';
@@ -636,6 +638,8 @@ $string['ai_trial_token_invalid_subscription_message'] = 'Ihr AI-Trial-Token ist
 $string['ai_trial_token_invalid_title'] = 'Trial-Token ungueltig';
 $string['ai_welcome_empty'] = 'Willkommen! Möchten Sie, dass ich Ihnen bei der Erstellung Ihrer ersten Buchungsoption helfe?';
 $string['ai_welcome_with_options'] = 'Willkommen! Sie haben hier {$a->numoptions} Buchungsoptionen, und {$a->numbooked} Personen sind bereits gebucht. Wie kann ich Ihnen helfen?';
+$string['aifollowupsuggestionscount'] = 'Anzahl Folge-Vorschlaege';
+$string['aifollowupsuggestionscount_desc'] = 'Anzahl der AI-Folge-Vorschlaege nach der Ausfuehrung. Bei 0 wird dieser Call komplett deaktiviert.';
 $string['aiinitialprompt'] = 'Initialer AI-System-Prompt';
 $string['aiinitialprompt_desc'] = 'Bearbeitbarer Basis-Prompt fuer den Booking-AI-Assistenten. Unterstuetzte Platzhalter: {{bookingname}}, {{timezonename}}, {{nowiso}}, {{tasklist}}, {{schemajson}}.';
 $string['aiinitialprompt_explain_text'] = 'Initialer AI-Prompt (explain_text)';

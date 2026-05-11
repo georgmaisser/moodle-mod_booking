@@ -305,6 +305,7 @@ class agent_runtime {
             if (
                 (string)($result['response_type'] ?? '') === 'clarification'
                 && empty((array)($result['commands'] ?? []))
+                && $this->should_run_synthesis_for_clarification($result)
                 && !empty($state->get_observations())
             ) {
                 $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
@@ -1255,6 +1256,11 @@ class agent_runtime {
         $previewoptionid = $this->resolve_preview_option_id($threadid, $cmid);
         $triggerregistry = new message_trigger_registry($this->registry);
 
+        $optiontypeshortcut = $this->build_option_type_explanation_shortcut($threadid);
+        if (is_array($optiontypeshortcut)) {
+            return $optiontypeshortcut;
+        }
+
         // Plan: always use the compact planner (summarise_text) regardless of observation count.
         // Final synthesis via generate_text is triggered separately in run_loop() once the planner
         // signals completion with response_type=clarification and commands=[].
@@ -1330,6 +1336,137 @@ class agent_runtime {
         }
 
         return $result;
+    }
+
+    /**
+     * Build a deterministic clarification reply when the user asks what the
+     * option type means right after a type-request clarification.
+     *
+     * @param int $threadid
+     * @return array|null
+     */
+    private function build_option_type_explanation_shortcut(int $threadid): ?array {
+        $messages = $this->store->get_recent_messages($threadid, 8);
+        if (empty($messages)) {
+            return null;
+        }
+
+        $lastuserindex = -1;
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            if ((string)($messages[$i]->role ?? '') === 'user') {
+                $lastuserindex = $i;
+                break;
+            }
+        }
+        if ($lastuserindex < 0) {
+            return null;
+        }
+
+        $latestusertext = trim((string)($messages[$lastuserindex]->content ?? ''));
+        if (!$this->is_meta_clarification_follow_up($latestusertext)) {
+            return null;
+        }
+
+        $previousassistant = null;
+        for ($i = $lastuserindex - 1; $i >= 0; $i--) {
+            if ((string)($messages[$i]->role ?? '') === 'assistant') {
+                $previousassistant = $messages[$i];
+                break;
+            }
+        }
+        if ($previousassistant === null) {
+            return null;
+        }
+
+        $assistanttext = trim((string)($previousassistant->content ?? ''));
+        $structured = json_decode((string)($previousassistant->structuredjson ?? ''), true);
+        if (!is_array($structured)) {
+            $structured = [];
+        }
+
+        if (!$this->assistant_prompted_for_option_type($assistanttext, $structured)) {
+            return null;
+        }
+
+        $lang = $this->resolve_output_language($threadid, [
+            'lang' => (string)($structured['lang'] ?? ''),
+            'user_lang' => (string)($structured['user_lang'] ?? ''),
+        ]);
+
+        $message = $this->localized_string('ai_optiontype_help_message', 'mod_booking', null, $lang);
+        $nextstepintent = $this->localized_string('ai_optiontype_help_next_step_intent', 'mod_booking', null, $lang);
+
+        return [
+            'response_type' => 'clarification',
+            'message' => $message,
+            'commands' => [],
+            'ambiguities' => [],
+            'ambiguity_options' => [],
+            'errors' => [],
+            'attempted_tasks' => array_values(array_unique((array)($structured['attempted_tasks'] ?? []))),
+            'issue_codes' => ['OPTION_TYPE_HELP_CLARIFICATION'],
+            'pending_confirmation_code' => '',
+            'used_triggers' => [],
+            'runid' => 0,
+            'results' => [],
+            'lang' => $lang,
+            'user_lang' => $lang,
+            'next_step_intent' => $nextstepintent,
+        ];
+    }
+
+    /**
+     * Detect short user follow-ups asking for explanation.
+     *
+     * @param string $message
+     * @return bool
+     */
+    private function is_meta_clarification_follow_up(string $message): bool {
+        $text = trim(core_text::strtolower($message));
+        if ($text === '') {
+            return false;
+        }
+
+        $patterns = [
+            '/^was\s+meinst\s+du\s+damit\??$/u',
+            '/^wie\s+meinst\s+du\s+das\??$/u',
+            '/^what\s+do\s+you\s+mean\??$/u',
+            '/^what\s+does\s+that\s+mean\??$/u',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Determine whether the previous assistant message asked for booking option type.
+     *
+     * @param string $assistanttext
+     * @param array $structured
+     * @return bool
+     */
+    private function assistant_prompted_for_option_type(string $assistanttext, array $structured): bool {
+        $responsetype = (string)($structured['response_type'] ?? '');
+        if ($responsetype !== 'clarification' && $responsetype !== 'confirmation_request') {
+            return false;
+        }
+
+        $attemptedtasks = array_values(array_unique((array)($structured['attempted_tasks'] ?? [])));
+        $taskmatch = in_array('booking.create_option', $attemptedtasks, true);
+
+        $text = core_text::strtolower(trim($assistanttext));
+        $textmatch = (
+            str_contains($text, 'typ der buchungsoption')
+            || str_contains($text, 'buchungstyp')
+            || str_contains($text, 'booking option type')
+        );
+
+        return $taskmatch || $textmatch;
     }
 
     /**
@@ -1587,6 +1724,36 @@ class agent_runtime {
         }
 
         return trim((string)($result['message'] ?? '')) !== '';
+    }
+
+    /**
+     * Guard synthesis for actionable clarification states.
+     *
+     * Clarifications that carry validation/ambiguity/error signals should be
+     * shown directly to the user and must not be rewritten into a generic
+     * final narration by the synthesis model.
+     *
+     * @param array $result
+     * @return bool
+     */
+    private function should_run_synthesis_for_clarification(array $result): bool {
+        if (!empty((array)($result['errors'] ?? []))) {
+            return false;
+        }
+
+        if (!empty((array)($result['ambiguities'] ?? []))) {
+            return false;
+        }
+
+        if (!empty((array)($result['issue_codes'] ?? []))) {
+            return false;
+        }
+
+        if (trim((string)($result['pending_confirmation_code'] ?? '')) !== '') {
+            return false;
+        }
+
+        return true;
     }
 
     /**

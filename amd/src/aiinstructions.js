@@ -1703,8 +1703,7 @@ const sendMessage = (message) => {
                 return resp;
             }
 
-            const hasErrors = errors.length > 0;
-            const isError = resp.response_type === 'error' || hasErrors;
+            const isError = resp.response_type === 'error';
             const meta = {
                 response_type: resp.response_type || '',
                 threadid: Number(resp.threadid || currentThreadId || 0),

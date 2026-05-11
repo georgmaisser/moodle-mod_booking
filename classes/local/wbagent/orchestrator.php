@@ -140,7 +140,7 @@ class orchestrator {
 
         $routing = $this->resolve_action_class_for_step($manager, $context, $normalizedsteptype);
         $actionclass = (string)$routing['actionclass'];
-        $systemprompt = $this->build_system_prompt($cmid, $normalizedsteptype, $actionclass);
+        $systemprompt = $this->build_system_prompt($cmid, $normalizedsteptype, $actionclass, !empty($observations));
         $messages = $this->store->get_recent_messages($threadid, self::MAX_HISTORY_MESSAGES);
         $prompt = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype);
         $historycount = count(array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype)));
@@ -237,25 +237,23 @@ class orchestrator {
             return <<<'PROMPT'
 You are an AI agent planner for the "{{bookingname}}" context.
 
-ACTION-SPECIFIC GUIDANCE FOR SUMMARISATION:
-- Keep instructions compact and action-oriented.
-- Prefer one clear next step over broad narration.
-- For read-only intents, answer directly or emit a single task_call.
-- Use only exact task names from the TASK CATALOG below. Never invent aliases or category names such as docs.search or documentation.query.
-- If the user asks how a documented feature works or what it means, check available documentation tasks from the task catalog and use them.
-- When calling a documentation task, pass the full user question as the main input field.
-- When calling a documentation task, check if docs_index or similar metadata provides candidate paths and include them as input.
-- If the task catalog exposes structured documentation fields such as topic hints, candidate paths, or retrieval goals, prefer those over guessing a root doc_path.
-- If an OBSERVATION contains linked document paths (e.g. in markdown links), pass them as doc_path_candidates in the follow-up documentation task_call. Omit doc_path_candidates entirely if you have no grounded paths from an observation — never send an empty array.
-- Optionally add up to 2 alternative search_queries for planning quality (in English, regardless of user language).
-- If a docs OBSERVATION mentions "Linked docs" or "Continue from line N", follow up with the appropriate documentation task to traverse the documentation graph.
-- Do not answer "I cannot help" for documented features before attempting to retrieve available documentation.
-- For mutating intents, ask only for missing required data or return one confirmation_request.
-- If OBSERVATION blocks already contain sufficient information,
-    MUST return response_type "clarification" with commands=[] and summarize the answer for the user.
-- Do not repeat the same read-only lookup task if an existing OBSERVATION already provides the needed answer.
-- If OBSERVATION blocks are not yet sufficient for a documented read-only question,
-    you MAY issue one follow-up documentation task_call to retrieve more relevant information.
+ACTION-SPECIFIC GUIDANCE FOR ROUTING:
+- Keep instructions compact and action-oriented. Do not over-explain.
+- Route the latest user message to exactly ONE task_call OR ask for missing data.
+- Use only exact task names from the TASK CATALOG. Never invent aliases.
+
+READ-ONLY RULE (mandatory):
+- For read-only intents (list, search, get, diagnose), return response_type=task_call.
+- task_call MUST include commands with the task and ALL collected input fields.
+- Never return task_call with commands=[].
+- If required data is missing, ask exactly ONE clarifying question as response_type=clarification with commands=[].
+
+MUTATIONS RULE (mandatory):
+- For mutating intents (create, update, delete), return response_type=confirmation_request.
+- confirmation_request MUST include commands with the task and ALL collected input fields.
+- Never return confirmation_request with commands=[].
+- If required data is missing, ask exactly ONE clarifying question as response_type=clarification with commands=[].
+- Do not guess or invent missing data.
 
 TASK CATALOG:
 {{taskcatalogjson}}
@@ -353,7 +351,8 @@ PROMPT;
     private function build_system_prompt(
         int $cmid,
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
-        string $actionclass = generate_text::class
+        string $actionclass = generate_text::class,
+        bool $hasobservations = false
     ): string {
         $schemas = $this->registry->get_all_schemas();
         $taskcatalog = $this->registry->get_all_prompt_contracts();
@@ -402,7 +401,7 @@ PROMPT;
         // Append all NON-OPTIONAL policies from centralized policy builder.
         // This is the single source of truth for dynamic policy appends.
         $policybuilder = new prompt_policy_builder();
-        $prompt .= $policybuilder->build_all_policies($triggerjson, $steptype);
+        $prompt .= $policybuilder->build_all_policies($triggerjson, $steptype, $hasobservations);
 
         return $prompt;
     }
