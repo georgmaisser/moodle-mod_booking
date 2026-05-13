@@ -65,8 +65,6 @@ class adaptive_task_catalog_service {
      * @param string $steptype Current step type (tool_call_parse, simple_retrieval, etc).
      * @return array Structure: [
      *   'active_tasks' => [...],              // Shown to LLM
-     *   'available_intents' => [...],         // Metadata: intent => count
-     *   'catalog_mode' => 'full|adaptive',    // Debug info
      * ]
      */
     public static function get_adaptive_catalog(
@@ -79,8 +77,6 @@ class adaptive_task_catalog_service {
             // Initial routing: FULL catalog, no filtering.
             return [
                 'active_tasks' => $fullcatalog,
-                'available_intents' => self::extract_intent_registry($fullcatalog),
-                'catalog_mode' => 'full',
             ];
         }
 
@@ -89,8 +85,8 @@ class adaptive_task_catalog_service {
 
         // Tier 2: Recency-based tasks (top recent, excluding mandatory).
         $topkforthis = ($steptype === 'final_reasoning' || $steptype === 'final_synthesis')
-            ? 40  // Final steps: very compact
-            : self::RECENCY_TOP_K_STEP2PLUS;  // Iteration: more tasks
+            ? 40  // Final steps: very compact.
+            : self::RECENCY_TOP_K_STEP2PLUS;  // Iteration: more tasks.
 
         $recency = self::get_recency_filtered($fullcatalog, $recenttaskhistory, $topkforthis, $mandatory);
 
@@ -99,8 +95,6 @@ class adaptive_task_catalog_service {
 
         return [
             'active_tasks' => $activetasks,
-            'available_intents' => self::extract_intent_registry($fullcatalog),
-            'catalog_mode' => 'adaptive',
         ];
     }
 
@@ -193,26 +187,5 @@ class adaptive_task_catalog_service {
         }
 
         return $recency;
-    }
-
-    /**
-     * Extract intent registry: map of intent => count for LLM awareness.
-     *
-     * Allows LLM to request: "Get me all pricing tasks"
-     * Response: intent registry tells LLM there are 45 pricing tasks available.
-     *
-     * @param array $fullcatalog
-     * @return array Intent => task count map.
-     */
-    private static function extract_intent_registry(array $fullcatalog): array {
-        $intents = [];
-        foreach ($fullcatalog as $task) {
-            $intent = (string)($task['intent'] ?? 'unknown');
-            if (!isset($intents[$intent])) {
-                $intents[$intent] = 0;
-            }
-            ++$intents[$intent];
-        }
-        return $intents;
     }
 }

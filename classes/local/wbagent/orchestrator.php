@@ -151,15 +151,13 @@ class orchestrator {
             $normalizedsteptype
         );
         $adaptivecatalog = $adaptivecatalogresult['active_tasks'];
-        $availableintents = $adaptivecatalogresult['available_intents'] ?? [];
 
         $systemprompt = $this->build_system_prompt(
             $cmid,
             $normalizedsteptype,
             $actionclass,
             !empty($observations),
-            $adaptivecatalog,
-            $availableintents
+            $adaptivecatalog
         );
         $prompt = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype);
         $historycount = count(array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype)));
@@ -370,7 +368,6 @@ PROMPT;
      * @param  string $actionclass
      * @param  bool   $hasobservations
      * @param  array  $adaptivecatalog Optional adaptive task catalog (reduced by recency/tier). If null, uses full catalog.
-     * @param  array  $availableintents Optional intent registry (intent => count) for LLM awareness.
      * @return string System prompt text.
      */
     private function build_system_prompt(
@@ -378,17 +375,13 @@ PROMPT;
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
         string $actionclass = generate_text::class,
         bool $hasobservations = false,
-        ?array $adaptivecatalog = null,
-        array $availableintents = []
+        ?array $adaptivecatalog = null
     ): string {
         $schemas = $this->registry->get_all_schemas();
         $taskcatalog = $adaptivecatalog ?? $this->registry->get_all_prompt_contracts();
         $tasklist = implode(', ', $this->registry->get_task_names());
         $fullschemajson = json_encode($schemas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $taskcatalogjson = json_encode($taskcatalog, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        $intentsreg = !empty($availableintents)
-            ? json_encode($availableintents, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
-            : '{}';
         $triggerregistry = new message_trigger_registry($this->registry);
         $triggerjson = json_encode($triggerregistry->get_available_triggers(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $timezonename = (string)(get_config('core', 'timezone') ?? '');
@@ -426,7 +419,6 @@ PROMPT;
             '{{schemajson}}' => (string)$taskcatalogjson,
             '{{taskcatalogjson}}' => (string)$taskcatalogjson,
             '{{fullschemajson}}' => (string)$fullschemajson,
-            '{{availableintents}}' => (string)$intentsreg,
         ]);
 
         // Append all NON-OPTIONAL policies from centralized policy builder.
