@@ -35,6 +35,9 @@ use mod_booking\local\wbagent\services\lookup\docs_lookup_service;
  * without the large orchestrator prompt.
  */
 class planner_service {
+    /** @var array<string,array> Request-local cache for identical enrichment calls. */
+    private static array $enrichmentcache = [];
+
     /** @var conversation_store */
     private conversation_store $store;
 
@@ -72,8 +75,14 @@ class planner_service {
             return $input;
         }
 
+        $cachekey = $this->build_enrichment_cache_key($taskname, $usermessage, $input, $threadid, $cmid, $userid);
+        if (isset(self::$enrichmentcache[$cachekey])) {
+            return self::$enrichmentcache[$cachekey];
+        }
+
         $properties = (array)($schema['properties'] ?? []);
         if (empty($properties) || trim($usermessage) === '') {
+            self::$enrichmentcache[$cachekey] = $input;
             return $input;
         }
 
@@ -85,6 +94,7 @@ class planner_service {
         $isdockind = $this->is_docs_retrieval_schema($properties);
         $shouldplan = in_array('semantic_input_enrichment', $capabilities, true) || $isdockind;
         if (!$shouldplan) {
+            self::$enrichmentcache[$cachekey] = $input;
             return $input;
         }
 
@@ -92,7 +102,7 @@ class planner_service {
         $docsservice = null;
         if ($isdockind) {
             $docsservice = $this->create_docs_lookup_service();
-            $docsindexlines = $this->build_docs_index_lines($docsservice);
+            $docsindexlines = $this->build_docs_index_lines($docsservice, $usermessage);
         }
 
         $prompt = $this->build_planner_prompt(
@@ -112,6 +122,7 @@ class planner_service {
             $prompt
         );
         if (empty($call['success'])) {
+            self::$enrichmentcache[$cachekey] = $input;
             return $input;
         }
 
@@ -128,10 +139,49 @@ class planner_service {
         }
 
         if (empty($patch)) {
+            self::$enrichmentcache[$cachekey] = $input;
             return $input;
         }
 
-        return $this->merge_input_patch($input, $patch, $properties, $docsservice);
+        $merged = $this->merge_input_patch($input, $patch, $properties, $docsservice);
+        self::$enrichmentcache[$cachekey] = $merged;
+        return $merged;
+    }
+
+    /**
+     * Build a request-local deterministic cache key for enrichment invocations.
+     *
+     * @param string $taskname
+     * @param string $usermessage
+     * @param array $input
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @return string
+     */
+    private function build_enrichment_cache_key(
+        string $taskname,
+        string $usermessage,
+        array $input,
+        int $threadid,
+        int $cmid,
+        int $userid
+    ): string {
+        $payload = [
+            'task' => trim($taskname),
+            'user_message' => trim($usermessage),
+            'input' => $input,
+            'threadid' => $threadid,
+            'cmid' => $cmid,
+            'userid' => $userid,
+        ];
+
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json) || $json === '') {
+            $json = serialize($payload);
+        }
+
+        return sha1($json);
     }
 
     /**
@@ -154,10 +204,47 @@ class planner_service {
      * @param docs_lookup_service $service
      * @return array
      */
-    private function build_docs_index_lines(docs_lookup_service $service): array {
+    private function build_docs_index_lines(docs_lookup_service $service, string $usermessage = ''): array {
         $lines = [];
         $index = $service->get_all_doc_index();
-        foreach (array_slice($index, 0, 180) as $row) {
+        $terms = $this->extract_search_terms($usermessage);
+
+        if (!empty($terms)) {
+            $scored = [];
+            foreach ($index as $row) {
+                $path = trim((string)($row['path'] ?? ''));
+                if ($path === '') {
+                    continue;
+                }
+
+                $haystack = mb_strtolower(
+                    $path . ' ' . trim((string)($row['title'] ?? '')) . ' ' . trim((string)($row['excerpt'] ?? ''))
+                );
+                $score = 0;
+                foreach ($terms as $term) {
+                    if ($term !== '' && str_contains($haystack, $term)) {
+                        $score++;
+                    }
+                }
+
+                $row['__score'] = $score;
+                $scored[] = $row;
+            }
+
+            usort($scored, static function (array $a, array $b): int {
+                $left = (int)($a['__score'] ?? 0);
+                $right = (int)($b['__score'] ?? 0);
+                if ($left === $right) {
+                    return strcmp((string)($a['path'] ?? ''), (string)($b['path'] ?? ''));
+                }
+                return $right <=> $left;
+            });
+            $index = array_slice($scored, 0, 24);
+        } else {
+            $index = array_slice($index, 0, 40);
+        }
+
+        foreach ($index as $row) {
             $path = trim((string)($row['path'] ?? ''));
             if ($path === '') {
                 continue;
@@ -165,8 +252,8 @@ class planner_service {
 
             $title = trim((string)($row['title'] ?? ''));
             $excerpt = trim((string)($row['excerpt'] ?? ''));
-            if (mb_strlen($excerpt) > 160) {
-                $excerpt = mb_substr($excerpt, 0, 160);
+            if (mb_strlen($excerpt) > 80) {
+                $excerpt = mb_substr($excerpt, 0, 80);
             }
             $lines[] = '- ' . $path . ' | ' . $title . ' | ' . $excerpt;
         }
@@ -227,26 +314,45 @@ class planner_service {
         if (!empty($docsindexlines)) {
             $prompt .= "\n\n"
                 . "docs_planning_hints:\n"
-                . "- For docs tasks use structured planning keys in input_patch: "
-                . "topic_hint, doc_path_candidates, retrieval_goal.\n"
-                . "- For booking.explain_docs_topic you MUST provide either doc_path or non-empty doc_path_candidates.\n"
-                . "- topic_hint should be a concise topic id or folder-like hint.\n"
+                . "- For docs tasks, prefer structured keys in input_patch: topic_hint, doc_path_candidates, retrieval_goal.\n"
+                . "- If docs_index contains relevant paths, provide doc_path or non-empty doc_path_candidates.\n"
+                . "- topic_hint should be short and semantic.\n"
                 . "- doc_path_candidates should contain 1 to 3 exact paths from docs_index.\n"
                 . "- retrieval_goal should be one of: configure_howto, concept_explanation, troubleshooting, api_reference.\n"
-                . "- search_queries MUST always be in English, regardless of the user's language.\n"
-                . "- SEMANTIC ROUTING: if the question is about restrictions, limitations, who can book, "
-                . "when bookable, booking window, or time limit -> prefer booking_conditions/ "
-                . "and booking-option/04-availability.md above all other paths.\n"
-                . "- SEMANTIC ROUTING: if the question is about reminders, notifications, emails, "
-                . "message automation, or event triggers -> prefer booking_rules/.\n"
-                . "- For booking window / time questions, prioritise booking_conditions/booking_time.md "
-                . "above all other paths.\n"
-                . "- Do NOT return empty input_patch for docs tasks when suitable docs paths exist in docs_index.\n\n"
+                . "- Keep search_queries short and language-agnostic.\n\n"
                 . "docs_index:\n"
                 . implode("\n", $docsindexlines);
         }
 
         return $prompt;
+    }
+
+    /**
+     * Extract compact search terms from user message.
+     *
+     * @param string $message
+     * @return array<int,string>
+     */
+    private function extract_search_terms(string $message): array {
+        $message = mb_strtolower(trim($message));
+        if ($message === '') {
+            return [];
+        }
+
+        $parts = preg_split('/[^\p{L}\p{N}_-]+/u', $message) ?: [];
+        $terms = [];
+        foreach ($parts as $part) {
+            $term = trim($part);
+            if (mb_strlen($term) < 3) {
+                continue;
+            }
+            $terms[$term] = true;
+            if (count($terms) >= 8) {
+                break;
+            }
+        }
+
+        return array_keys($terms);
     }
 
     /**

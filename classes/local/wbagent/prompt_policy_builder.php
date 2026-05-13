@@ -57,28 +57,33 @@ class prompt_policy_builder {
         array $assistantstateblocks = []
     ): string {
         $policies = [];
+        $normalizedsteptype = trim(\core_text::strtolower($steptype));
 
         // 1. RESPONSE CONTRACT POLICY (universal, always appended).
-        $policies[] = self::build_response_contract_policy();
+        $policies[] = self::build_response_contract_policy($normalizedsteptype);
 
         // 2. LANGUAGE POLICY (universal, always appended).
-        $policies[] = self::build_language_policy();
+        $policies[] = self::build_language_policy($normalizedsteptype);
 
-        // 3. TRIGGER POLICY (universal, always appended).
-        $policies[] = self::build_trigger_policy($triggerjson);
+        // 3. TRIGGER POLICY (full catalog only for initial routing).
+        if ($normalizedsteptype === 'tool_call_parse') {
+            $policies[] = self::build_trigger_policy($triggerjson);
+        } else {
+            $policies[] = self::build_trigger_policy_compact();
+        }
 
         // 4. STEP INTENT POLICY (universal, always appended).
         $policies[] = self::build_step_intent_policy();
 
         // 5. DOCS ANSWER POLICY (only for non-initial steps with observations).
         // Skip for tool_call_parse (initial routing) to keep prompt lean.
-        if ($steptype !== 'tool_call_parse') {
+        if ($normalizedsteptype === 'simple_retrieval' || $normalizedsteptype === 'final_reasoning') {
             $policies[] = self::build_docs_answer_policy();
         }
 
         // 6. SUFFICIENCY POLICY (append if observations exist or if not initial step).
         // This guides the LLM to know when to stop searching and provide an answer.
-        if ($hasobservations || $steptype !== 'tool_call_parse') {
+        if ($normalizedsteptype === 'simple_retrieval' || $normalizedsteptype === 'final_reasoning' || $hasobservations) {
             $policies[] = self::build_sufficiency_policy();
         }
 
@@ -95,7 +100,17 @@ class prompt_policy_builder {
      *
      * @return string
      */
-    private static function build_response_contract_policy(): string {
+    private static function build_response_contract_policy(string $steptype): string {
+        if ($steptype !== 'tool_call_parse') {
+            return "NON-OPTIONAL RESPONSE CONTRACT POLICY:\n"
+                . "- Return valid JSON only (no markdown).\n"
+                . "- Always include top-level keys: response_type, message, used_triggers, next_step_intent, lang, user_lang.\n"
+                . "- Allowed response_type values: task_call, confirmation_request, confirm_pending, clarification, error.\n"
+                . "- For task_call or confirmation_request, commands MUST be a non-empty array.\n"
+                . "- For clarification, confirm_pending, or error, commands MUST be [].\n"
+                . "- Keep JSON field types stable (arrays as arrays, numbers as numbers, strings as strings).";
+        }
+
         return "NON-OPTIONAL RESPONSE CONTRACT POLICY:\n"
             . "- Return valid JSON only (no markdown code fences).\n"
             . "- Every response MUST include a top-level field 'response_type'.\n"
@@ -109,7 +124,8 @@ class prompt_policy_builder {
             . "- In commands entries, use keys: task (string), version (integer), input (object).\n"
             . "- Preserve JSON field types exactly: arrays must be arrays, numbers must be numbers, strings must be strings.\n"
             . "- Never serialize arrays as comma-separated strings.\n"
-            . "- Omit optional input fields when you do not have a grounded value; do not send empty placeholders such as doc_path=\"\".";
+            . "- Omit optional input fields when you do not have a grounded value; "
+            . "do not send empty placeholders such as doc_path=\"\".";
     }
 
     /**
@@ -117,15 +133,21 @@ class prompt_policy_builder {
      *
      * @return string
      */
-    private static function build_language_policy(): string {
+    private static function build_language_policy(string $steptype): string {
+        if ($steptype !== 'tool_call_parse') {
+            return "NON-OPTIONAL LANGUAGE POLICY:\n"
+                . "- Use the same language as the latest user message for all user-facing text.\n"
+                . "- Return valid ISO 639-1 values in 'lang' and 'user_lang'.\n"
+                . "- Keep next_step_intent language-aligned with message and lang.";
+        }
+
         return "NON-OPTIONAL LANGUAGE POLICY:\n"
             . "- Use the same language as the latest user message for all user-facing text in JSON fields (especially 'message').\n"
             . "- Do not switch language unless the user switches language.\n"
             . "- Return a valid ISO 639-1 value in 'lang' for the latest user-message language.\n"
-            . "- Return a valid ISO 639-1 value in 'user_lang' for the detected latest user-message language.\n"
-            . "- The field 'next_step_intent' MUST be in exactly the same language as 'message' "
-            . "and must align with 'lang'.\n"
-            . "- If lang='cs', answer in Czech; if lang='de', answer in German; if lang='en', answer in English; etc.";
+                . "- Return a valid ISO 639-1 value in 'user_lang' for the detected latest user-message language.\n"
+                . "- The field 'next_step_intent' MUST be in exactly the same language as 'message' "
+                . "and must align with 'lang'.";
     }
 
     /**
@@ -148,6 +170,17 @@ class prompt_policy_builder {
     }
 
     /**
+     * Build compact trigger policy for non-routing steps.
+     *
+     * @return string
+     */
+    private static function build_trigger_policy_compact(): string {
+        return "NON-OPTIONAL TRIGGER POLICY:\n"
+            . "- Keep using only valid trigger ids from the catalog in the current context.\n"
+            . "- Return used_triggers as a JSON array (empty array if none apply).";
+    }
+
+    /**
      * Build NON-OPTIONAL STEP INTENT POLICY.
      *
      * @return string
@@ -159,8 +192,8 @@ class prompt_policy_builder {
             . "- This sentence must be model-authored (no template text) and in the same language as the user.\n"
             . "- next_step_intent must describe intention (present/future), not completed work.\n"
             . "- Avoid past-tense completion phrasing such as \"I have ...\" or \"Ich habe ...\".\n"
-            . "  Good: \"Ich suche jetzt in der Dokumentation nach Buchungsregeln.\"\n"
-            . "  Bad: \"Ich habe eine Erklaerung gegeben.\"\n"
+                . "  Good: \"I will now check the relevant settings.\"\n"
+                . "  Bad: \"I already finished the explanation.\"\n"
             . "- If you answer directly without tool calls, next_step_intent should still describe that direct action.";
     }
 

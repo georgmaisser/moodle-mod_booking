@@ -48,7 +48,7 @@ use mod_booking\local\wbagent\result_payload_summarizer;
  */
 class orchestrator {
     /** Maximum number of recent messages to include in the prompt. */
-    public const MAX_HISTORY_MESSAGES = 20;
+    public const MAX_HISTORY_MESSAGES = 12;
 
     /** Compact prompt profile for initial tool-call parsing. */
     public const STEP_TYPE_TOOL_CALL_PARSE = 'tool_call_parse';
@@ -268,7 +268,8 @@ ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - Base your answer on the latest user message, observations, and assistant state.
 - Be concise, precise, and helpful.
 - Do not propose extra tool calls if the available context already answers the request.
-- Use only exact task names from the TASK CATALOG below. Never invent aliases or category names such as docs.search or documentation.query.
+- Use only exact task names from the TASK CATALOG below.
+- Never invent aliases or category names such as docs.search or documentation.query.
 - If observations already contain sufficient information, MUST return response_type="clarification" with commands=[].
 - If information is still missing for a mutating action, ask one focused clarification question.
 - In final reasoning mode, prefer a direct clarification answer with commands=[].
@@ -300,7 +301,7 @@ SYNTHESIS TASK:
 - Put the complete user-facing explanation only into the JSON field "message".
 - Required top-level keys: response_type, message, used_triggers, next_step_intent, lang, user_lang, commands.
 - LANGUAGE: Detect the language from the [USER] message and write the entire answer in that language.
-    If the user wrote in German, answer in German. If in English, in English. Match exactly.
+- Match the user language exactly unless the user requests otherwise.
 - QUALITY: Write a thorough, well-structured explanation - not a verbatim copy of observations.
     * Explain WHY each step matters, not just WHAT to do.
     * Use headings (##) for major sections when appropriate.
@@ -535,12 +536,12 @@ PROMPT;
      */
     private function get_history_limit_for_step(string $steptype): int {
         if ($steptype === self::STEP_TYPE_FINAL_REASONING) {
-            return 14;
+            return 8;
         }
         if ($steptype === self::STEP_TYPE_SIMPLE_RETRIEVAL) {
-            return 10;
+            return 6;
         }
-        return 8;
+        return 5;
     }
 
     /**
