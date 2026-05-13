@@ -33,6 +33,7 @@ use external_single_structure;
 use external_value;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
+use mod_booking\local\wbagent\llm_debug_logger;
 use mod_booking\local\wbagent\privacy_anonymizer;
 
 defined('MOODLE_INTERNAL') || die();
@@ -157,6 +158,13 @@ class ai_poll_run_status extends external_api {
         $followupmessage = self::format_ws_message($followupmessage, $context);
         $followupdisplaymessage = self::format_ws_message($followupdisplaymessage, $context);
 
+        // Gather debug logs if debug mode is enabled.
+        $debuglogsjson = '[]';
+        if (llm_debug_logger::is_enabled()) {
+            $debugentries = $store->get_llm_debug_entries((int)$run->threadid, 100);
+            $debuglogsjson = self::format_debug_logs_for_ws($debugentries);
+        }
+
         return [
             'runid'       => (int)$run->id,
             'status'      => $run->status,
@@ -168,6 +176,7 @@ class ai_poll_run_status extends external_api {
             'followupdisplaymessage' => $followupdisplaymessage,
             'followupcommandsjson' => $followupcommandsjson,
             'resultsjson' => $run->resultsjson ?? '[]',
+            'debuglogsjson' => $debuglogsjson,
         ];
     }
 
@@ -191,6 +200,38 @@ class ai_poll_run_status extends external_api {
     }
 
     /**
+     * Format debug log entries as compact JSON for WS output.
+     *
+     * Only includes source, requesttext (first 500 chars), and responsetext (first 500 chars).
+     *
+     * @param array $debugentries Debug log records from booking_ai_llm_debug.
+     * @return string JSON-encoded array of debug logs.
+     */
+    private static function format_debug_logs_for_ws(array $debugentries): string {
+        if (empty($debugentries)) {
+            return '[]';
+        }
+
+        $formatted = [];
+        foreach ($debugentries as $entry) {
+            if (!is_object($entry)) {
+                continue;
+            }
+
+            $formatted[] = [
+                'id'           => (int)($entry->id ?? 0),
+                'timecreated'  => (int)($entry->timecreated ?? 0),
+                'source'       => (string)($entry->source ?? ''),
+                'success'      => (int)($entry->success ?? 0),
+                'requesttext'  => substr((string)($entry->requesttext ?? ''), 0, 500),
+                'responsetext' => substr((string)($entry->responsetext ?? ''), 0, 500),
+            ];
+        }
+
+        return json_encode($formatted);
+    }
+
+    /**
      * Describe the return value.
      *
      * @return external_single_structure
@@ -207,6 +248,7 @@ class ai_poll_run_status extends external_api {
             'followupdisplaymessage' => new external_value(PARAM_RAW, 'Display message for the follow-up confirmation.'),
             'followupcommandsjson' => new external_value(PARAM_RAW, 'JSON-encoded follow-up commands.'),
             'resultsjson' => new external_value(PARAM_RAW, 'JSON-encoded per-command results.'),
+            'debuglogsjson' => new external_value(PARAM_RAW, 'JSON-encoded LLM debug logs (only when debug mode enabled).'),
         ]);
     }
 }

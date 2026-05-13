@@ -631,12 +631,14 @@ class interpreter implements agent_interpreter {
         $attemptedtasks = [];
         $issuecodes = [];
         $confirmablecommands = [];
+        $commandnumber = 0;
 
         $allowedtasks = $this->registry->get_task_names();
         $seencommandsigs = [];
 
-        foreach ($commands as $idx => $cmd) {
-            $label = 'Command #' . ($idx + 1);
+        foreach ($commands as $cmd) {
+            $commandnumber++;
+            $label = 'Command #' . $commandnumber;
 
             // Deduplicate: skip exact duplicate commands (same task + same input).
             $cmdsig = md5(json_encode(['task' => $cmd['task'] ?? '', 'input' => $cmd['input'] ?? []]));

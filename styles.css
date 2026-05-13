@@ -887,6 +887,15 @@ div.checkbox:has(label[for^="id_bo_cond_allowedtobookininstance_capabilitynotnee
     }
 }
 
+@keyframes booking-ai-pulse-text {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
 /* ---- Thinking bar with Stop button ---- */
 
 #booking-ai-wrapper .booking-ai-thinking-bar {
@@ -906,6 +915,10 @@ div.checkbox:has(label[for^="id_bo_cond_allowedtobookininstance_capabilitynotnee
     flex-shrink: 0;
 }
 
+#booking-ai-wrapper #booking-ai-thinking-label {
+    animation: booking-ai-pulse-text 1.5s ease-in-out infinite;
+}
+
 #booking-ai-wrapper .booking-ai-btn-stop {
     font-size: 0.75rem;
     color: #dc3545;
@@ -916,4 +929,92 @@ div.checkbox:has(label[for^="id_bo_cond_allowedtobookininstance_capabilitynotnee
 #booking-ai-wrapper .booking-ai-btn-stop:hover {
     color: #a71d2a;
     text-decoration: underline;
+
+#booking-ai-wrapper .booking-ai-btn-stop:focus {
+    outline: 1px solid #dc3545;
+    outline-offset: 2px;
+}
+}
+
+/* ---- LLM Debug Logs ---- */
+
+#booking-ai-wrapper .booking-ai-debug-logs {
+    display: block;
+    margin: 0.5rem 0;
+    font-size: 0.875rem;
+}
+
+#booking-ai-wrapper .booking-ai-debug-logs summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #495057;
+    padding: 0.5rem;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 0.25rem;
+    user-select: none;
+}
+
+#booking-ai-wrapper .booking-ai-debug-logs summary:hover {
+    background-color: #e9ecef;
+}
+
+#booking-ai-wrapper .booking-ai-debug-logs > div {
+    background-color: #fafbfc;
+    border: 1px solid #e9ecef;
+    border-top: none;
+    border-radius: 0 0 0.25rem 0.25rem;
+}
+
+#booking-ai-wrapper .booking-ai-debug-log-entry {
+    display: block;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+    background-color: #ffffff;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+#booking-ai-wrapper .booking-ai-debug-log-entry.border-success {
+    background-color: #f0f8f4;
+}
+
+#booking-ai-wrapper .booking-ai-debug-log-entry.border-danger {
+    background-color: #fef5f5;
+}
+
+#booking-ai-wrapper .booking-ai-debug-log-entry details {
+    cursor: pointer;
+}
+
+#booking-ai-wrapper .booking-ai-debug-log-entry details summary {
+    font-size: 0.75rem;
+    color: #6c757d;
+    padding: 0.25rem 0.5rem;
+    background-color: transparent;
+    border: none;
+    user-select: none;
+    font-weight: 500;
+}
+
+#booking-ai-wrapper .booking-ai-debug-log-entry details summary:hover {
+    color: #495057;
+    background-color: transparent;
+}
+
+#booking-ai-wrapper .booking-ai-debug-log-entry pre {
+    margin: 0.5rem 0 0 0;
+    padding: 0.5rem;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 0.2rem;
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#booking-ai-wrapper .booking-ai-debug-log-entry code {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+    font-size: 0.75rem;
+    color: #333;
+    word-break: break-all;
 }

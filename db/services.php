@@ -265,6 +265,14 @@ $functions = [
         'capabilities' => 'mod/booking:useaiinstructions',
         'ajax'        => 1,
     ],
+    'mod_booking_ai_get_thread_debug_logs' => [
+        'classname'   => 'mod_booking\\external\\ai_get_thread_debug_logs',
+        'methodname'  => 'execute',
+        'description' => 'Fetch raw LLM debug logs for a conversation thread (debug mode only).',
+        'type'        => 'read',
+        'capabilities' => 'mod/booking:useaiinstructions',
+        'ajax'        => 1,
+    ],
     'mod_booking_ai_list_candidate_options' => [
         'classname'   => 'mod_booking\\external\\ai_list_candidate_options',
         'methodname'  => 'execute',

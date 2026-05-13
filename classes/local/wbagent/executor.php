@@ -170,10 +170,18 @@ class executor implements agent_executor {
             return $result;
         }
 
+        $limit = $this->get_follow_up_suggestions_limit();
+        if ($limit <= 0) {
+            unset($result['suggestions'], $result['followupmessage']);
+            return $result;
+        }
+
         $lang = trim((string)($result['outputlang'] ?? $input['outputlang'] ?? ''));
         $suggestions = $result['suggestions'] ?? [];
         if (!is_array($suggestions) || empty($suggestions)) {
-            $suggestions = $this->build_follow_up_suggestions($taskname, $lang, $result);
+            $suggestions = $this->build_follow_up_suggestions($taskname, $lang, $limit, $result);
+        } else {
+            $suggestions = array_slice($suggestions, 0, $limit);
         }
 
         if (empty($suggestions)) {
@@ -192,20 +200,21 @@ class executor implements agent_executor {
      * Build a short list of supported next-step suggestions for the current task.
      * @param string $taskname
      * @param string $lang
+     * @param int $limit
      * @param array $result
      *
      * @return array
      *
      */
-    private function build_follow_up_suggestions(string $taskname, string $lang, array $result = []): array {
+    private function build_follow_up_suggestions(string $taskname, string $lang, int $limit, array $result = []): array {
         $suggestions = [];
         $seen = [];
 
         // Prefer suggestions grounded in actual result payload (docs/options/properties/etc.).
         $this->append_result_driven_suggestions($suggestions, $seen, $taskname, $lang, $result);
 
-        if (count($suggestions) >= self::MAX_FOLLOW_UP_SUGGESTIONS) {
-            return array_slice($suggestions, 0, self::MAX_FOLLOW_UP_SUGGESTIONS);
+        if (count($suggestions) >= $limit) {
+            return array_slice($suggestions, 0, $limit);
         }
 
         // Fill remaining slots with task-level fallbacks.
@@ -220,12 +229,28 @@ class executor implements agent_executor {
             $query = $this->localized_string('ai_followup_suggestion_query', $label, $lang);
             $this->append_suggestion($suggestions, $seen, $candidatetask, $label, $query);
 
-            if (count($suggestions) >= self::MAX_FOLLOW_UP_SUGGESTIONS) {
+            if (count($suggestions) >= $limit) {
                 break;
             }
         }
 
         return $suggestions;
+    }
+
+    /**
+     * Resolve configured follow-up suggestion count.
+     *
+     * 0 disables follow-up suggestions entirely.
+     *
+     * @return int
+     */
+    private function get_follow_up_suggestions_limit(): int {
+        $configured = get_config('booking', 'aifollowupsuggestionscount');
+        if ($configured === false) {
+            return self::MAX_FOLLOW_UP_SUGGESTIONS;
+        }
+
+        return max(0, (int)$configured);
     }
 
     /**
