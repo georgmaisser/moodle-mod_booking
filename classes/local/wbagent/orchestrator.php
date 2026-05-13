@@ -33,6 +33,7 @@ use core\di;
 use core_text;
 use mod_booking\local\wbagent\interfaces\agent_interpreter;
 use mod_booking\local\wbagent\result_payload_summarizer;
+use mod_booking\local\wbagent\adaptive_task_catalog_service;
 
 /**
  * Orchestrates LLM interaction via core_ai.
@@ -140,8 +141,26 @@ class orchestrator {
 
         $routing = $this->resolve_action_class_for_step($manager, $context, $normalizedsteptype);
         $actionclass = (string)$routing['actionclass'];
-        $systemprompt = $this->build_system_prompt($cmid, $normalizedsteptype, $actionclass, !empty($observations));
         $messages = $this->store->get_recent_messages($threadid, self::MAX_HISTORY_MESSAGES);
+
+        // Compute adaptive task catalog: tiered (mandatory + recency for Step 2+, full for Step 1).
+        $recenttaskhistory = $this->extract_recent_task_names_from_messages($messages);
+        $adaptivecatalogresult = adaptive_task_catalog_service::get_adaptive_catalog(
+            $this->registry->get_all_prompt_contracts(),
+            $recenttaskhistory,
+            $normalizedsteptype
+        );
+        $adaptivecatalog = $adaptivecatalogresult['active_tasks'];
+        $availableintents = $adaptivecatalogresult['available_intents'] ?? [];
+
+        $systemprompt = $this->build_system_prompt(
+            $cmid,
+            $normalizedsteptype,
+            $actionclass,
+            !empty($observations),
+            $adaptivecatalog,
+            $availableintents
+        );
         $prompt = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype);
         $historycount = count(array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype)));
         $observationcount = count($observations);
@@ -347,19 +366,29 @@ PROMPT;
      * Build the state-based system prompt with compact task metadata embedded.
      *
      * @param  int    $cmid
+     * @param  string $steptype
+     * @param  string $actionclass
+     * @param  bool   $hasobservations
+     * @param  array  $adaptivecatalog Optional adaptive task catalog (reduced by recency/tier). If null, uses full catalog.
+     * @param  array  $availableintents Optional intent registry (intent => count) for LLM awareness.
      * @return string System prompt text.
      */
     private function build_system_prompt(
         int $cmid,
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
         string $actionclass = generate_text::class,
-        bool $hasobservations = false
+        bool $hasobservations = false,
+        ?array $adaptivecatalog = null,
+        array $availableintents = []
     ): string {
         $schemas = $this->registry->get_all_schemas();
-        $taskcatalog = $this->registry->get_all_prompt_contracts();
+        $taskcatalog = $adaptivecatalog ?? $this->registry->get_all_prompt_contracts();
         $tasklist = implode(', ', $this->registry->get_task_names());
         $fullschemajson = json_encode($schemas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $taskcatalogjson = json_encode($taskcatalog, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $intentsreg = !empty($availableintents)
+            ? json_encode($availableintents, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+            : '{}';
         $triggerregistry = new message_trigger_registry($this->registry);
         $triggerjson = json_encode($triggerregistry->get_available_triggers(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $timezonename = (string)(get_config('core', 'timezone') ?? '');
@@ -397,6 +426,7 @@ PROMPT;
             '{{schemajson}}' => (string)$taskcatalogjson,
             '{{taskcatalogjson}}' => (string)$taskcatalogjson,
             '{{fullschemajson}}' => (string)$fullschemajson,
+            '{{availableintents}}' => (string)$intentsreg,
         ]);
 
         // Append all NON-OPTIONAL policies from centralized policy builder.
@@ -405,6 +435,44 @@ PROMPT;
         $prompt .= $policybuilder->build_all_policies($triggerjson, $steptype, $hasobservations);
 
         return $prompt;
+    }
+
+    /**
+     * Extract task names from recent messages for recency boosting.
+     *
+     * Scans assistant responses for attempted/executed task calls (from message metadata).
+     *
+     * @param \stdClass[] $messages
+     * @return array<string> Task names in reverse chronological order (most recent first).
+     */
+    private function extract_recent_task_names_from_messages(array $messages): array {
+        $tasknames = [];
+        for ($i = count($messages) - 1; $i >= 0; --$i) {
+            $msg = $messages[$i];
+            if ((string)($msg->role ?? '') === 'assistant' && isset($msg->structuredjson)) {
+                $meta = (array)json_decode((string)($msg->structuredjson ?? ''), true);
+                // Extract task names from attempted_tasks or commands.
+                $attemptedtasks = (array)($meta['attempted_tasks'] ?? []);
+                if (!empty($attemptedtasks)) {
+                    foreach ($attemptedtasks as $taskname) {
+                        if (!in_array($taskname, $tasknames, true)) {
+                            $tasknames[] = (string)$taskname;
+                        }
+                    }
+                }
+                // Also check commands if no attempted_tasks (fallback).
+                $commands = (array)($meta['commands'] ?? []);
+                foreach ($commands as $cmd) {
+                    if (is_array($cmd) && isset($cmd['task'])) {
+                        $taskname = (string)($cmd['task'] ?? '');
+                        if ($taskname !== '' && !in_array($taskname, $tasknames, true)) {
+                            $tasknames[] = $taskname;
+                        }
+                    }
+                }
+            }
+        }
+        return $tasknames;
     }
 
     /**
