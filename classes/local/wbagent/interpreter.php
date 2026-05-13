@@ -81,7 +81,10 @@ class interpreter implements agent_interpreter {
         // Stage 1: Parse.
         $parsed = $this->parse($rawresponse);
         if ($parsed === null) {
-            return $this->error_result('Failed to parse LLM response as JSON.');
+            return $this->error_result_with_issue_code(
+                'Failed to parse LLM response as JSON.',
+                'CONTRACT_PARSE_FAILED'
+            );
         }
 
         // Stage 2: Classify response type.
@@ -92,7 +95,10 @@ class interpreter implements agent_interpreter {
                 $parsed = $normalized;
                 $responsetype = $parsed['response_type'];
             } else {
-                return $this->error_result('LLM returned an unknown or missing response_type: ' . ($responsetype ?? '(none)'));
+                return $this->error_result_with_issue_code(
+                    'LLM returned an unknown or missing response_type: ' . ($responsetype ?? '(none)'),
+                    'CONTRACT_UNKNOWN_RESPONSE_TYPE'
+                );
             }
         }
 
@@ -932,7 +938,21 @@ class interpreter implements agent_interpreter {
      * @return array
      */
     private function error_result(string $message): array {
-        return [
+        return $this->error_result_with_issue_code($message, '');
+    }
+
+    /**
+     * Error result with contract gate issue code marker.
+     *
+     * Use this when a hard parse/contract failure occurs that must trigger
+     * early-exit and one-time retry before reaching decision_service.
+     *
+     * @param string $message
+     * @param string $issuecode Optional issue code for hard gates (CONTRACT_*)
+     * @return array
+     */
+    private function error_result_with_issue_code(string $message, string $issuecode = ''): array {
+        $result = [
             'response_type' => 'error',
             'message'       => $message,
             'commands'      => [],
@@ -940,6 +960,10 @@ class interpreter implements agent_interpreter {
             'ambiguity_options' => [],
             'errors'        => [$message],
         ];
+        if ($issuecode !== '') {
+            $result['issue_codes'] = [$issuecode];
+        }
+        return $result;
     }
 
     /**

@@ -173,4 +173,69 @@ final class agent_state {
     public function has_observations(): bool {
         return !empty($this->observations);
     }
+
+    /**
+     * Extract command signatures from all completed steps.
+     *
+     * Returns an array of signature strings (task|inputhash) that have been
+     * executed in prior steps. Used for loop-guard detection to prevent
+     * redundant same-signature re-calls when observations already exist.
+     *
+     * @return string[]
+     */
+    public function extract_observed_command_signatures(): array {
+        $signatures = [];
+
+        foreach ($this->steps as $step) {
+            $toolcalls = (array)($step['tool_calls'] ?? []);
+
+            foreach ($toolcalls as $command) {
+                if (!is_array($command)) {
+                    continue;
+                }
+
+                $taskname = trim((string)($command['task'] ?? ''));
+                if ($taskname === '') {
+                    continue;
+                }
+
+                // Normalize input for comparison (sorted keys, recursively).
+                $input = $command['input'] ?? [];
+                if (!is_array($input)) {
+                    $input = [];
+                }
+
+                $normalized = self::normalize_command_input($input);
+                $encoded = json_encode($normalized,
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $signature = $taskname . '|' . (is_string($encoded) ? $encoded : '{}');
+                $signatures[] = $signature;
+            }
+        }
+
+        return array_values(array_unique($signatures));
+    }
+
+    /**
+     * Recursively normalize command input for stable signature comparison.
+     *
+     * @param mixed $value
+     * @return mixed
+     */
+    private static function normalize_command_input($value) {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        if (array_is_list($value)) {
+            return array_map(fn($item) => self::normalize_command_input($item), $value);
+        }
+
+        ksort($value);
+        foreach ($value as $key => $item) {
+            $value[$key] = self::normalize_command_input($item);
+        }
+
+        return $value;
+    }
 }

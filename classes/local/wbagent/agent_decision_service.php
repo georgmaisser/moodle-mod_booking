@@ -2151,34 +2151,33 @@ class agent_decision_service {
      * @return bool
      */
     private function looks_like_lookup_request(string $message, array $result): bool {
-        $normalized = core_text::strtolower(trim((string)preg_replace('/\s+/', ' ', $message)));
+        // Use only structural signals from the parsed LLM result.
+        // Raw-message NL analysis is intentionally omitted to avoid language-specific heuristics.
 
-        // Heuristic 1: next_step_intent mentions documentation/search.
+        // Signal 1: next_step_intent contains a structured read-only intent class
+        // (set by the routing determinism policy, e.g. info_lookup, docs_explain).
         $nextstepintent = core_text::strtolower(trim((string)($result['next_step_intent'] ?? '')));
-        if ($nextstepintent !== '') {
-            $hasdocsintent = (
-                str_contains($nextstepintent, 'dokumentation')
-                || str_contains($nextstepintent, 'documentation')
-                || str_contains($nextstepintent, 'suche')
-                || str_contains($nextstepintent, 'search')
-            );
-            if ($hasdocsintent) {
-                return true;
-            }
-        }
-
-        // Heuristic 2: Message is a question (ends with ?) and contains how-to keywords.
-        if (preg_match('/\? *$/', $normalized)) {
-            if (preg_match('/\b(wie|how|kann|can|soll|should|wo|where|was|what|warum|why|wann|when)\b/', $normalized)) {
-                return true;
-            }
-        }
-
-        // Heuristic 3: Message mentions enabling/disabling/allowing/restricting.
-        $longpattern = '/(erlauben|allow|aktivieren|enable|deaktivieren|disable|einschränken|restrict'
-            . '|beschränken)/';
-        if (preg_match($longpattern, $normalized)) {
+        if (str_contains($nextstepintent, 'info_lookup') || str_contains($nextstepintent, 'docs_explain')) {
             return true;
+        }
+
+        // Signal 2: commands reference only read-only task name prefixes from the task catalog.
+        $commands = $result['commands'] ?? [];
+        if (!empty($commands)) {
+            foreach ($commands as $command) {
+                $taskname = core_text::strtolower(trim((string)($command['task'] ?? '')));
+                if (
+                    str_starts_with($taskname, 'get_')
+                    || str_starts_with($taskname, 'list_')
+                    || str_starts_with($taskname, 'search_')
+                    || str_starts_with($taskname, 'find_')
+                    || str_starts_with($taskname, 'docs_')
+                    || str_starts_with($taskname, 'check_')
+                    || str_starts_with($taskname, 'diagnose_')
+                ) {
+                    return true;
+                }
+            }
         }
 
         return false;

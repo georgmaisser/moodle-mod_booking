@@ -619,6 +619,8 @@ $string['ai_fallback_task_call'] = 'Ich bearbeite Ihre Anfrage jetzt.';
 $string['ai_fallback_summary'] = 'Ich fasse die verfügbaren Ergebnisse für Sie zusammen.';
 $string['ai_diagnose_recall_blocked_use_existing'] =
     'Ich habe bereits relevante Diagnoseergebnisse und fasse diese direkt zusammen, statt dieselbe Prüfung erneut auszuführen.';
+$string['ai_redundant_readonly_blocked'] =
+    'Diese Information wurde bereits recherchiert. Ich nutze die bisherigen Ergebnisse, um Ihre Frage zu beantworten.';
 $string['ai_status_confirm_booking_bulk_update_options'] = 'Ich werde mehrere Buchungsoptionen auf einmal aktualisieren. Soll ich fortfahren?';
 $string['ai_status_confirm_booking_create_option'] = 'Ich werde eine neue Buchungsoption erstellen.';
 $string['ai_status_confirm_booking_search_options'] = 'Ich werde die Buchungsoptionen auflisten.';

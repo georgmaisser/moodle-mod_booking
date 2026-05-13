@@ -600,6 +600,8 @@ $string['ai_fallback_task_call'] = 'I am processing your request now.';
 $string['ai_fallback_summary'] = 'I will summarize the available findings for you.';
 $string['ai_diagnose_recall_blocked_use_existing'] =
     'I already have relevant diagnosis results and will summarize them directly instead of re-running the same check.';
+$string['ai_redundant_readonly_blocked'] =
+    'This information was already researched. I am using the existing findings to answer your question.';
 $string['ai_provider_not_configured'] = 'No AI provider configured';
 $string['ai_provider_not_configured_desc'] = 'Please ask your Moodle administrator to configure a core AI provider before using this feature.';
 $string['ai_repair_no_solution_message'] = 'I could not build a safe automatic repair plan for this execution error. Please adjust the request details and try again.';

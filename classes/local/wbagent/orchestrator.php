@@ -411,11 +411,12 @@ PROMPT;
         $template = self::get_default_initial_prompt_template_for_action($actionclass);
 
         if ($actionclass === generate_text::class) {
+            // Only prepend a custom admin-configured prefix; the default template already
+            // contains the "You are an expert..." opening, so skip when no override is set.
             $summaryprefix = trim((string)(get_config('booking', 'aiinitialprompt_summarise_text') ?? ''));
-            if ($summaryprefix === '') {
-                $summaryprefix = self::get_default_summary_prompt_prefix();
+            if ($summaryprefix !== '') {
+                $template = $summaryprefix . "\n\n" . ltrim($template);
             }
-            $template = $summaryprefix . "\n\n" . ltrim($template);
         }
 
         $prompt = strtr($template, [

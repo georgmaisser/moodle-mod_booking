@@ -188,7 +188,7 @@ class agent_runtime {
      * @return array
      */
     public function run(int $threadid, int $cmid, int $userid): array {
-        $result = $this->run_internal($threadid, $cmid, $userid, []);
+        $result = $this->run_internal($threadid, $cmid, $userid, [], null);
         $result = $this->enforce_final_response_contract($result, $threadid);
         $this->messagepersistence->persist_assistant_message($threadid, $result);
         return $result;
@@ -270,7 +270,7 @@ class agent_runtime {
             $state->currentstep = $step + 1;
 
             // Plan + route — does NOT persist anything.
-            $result = $this->run_internal($threadid, $cmid, $userid, $state->get_observations());
+            $result = $this->run_internal($threadid, $cmid, $userid, $state->get_observations(), $state);
 
             $result['loop_step']      = $step + 1;
             $result['loop_max_steps'] = $limit;
@@ -1488,14 +1488,21 @@ class agent_runtime {
      * It is the building block for run_loop() and is also used by run() (which
      * adds the single persistence call afterwards).
      *
-     * @param  int      $threadid     Thread id.
-     * @param  int      $cmid         Course-module id.
-     * @param  int      $userid       User id.
-     * @param  string[] $observations Structured observation strings from prior internal steps.
-     *                                Injected into the LLM prompt — never stored in the DB.
+     * @param  int           $threadid     Thread id.
+     * @param  int           $cmid         Course-module id.
+     * @param  int           $userid       User id.
+     * @param  string[]      $observations Structured observation strings from prior internal steps.
+     *                                      Injected into the LLM prompt — never stored in the DB.
+     * @param  agent_state|null $state    Current loop state (null for single-shot run()).
      * @return array Normalized result (not yet persisted).
      */
-    private function run_internal(int $threadid, int $cmid, int $userid, array $observations): array {
+    private function run_internal(
+        int $threadid,
+        int $cmid,
+        int $userid,
+        array $observations,
+        ?agent_state $state = null
+    ): array {
         $previewoptionid = $this->resolve_preview_option_id($threadid, $cmid);
         $triggerregistry = new message_trigger_registry($this->registry);
 
@@ -1519,6 +1526,14 @@ class agent_runtime {
         $this->store->set_thread_metadata_value($threadid, 'last_output_lang', $outputlang);
         $result['used_triggers'] = $triggerregistry->normalize_used_triggers($result['used_triggers'] ?? []);
 
+        // HARD CONTRACT GATE: Detect and recover from parse/schema errors before routing.
+        // These errors must NEVER reach decision_service unguarded.
+        $result = $this->apply_hard_contract_gate($result, $threadid, $cmid, $userid, $observations, $outputlang);
+        if ($this->is_hard_contract_error($result)) {
+            // Early exit with safe fallback — do not proceed to decision_service.
+            return $result;
+        }
+
         $rawresponsetype = trim((string)($result['response_type'] ?? ''));
         $result['response_type'] = $triggerregistry->normalize_response_type($rawresponsetype);
         if ($result['response_type'] === message_trigger_registry::UNKNOWN_RESPONSE_TYPE) {
@@ -1538,9 +1553,12 @@ class agent_runtime {
             }
         }
 
-        // Guardrail: If observations already contain diagnosis output, do not allow
-        // a redundant second diagnose task call for the same loop turn.
-        $result = $this->apply_observation_based_recall_guard($result, $observations, $outputlang);
+        // Signature-based guard: Block readonly task calls when exact signature
+        // already completed in prior steps. Generalized to all readonly tasks.
+        $result = $this->apply_signature_based_recall_guard($result, $state, $outputlang);
+
+        // Legacy taskname-based recall guard is intentionally not applied here.
+        // Routing stability is enforced via signature-based recall guard above.
 
         // Infer issue codes when the LLM returned a generic error.
         if (
@@ -1580,6 +1598,91 @@ class agent_runtime {
                 ],
                 $outputlang
             );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Prevent redundant readonly calls when exact signature already completed.
+     *
+     * Generalized signature-based guard: blocks ANY readonly task call when
+     * the exact task+input combination was already executed in a prior step.
+     * This prevents loop-drift from repeated prompting of the same readonly queries.
+     *
+     * Runs BEFORE the task-specific observe-based guards, so signature-level
+     * redundancy is caught first and doesn't cascade into task-specific logic.
+     *
+     * @param array $result
+     * @param agent_state|null $state  Current loop state (null outside run_loop).
+     * @param string $outputlang
+     * @return array
+     */
+    private function apply_signature_based_recall_guard(
+        array $result,
+        ?agent_state $state,
+        string $outputlang
+    ): array {
+        // Guard only applies when in run_loop() with prior steps.
+        if ($state === null || $state->step_count() === 0) {
+            return $result;
+        }
+
+        if ((string)($result['response_type'] ?? '') !== 'task_call') {
+            return $result;
+        }
+
+        $commands = (array)($result['commands'] ?? []);
+        if (empty($commands)) {
+            return $result;
+        }
+
+        // Check if all commands are readonly tasks.
+        foreach ($commands as $command) {
+            if (!is_array($command)) {
+                continue;
+            }
+            $taskname = trim((string)($command['task'] ?? ''));
+            if ($taskname !== '' && !$this->registry->is_read_only_task($taskname)) {
+                // At least one mutating command: skip this guard.
+                return $result;
+            }
+        }
+
+        // Extract current command signatures and observed signatures.
+        $currentsigs = $this->extract_step_command_signatures($commands, []);
+        $observedsigs = $state->extract_observed_command_signatures();
+
+        if (empty($currentsigs) || empty($observedsigs)) {
+            return $result;
+        }
+
+        // Check for any signature overlap.
+        $overlap = array_intersect($currentsigs, $observedsigs);
+        if (empty($overlap)) {
+            return $result;
+        }
+
+        // Match found: downgrade to clarification.
+        $result['response_type'] = 'clarification';
+        $result['commands'] = [];
+        $result['issue_codes'] = array_values(array_unique(array_merge(
+            (array)($result['issue_codes'] ?? []),
+            ['LOOP_REDUNDANT_SIGNATURE_BLOCKED']
+        )));
+
+        $currentmessage = trim((string)($result['message'] ?? ''));
+        if ($this->is_low_information_message($currentmessage)) {
+            $result['message'] = $this->localized_string(
+                'ai_redundant_readonly_blocked',
+                'mod_booking',
+                null,
+                $outputlang
+            );
+            if ($result['message'] === 'ai_redundant_readonly_blocked') {
+                $result['message'] = 'This information was already researched. '
+                    . 'Using existing findings to answer your question.';
+            }
         }
 
         return $result;
@@ -1664,6 +1767,108 @@ class agent_runtime {
                 continue;
             }
             if (preg_match('/\bdiagnosis\s+for\s+option\b/i', $text) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * HARD CONTRACT GATE: Prevent parse/schema errors from reaching decision_service.
+     *
+     * When the orchestrator/interpreter detects a parse failure or contract violation,
+     * this gate attempts a single recovery retry with a structured recovery hint.
+     * If retry also fails, returns a safe clarification without commands.
+     *
+     * @param array $result
+     * @param int $threadid
+     * @param int $cmid
+     * @param int $userid
+     * @param array $observations
+     * @param string $outputlang
+     * @return array
+     */
+    private function apply_hard_contract_gate(
+        array $result,
+        int $threadid,
+        int $cmid,
+        int $userid,
+        array $observations,
+        string $outputlang
+    ): array {
+        // Detect hard contract errors: parse failures or unknown response types.
+        if (!$this->is_hard_contract_error($result)) {
+            return $result;
+        }
+
+        // Check retry flag: one-time retry only.
+        $retrykey = '_contract_gate_retry_' . (int)($result['runid'] ?? 0);
+        $alreadyretried = (bool)$this->store->get_thread_metadata_value($threadid, $retrykey);
+
+        if (!$alreadyretried) {
+            // First attempt: inject recovery observation and retry.
+            $this->store->set_thread_metadata_value($threadid, $retrykey, true);
+
+            $msg = 'SYSTEM: Malformed response. Return valid JSON.';
+            $retryobservations = array_merge((array)$observations, [$msg]);
+            $retryresult = $this->call_orchestrator_step(
+                $threadid,
+                $cmid,
+                $userid,
+                $retryobservations,
+                orchestrator::STEP_TYPE_TOOL_CALL_PARSE
+            );
+
+            if (!$this->is_hard_contract_error($retryresult)) {
+                // Recovery successful: return retry result.
+                return $retryresult;
+            }
+            // Retry also failed: fall through to safe fallback below.
+        }
+
+        // Fallback: return safe clarification with no commands.
+        return [
+            'response_type'             => 'clarification',
+            'message'                   => $this->localized_string(
+                'ai_agent_malformed_taskcall_clarification',
+                'mod_booking',
+                null,
+                $outputlang
+            ),
+            'commands'                  => [],
+            'ambiguities'               => [],
+            'ambiguity_options'         => [],
+            'errors'                    => ['Structural error in LLM response'],
+            'attempted_tasks'           => [],
+            'issue_codes'               => ['CONTRACT_GATE_FAILED'],
+            'pending_confirmation_code' => '',
+            'used_triggers'             => [],
+            'runid'                     => 0,
+            'results'                   => [],
+            'lang'                      => $outputlang,
+        ];
+    }
+
+    /**
+     * Detect whether result contains a hard contract error that must not reach decision_service.
+     *
+     * @param array $result
+     * @return bool
+     */
+    private function is_hard_contract_error(array $result): bool {
+        if ((string)($result['response_type'] ?? '') !== 'error') {
+            return false;
+        }
+
+        $issuecodes = array_map(
+            static fn($code): string => trim(core_text::strtoupper((string)$code)),
+            (array)($result['issue_codes'] ?? [])
+        );
+
+        // Detect hard gates: CONTRACT_* markers or UNKNOWN_TYPE.
+        foreach ($issuecodes as $code) {
+            if (strpos($code, 'CONTRACT_') === 0 || $code === 'UNKNOWN_TYPE') {
                 return true;
             }
         }

@@ -68,6 +68,7 @@ class prompt_policy_builder {
         // 3. TRIGGER POLICY (full catalog only for initial routing).
         if ($normalizedsteptype === 'tool_call_parse') {
             $policies[] = self::build_trigger_policy($triggerjson);
+            $policies[] = self::build_routing_determinism_policy();
         } else {
             $policies[] = self::build_trigger_policy_compact();
         }
@@ -183,6 +184,40 @@ class prompt_policy_builder {
     }
 
     /**
+     * Build NON-OPTIONAL ROUTING DETERMINISM POLICY (tool_call_parse only).
+     *
+     * Uses structured positive/negative criteria for stable routing decisions
+     * without language-specific token lists.
+     *
+     * @return string
+     */
+    private static function build_routing_determinism_policy(): string {
+        return "NON-OPTIONAL ROUTING DETERMINISM POLICY:\n"
+            . "- Derive routing from STRUCTURED intent signals, not phrase matching.\n"
+            . "- Use this intent class set: info_lookup, docs_explain, mutation, confirmation, unclear.\n"
+            . "- Resolve exactly one primary intent class per response.\n"
+            . "\nPOSITIVE CRITERIA:\n"
+            . "- info_lookup: user asks for factual retrieval/listing/searching of existing data.\n"
+            . "- docs_explain: user asks for rules/capabilities/how-it-works from docs context.\n"
+            . "- mutation: user asks to create/update/delete or execute a state-changing action.\n"
+            . "- confirmation: user confirms or approves an already pending action.\n"
+            . "\nNEGATIVE CRITERIA:\n"
+            . "- Do NOT use confirmation_request for read-only retrieval intents.\n"
+            . "- Do NOT use task_call with commands=[] (contract violation).\n"
+            . "- Do NOT use confirm_pending unless confirmation intent is explicit.\n"
+            . "- Do NOT mix conflicting intents in one response; choose one primary class.\n"
+            . "\nRESPONSE MAPPING:\n"
+            . "- info_lookup/docs_explain with sufficient task grounding => response_type=task_call, commands non-empty.\n"
+            . "- mutation with sufficient grounding => response_type=confirmation_request, commands non-empty.\n"
+            . "- confirmation => response_type=confirm_pending, commands=[].\n"
+            . "- unclear/missing required fields => response_type=clarification, commands=[].\n"
+            . "\nTRIGGER CONSISTENCY:\n"
+            . "- Add core.is_lookup_request for info_lookup/docs_explain tool retrieval routes.\n"
+            . "- Add core.is_confirmation_message only for explicit confirmation intent.\n"
+            . "- Keep used_triggers as supporting structured evidence, never as decoration.";
+    }
+
+    /**
      * Build NON-OPTIONAL STEP INTENT POLICY.
      *
      * @return string
@@ -251,8 +286,10 @@ class prompt_policy_builder {
                 . "  2. IF YES: return response_type=clarification with commands=[] and message "
                 . "summarizing the observation results.\n"
                 . "  3. IF NO: return response_type=clarification with explanation of what is missing.\n"
-                . "  4. NEVER re-call the same task if its result is already in an OBSERVATION block.\n"
-                . "  5. Re-calling a task whose result already exists is a PROTOCOL VIOLATION.";
+                . "  4. NEVER re-call the same command signature "
+                . "(task + normalized input) if it already exists in OBSERVATION blocks.\n"
+                . "  5. Re-calling the same task with DIFFERENT grounded input may be valid.\n"
+                . "  6. Re-calling a command signature whose result already exists is a PROTOCOL VIOLATION.";
         }
 
         return $policy;
