@@ -40,6 +40,15 @@ namespace mod_booking\local\wbagent;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class result_payload_summarizer {
+    /** Maximum number of summary parts included per observation step. */
+    private const MAX_OBSERVATION_PARTS = 3;
+
+    /** Maximum characters per individual result summary fragment. */
+    private const MAX_SUMMARY_FRAGMENT_CHARS = 220;
+
+    /** Maximum characters for one full observation line injected into the next step. */
+    private const MAX_OBSERVATION_CHARS = 700;
+
     /**
      * Build a concise observation string for the LLM loop.
      *
@@ -59,9 +68,15 @@ class result_payload_summarizer {
                 continue;
             }
 
-            $summary = self::describe_entry($entry, $step);
+            $summary = self::compact_text(
+                self::describe_entry($entry, $step),
+                self::MAX_SUMMARY_FRAGMENT_CHARS
+            );
             if ($summary !== '') {
                 $parts[] = $summary;
+                if (count($parts) >= self::MAX_OBSERVATION_PARTS) {
+                    break;
+                }
             }
         }
 
@@ -78,7 +93,10 @@ class result_payload_summarizer {
             return "Step {$step}: {$resultcount} result entries returned.";
         }
 
-        return "Step {$step}: " . implode(' ', $parts);
+        return self::compact_text(
+            "Step {$step}: " . implode(' ', $parts),
+            self::MAX_OBSERVATION_CHARS
+        );
     }
 
     /**
@@ -92,7 +110,7 @@ class result_payload_summarizer {
      * @return string         Empty string when nothing meaningful is available.
      */
     public static function describe_result_for_state(array $entry): string {
-        return self::describe_entry($entry, 0);
+        return self::compact_text(self::describe_entry($entry, 0), self::MAX_SUMMARY_FRAGMENT_CHARS);
     }
 
     /**
@@ -286,8 +304,32 @@ class result_payload_summarizer {
 
             default:
                 // Fallback: use task-authored user message or detail string.
-                return trim((string)($entry['usermessage'] ?? $entry['detail'] ?? ''));
+                return self::compact_text(
+                    trim((string)($entry['usermessage'] ?? $entry['detail'] ?? '')),
+                    self::MAX_SUMMARY_FRAGMENT_CHARS
+                );
         }
+    }
+
+    /**
+     * Normalize whitespace and trim to a safe max length.
+     *
+     * @param string $text
+     * @param int $maxchars
+     * @return string
+     */
+    private static function compact_text(string $text, int $maxchars): string {
+        $clean = trim((string)preg_replace('/\s+/u', ' ', $text));
+        if ($clean === '') {
+            return '';
+        }
+
+        if ($maxchars <= 0 || mb_strlen($clean) <= $maxchars) {
+            return $clean;
+        }
+
+        $limit = max(8, $maxchars - 1);
+        return rtrim(mb_substr($clean, 0, $limit)) . '...';
     }
 
     /**

@@ -156,7 +156,7 @@ class interpreter implements agent_interpreter {
         }
 
         // Stages 3–6: Full validation for command-bearing responses.
-        $commands = $parsed['commands'] ?? [];
+        $commands = $this->normalize_commands_payload($parsed, $lastusermessage);
         if (!is_array($commands) || empty($commands)) {
             return $this->error_result('Response type requires at least one command but none were provided.');
         }
@@ -242,6 +242,67 @@ class interpreter implements agent_interpreter {
             'attempted_tasks' => $attemptedtasks,
             'issue_codes'   => $issuecodes,
         ], $nextstepintent);
+    }
+
+    /**
+     * Normalize command payload shapes to a canonical list of command objects.
+     *
+     * Accepts:
+     * - commands as list: [{task,version,input}, ...]
+     * - commands as single object: {task,version,input}
+     * - top-level task/version/input fields when commands is missing
+     *
+     * @param array $parsed
+     * @param string $lastusermessage
+     * @return array
+     */
+    private function normalize_commands_payload(array $parsed, string $lastusermessage = ''): array {
+        $allowedtasks = $this->registry->get_task_names();
+        $commands = $parsed['commands'] ?? null;
+
+        // commands provided as a single object instead of a list.
+        if (is_array($commands) && isset($commands['task']) && !array_is_list($commands)) {
+            $commands = [$commands];
+        }
+
+        if (is_array($commands) && !empty($commands)) {
+            $normalized = [];
+            foreach ($commands as $command) {
+                if (!is_array($command)) {
+                    continue;
+                }
+
+                $taskname = $this->resolve_task_name_alias((string)($command['task'] ?? ''), $allowedtasks);
+                if ($taskname === null) {
+                    continue;
+                }
+
+                $input = is_array($command['input'] ?? null) ? $command['input'] : [];
+                $input = $this->hydrate_question_field($taskname, $input, $lastusermessage);
+
+                $normalized[] = [
+                    'task' => $taskname,
+                    'version' => max(1, (int)($command['version'] ?? 1)),
+                    'input' => $input,
+                ];
+            }
+
+            return $normalized;
+        }
+
+        // Fallback: top-level task/version/input fields.
+        $taskname = $this->resolve_task_name_alias((string)($parsed['task'] ?? ''), $allowedtasks);
+        if ($taskname !== null) {
+            $input = is_array($parsed['input'] ?? null) ? $parsed['input'] : [];
+            $input = $this->hydrate_question_field($taskname, $input, $lastusermessage);
+            return [[
+                'task' => $taskname,
+                'version' => max(1, (int)($parsed['version'] ?? 1)),
+                'input' => $input,
+            ]];
+        }
+
+        return [];
     }
 
     /**
