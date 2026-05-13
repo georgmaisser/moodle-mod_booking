@@ -197,6 +197,9 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
         global $DB;
 
         $outputlang = $this->get_output_language($input);
+
+        // Step 1: Resolve which user to diagnose.
+        // Priority: explicit targetuserid > userquery (resolved via DB) > current user.
         $resolveduser = $this->resolve_diagnostic_user($input, $userid, $outputlang);
         if (($resolveduser['status'] ?? '') !== 'ok') {
             $resolveusermessage = (string)($resolveduser['message']
@@ -209,6 +212,7 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
             ];
         }
 
+        // Step 2: Permission check — diagnosing another user requires mod/booking:bookforothers.
         $diagnosticuserid = (int)($resolveduser['userid'] ?? $userid);
         if ($diagnosticuserid !== $userid && !$this->can_analyze_other_user($cmid)) {
             return [
@@ -223,6 +227,8 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
             ];
         }
 
+        // Step 3: Resolve the booking option.
+        // Priority: explicit optionid > "last option" session reference > optionquery (DB search).
         $resolvedoption = $this->resolve_option_id($input, $cmid, $userid, $outputlang);
         if (($resolvedoption['status'] ?? '') !== 'ok') {
             return [
@@ -234,6 +240,9 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
             ];
         }
 
+        // Step 4: Load option settings, booking answers and availability condition results.
+        // conditionresults is a sorted array of all active bo_availability conditions for this user;
+        // the last entry is the highest-priority blocker.
         $optionid = (int)($resolvedoption['optionid'] ?? 0);
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
         $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($settings->cmid);
@@ -245,6 +254,8 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
         $bookinginformation = $ba->return_all_booking_information($diagnosticuserid);
         $userstatus = (string)$ba->user_status_as_string($diagnosticuserid);
 
+        // Step 5: Collect all cancellation-related configuration values into a context array.
+        // These values are passed to build_reason_lines() to avoid repeated DB/config lookups.
         $optiondisablecancel = !empty(booking_option::get_value_of_json_by_key($optionid, 'disablecancel'));
         $instancedisablecancel = !empty(booking::get_value_of_json_by_key($settings->bookingid, 'disablecancel'));
         $optioncanceluntil = (int)(booking_option::get_value_of_json_by_key($optionid, 'canceluntil') ?? 0);
@@ -254,18 +265,22 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
         $canuserscancel = ((int)($bookingsettings->cancancelbook ?? 0) === 1);
 
         $reasoncontext = [
-            'optiondisablecancel' => $optiondisablecancel,
-            'instancedisablecancel' => $instancedisablecancel,
-            'optioncanceluntil' => $optioncanceluntil,
-            'effectivecanceluntil' => $effectivecanceluntil,
-            'coolingoffactive' => $coolingoffactive,
-            'coolingoffseconds' => $coolingoffseconds,
-            'canuserscancel' => $canuserscancel,
-            'waitforconfirmation' => !empty($settings->waitforconfirmation),
-            'hasprice' => !empty($settings->jsonobject->useprice),
-            'shoppingcartexists' => class_exists('local_shopping_cart\\shopping_cart'),
+            'optiondisablecancel'   => $optiondisablecancel,    // disablecancel set on the option itself
+            'instancedisablecancel' => $instancedisablecancel,  // disablecancel set on the booking instance
+            'optioncanceluntil'     => $optioncanceluntil,       // explicit canceluntil timestamp on the option
+            'effectivecanceluntil'  => $effectivecanceluntil,    // computed effective deadline (may differ from above)
+            'coolingoffactive'      => $coolingoffactive,        // whether the global cooling-off period still applies
+            'coolingoffseconds'     => $coolingoffseconds,       // cooling-off duration in seconds
+            'canuserscancel'        => $canuserscancel,          // instance-level cancancelbook toggle
+            'waitforconfirmation'   => !empty($settings->waitforconfirmation), // waitinglist confirmation flow
+            'hasprice'              => !empty($settings->jsonobject->useprice), // option has a price
+            'shoppingcartexists'    => class_exists('local_shopping_cart\\shopping_cart'), // plugin present
         ];
 
+        // Step 6: Build human-readable reason lines.
+        // Checks (in order): instance/option disablecancel, canceluntil deadlines, price without cart,
+        // activity completion, not-booked / reserved states, cancancelbook disabled,
+        // effective deadline, shopping-cart policy, waitinglist confirmation flow, cooling-off period.
         $reasons = $this->build_reason_lines(
             $conditionresults,
             $highestblocker,

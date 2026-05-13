@@ -306,6 +306,8 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         global $DB;
         $outputlang = $this->get_output_language($preparedinput);
 
+        // Step 1: Resolve which user to diagnose.
+        // Priority: explicit targetuserid > userquery (resolved via DB) > current user.
         $resolveduser = $this->resolve_diagnostic_user($preparedinput, $userid, $outputlang);
         if (($resolveduser['status'] ?? '') !== 'ok') {
             return [
@@ -318,6 +320,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         }
         $diagnosticuserid = (int)($resolveduser['userid'] ?? $userid);
 
+        // Step 2: Permission check — diagnosing another user requires mod/booking:bookforothers.
         if ($diagnosticuserid !== $userid && !$this->can_analyze_other_user($cmid)) {
             return [
                 'status' => 'error',
@@ -331,7 +334,13 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
             ];
         }
 
+        // Step 3: Detect which issue type to diagnose.
+        // Derived from explicit 'issue' field or by keyword-matching the 'question' text.
+        // Possible values: booking_status | cannot_book | missing_email.
         $issuetype = $this->resolve_issue_type($preparedinput);
+
+        // Step 4: Resolve the booking option.
+        // Priority: explicit optionid > "last option" session reference > optionquery (DB search).
         $resolvedoption = $this->resolve_option_id($preparedinput, $cmid, $userid, $outputlang);
         if (($resolvedoption['status'] ?? '') !== 'ok') {
             return [
@@ -343,6 +352,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
             ];
         }
 
+        // Step 5: Load option settings, availability condition results and booking answers.
         $optionid = (int)($resolvedoption['optionid'] ?? 0);
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
         $conditionresults = bo_info::get_condition_results($optionid, $diagnosticuserid);
@@ -352,7 +362,14 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         $userstatus = (string)$ba->user_status_as_string($diagnosticuserid);
         $optionstats['userstatus'] = $userstatus;
         $isselfdiagnosis = ($diagnosticuserid === $userid);
+
+        // Step 6: Build consistency payload — detects mismatches between LLM-supplied and resolved IDs/names.
         $consistency = $this->build_consistency_payload($preparedinput, $diagnosticuserid, $optionid, $optionname);
+
+        // Step 7: Build human-readable reason lines tailored to the issue type.
+        // - booking_status: reports current enrollment status.
+        // - cannot_book:    reports capacity limits and blocking availability conditions.
+        // - missing_email:  reports enrollment status and e-mail configuration hints.
         $reasons = $this->build_reason_lines(
             $issuetype,
             $optionstats,
