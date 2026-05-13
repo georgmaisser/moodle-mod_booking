@@ -302,6 +302,29 @@ class result_payload_summarizer {
                 }
                 return $detailsummary;
 
+            case 'diagnosis':
+                $diagnosis = (array)$entry['diagnosis'];
+                $issue = trim((string)($diagnosis['issue'] ?? 'unknown'));
+                $optionname = trim((string)($diagnosis['optionname'] ?? 'unknown option'));
+                $userstatus = trim((string)($diagnosis['userstatus'] ?? 'unknown'));
+                $reasoncount = count((array)($diagnosis['reasons'] ?? []));
+                $diagnosticsummary = "Diagnosed {$issue} for {$optionname}: user {$userstatus}";
+                if ($reasoncount > 0) {
+                    $diagnosticsummary .= " ({$reasoncount} reason(s) identified)";
+                }
+                // Flag consistency mismatches so planner/synthesis can react deterministically.
+                $consistency = (array)($diagnosis['consistency'] ?? $entry['consistency'] ?? []);
+                $usermismatch = !empty($consistency['user_mismatch']);
+                $optionmismatch = !empty($consistency['option_mismatch']);
+                if ($usermismatch || $optionmismatch) {
+                    $diagnosticsummary .= " [input/result mismatch detected]";
+                    $warning = trim((string)($consistency['warnings'][0] ?? ''));
+                    if ($warning !== '') {
+                        $diagnosticsummary .= " ({$warning})";
+                    }
+                }
+                return $diagnosticsummary . '.';
+
             default:
                 // Fallback: use task-authored user message or detail string.
                 return self::compact_text(

@@ -55,7 +55,9 @@ class list_actions_task extends booking_task_base implements task_trigger_provid
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'List supported booking AI actions/tasks derived from registered task schemas.',
+            'description' => 'List the AI agent capabilities and task names that this booking agent supports.'
+                . ' Use this ONLY when the user asks what the agent CAN DO or which agent tasks/commands exist.'
+                . ' Do NOT use for listing bookable options or courses — use booking.search_options for that.',
             'readonly' => $this->is_read_only(),
             'properties' => [
                 'question' => [

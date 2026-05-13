@@ -613,6 +613,12 @@ $string['ai_result_feedback_options_found'] = 'Ich habe {$a} passende Buchungsop
 $string['ai_result_feedback_options_none'] = 'Ich konnte keine passende Buchungsoption finden.';
 $string['ai_result_feedback_users_found'] = 'Ich habe {$a} passende Nutzer gefunden.';
 $string['ai_result_feedback_users_none'] = 'Ich konnte keine passenden Nutzer finden.';
+$string['ai_fallback_error'] = 'Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.';
+$string['ai_fallback_confirmation_request'] = 'Bitte bestätigen Sie, ob ich so fortfahren soll.';
+$string['ai_fallback_task_call'] = 'Ich bearbeite Ihre Anfrage jetzt.';
+$string['ai_fallback_summary'] = 'Ich fasse die verfügbaren Ergebnisse für Sie zusammen.';
+$string['ai_diagnose_recall_blocked_use_existing'] =
+    'Ich habe bereits relevante Diagnoseergebnisse und fasse diese direkt zusammen, statt dieselbe Prüfung erneut auszuführen.';
 $string['ai_status_confirm_booking_bulk_update_options'] = 'Ich werde mehrere Buchungsoptionen auf einmal aktualisieren. Soll ich fortfahren?';
 $string['ai_status_confirm_booking_create_option'] = 'Ich werde eine neue Buchungsoption erstellen.';
 $string['ai_status_confirm_booking_search_options'] = 'Ich werde die Buchungsoptionen auflisten.';

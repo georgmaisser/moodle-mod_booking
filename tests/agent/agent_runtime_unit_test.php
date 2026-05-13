@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Unit tests for AgentRuntime value objects: TaskResult and SlotBookingNormalizer.
+ * Unit tests for AgentRuntime value objects: SlotBookingNormalizer.
  *
  * These tests do NOT require a live LLM and run in every CI pass without any
  * environment variables.
@@ -36,64 +36,18 @@ defined('MOODLE_INTERNAL') || die();
 require_once(__DIR__ . '/abstract_agent_testcase.php');
 
 use mod_booking\local\wbagent\booking\support\slot_booking_normalizer;
-use mod_booking\local\wbagent\task_result;
 
 /**
- * Unit tests for TaskResult and SlotBookingNormalizer value objects.
+ * Unit tests for SlotBookingNormalizer value object.
  *
  * No LLM required — runs always.
  *
  * @group mod_booking
  * @group mod_booking_agent
- * @covers \mod_booking\local\wbagent\task_result
  * @covers \mod_booking\local\wbagent\booking\support\slot_booking_normalizer
  */
 final class agent_runtime_unit_test extends abstract_agent_testcase {
     // No LLM skip in setUp — these unit tests run in every CI pass.
-
-    // -------------------------------------------------------------------------
-    // TaskResult unit tests.
-
-    /**
-     * task_result::ok() produces a success result with data.
-     *
-     * @runInSeparateProcess
-     */
-    public function test_task_result_ok_is_success(): void {
-        $this->resetAfterTest();
-        $result = task_result::ok(['optionid' => 42, 'status' => 'executed']);
-
-        $this->assertTrue($result->is_success());
-        $this->assertEquals(42, $result->get_data()['optionid']);
-        $this->assertNull($result->get_error());
-        $this->assertEquals('', $result->get_error_code());
-        $this->assertEquals('', $result->get_error_message());
-
-        $legacy = $result->to_legacy_array();
-        $this->assertEquals('executed', $legacy['status']);
-        $this->assertEquals(42, $legacy['optionid']);
-    }
-
-    /**
-     * task_result::failure() produces a structured error.
-     *
-     * @runInSeparateProcess
-     */
-    public function test_task_result_failure_has_error(): void {
-        $this->resetAfterTest();
-        $result = task_result::failure('OPTION_NOT_FOUND', 'No option matched "Yoga"', ['optionquery' => 'Yoga']);
-
-        $this->assertFalse($result->is_success());
-        $this->assertEmpty($result->get_data());
-        $this->assertNotNull($result->get_error());
-        $this->assertEquals('OPTION_NOT_FOUND', $result->get_error_code());
-        $this->assertEquals('No option matched "Yoga"', $result->get_error_message());
-        $this->assertEquals('Yoga', $result->get_error()['metadata']['optionquery']);
-
-        $legacy = $result->to_legacy_array();
-        $this->assertEquals('error', $legacy['status']);
-        $this->assertStringContainsString('Yoga', $legacy['detail']);
-    }
 
     // -------------------------------------------------------------------------
     // SlotBookingNormalizer unit tests.

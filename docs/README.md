@@ -95,6 +95,7 @@ Common next steps:
 | Directory | Description |
 |-----------|-------------|
 | [`developer-guides/`](developer-guides/ARCHITECTURE.md) | Plugin architecture, APIs for extending rules, conditions, campaigns, sub-bookings, and placeholders |
+| [`developer-guides/BOOKING_AGENT_PROGRAMMING_GUIDELINES_DRAFT.md`](developer-guides/BOOKING_AGENT_PROGRAMMING_GUIDELINES_DRAFT.md) | Draft coding and behavior guidelines for Booking Agent development |
 
 ### Examples
 

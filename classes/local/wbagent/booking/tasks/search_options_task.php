@@ -55,7 +55,9 @@ class search_options_task extends booking_task_base implements task_trigger_prov
     public function get_schema(): array {
         $schema = [
             'version' => 1,
-            'description' => 'Search booking options via the existing booking table fulltext/filter pipeline.',
+            'description' => 'Search and list booking options (courses, events, workshops, etc.) available in this booking instance.'
+                . ' Use this when the user asks what they can book, register for, or attend'
+                . ' — e.g. "show all options", "what can I book?", "list available courses".'  ,
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_search_options',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_search_options',

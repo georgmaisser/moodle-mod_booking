@@ -16,6 +16,7 @@
 
 namespace mod_booking\local\wbagent\booking\tasks;
 
+use core_text;
 use mod_booking\bo_availability\bo_info;
 use mod_booking\local\wbagent\booking\booking_task_support;
 use mod_booking\local\wbagent\interfaces\task_trigger_provider_interface;
@@ -57,10 +58,10 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Diagnose why the current user (or a specified target user) is not booked, cannot book, ' .
-                'or did not receive email '
-                .
-                'for a booking option or have any other issue regarding a booking option.',
+            'description' => 'Diagnose why the current user (or a specified target user) is not booked, cannot book, '
+                . 'or did not receive email for a booking option or have any other issue regarding a booking option. '
+                . 'PATTERN: If user asks "why can [Name] not book [Option]", extract Name→userquery, Option→optionquery. '
+                . 'Do NOT ask for clarification if both are identifiable in the user message; supply them directly.',
             'readonly' => $this->is_read_only(),
             'properties' => [
                 'question' => [
@@ -351,6 +352,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         $userstatus = (string)$ba->user_status_as_string($diagnosticuserid);
         $optionstats['userstatus'] = $userstatus;
         $isselfdiagnosis = ($diagnosticuserid === $userid);
+        $consistency = $this->build_consistency_payload($preparedinput, $diagnosticuserid, $optionid, $optionname);
         $reasons = $this->build_reason_lines(
             $issuetype,
             $optionstats,
@@ -371,6 +373,10 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
             'usermessage' => $usermessage,
             'resultid' => $optionid,
             'previewoptionids' => [$optionid],
+            'requested_userid' => (int)($preparedinput['targetuserid'] ?? 0),
+            'requested_optionid' => (int)($preparedinput['optionid'] ?? 0),
+            'requested_userquery' => trim((string)($preparedinput['userquery'] ?? '')),
+            'requested_optionquery' => trim((string)($preparedinput['optionquery'] ?? '')),
             'diagnosis' => [
                 'issue' => $issuetype,
                 'userid' => $diagnosticuserid,
@@ -380,6 +386,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
                 'userstatus' => $userstatus,
                 'stats' => $optionstats,
                 'reasons' => $reasons,
+                'consistency' => $consistency,
             ],
             'debugmessage' => $this->build_task_debug_message(
                 self::TASK_NAME,
@@ -390,9 +397,125 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
                     'Issue: ' . $issuetype,
                     'User status: ' . $userstatus,
                     'Reasons: ' . count($reasons),
+                    'Consistency user mismatch: ' . (!empty($consistency['user_mismatch']) ? 'yes' : 'no'),
+                    'Consistency option mismatch: ' . (!empty($consistency['option_mismatch']) ? 'yes' : 'no'),
                 ]
             ),
         ];
+    }
+
+    /**
+     * Build consistency payload comparing requested vs. resolved target entities.
+     *
+     * @param array $input
+     * @param int $resolveduserid
+     * @param int $resolvedoptionid
+     * @param string $resolvedoptionname
+     * @return array
+     */
+    private function build_consistency_payload(
+        array $input,
+        int $resolveduserid,
+        int $resolvedoptionid,
+        string $resolvedoptionname
+    ): array {
+        $requesteduserid = (int)($input['targetuserid'] ?? 0);
+        $requestedoptionid = (int)($input['optionid'] ?? 0);
+        $requesteduserquery = trim((string)($input['userquery'] ?? ''));
+        $requestedoptionquery = trim((string)($input['optionquery'] ?? ''));
+
+        $resolveduserlabel = $this->resolve_user_label($resolveduserid);
+        $usermismatch = false;
+        $optionmismatch = false;
+        $warnings = [];
+
+        if ($requesteduserid > 0 && $requesteduserid !== $resolveduserid) {
+            $usermismatch = true;
+            $warnings[] = 'targetuserid differs from resolved userid';
+        }
+
+        if ($requestedoptionid > 0 && $requestedoptionid !== $resolvedoptionid) {
+            $optionmismatch = true;
+            $warnings[] = 'optionid differs from resolved optionid';
+        }
+
+        if (
+            $requesteduserquery !== ''
+            && $this->looks_like_anonymized_identifier($requesteduserquery)
+            && $resolveduserlabel !== ''
+            && core_text::strtolower($resolveduserlabel) !== core_text::strtolower($requesteduserquery)
+        ) {
+            $usermismatch = true;
+            $warnings[] = 'userquery differs from resolved user label';
+        }
+
+        if (
+            $requestedoptionquery !== ''
+            && $this->looks_like_anonymized_identifier($requestedoptionquery)
+            && core_text::strtolower(trim($resolvedoptionname)) !== core_text::strtolower($requestedoptionquery)
+        ) {
+            $optionmismatch = true;
+            $warnings[] = 'optionquery differs from resolved option title';
+        }
+
+        return [
+            'requested_userid' => $requesteduserid,
+            'requested_optionid' => $requestedoptionid,
+            'requested_userquery' => $requesteduserquery,
+            'requested_optionquery' => $requestedoptionquery,
+            'resolved_userid' => $resolveduserid,
+            'resolved_userlabel' => $resolveduserlabel,
+            'resolved_optionid' => $resolvedoptionid,
+            'resolved_optionname' => $resolvedoptionname,
+            'user_mismatch' => $usermismatch,
+            'option_mismatch' => $optionmismatch,
+            'warnings' => $warnings,
+        ];
+    }
+
+    /**
+     * Resolve user label for consistency diagnostics.
+     *
+     * @param int $userid
+     * @return string
+     */
+    private function resolve_user_label(int $userid): string {
+        global $DB;
+
+        if ($userid <= 0) {
+            return '';
+        }
+
+        $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], 'id,username,firstname,lastname,email', IGNORE_MISSING);
+        if (!$user) {
+            return '';
+        }
+
+        $fullname = trim(fullname($user));
+        if ($fullname !== '') {
+            return $fullname;
+        }
+
+        return trim((string)($user->username ?? $user->email ?? ''));
+    }
+
+    /**
+     * Check whether a query looks like an anonymized identifier token.
+     *
+     * @param string $query
+     * @return bool
+     */
+    private function looks_like_anonymized_identifier(string $query): bool {
+        $normalized = trim(core_text::strtolower($query));
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (preg_match('/\banon_user_\d+\b/u', $normalized) === 1) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

@@ -84,7 +84,7 @@ class prompt_policy_builder {
         // 6. SUFFICIENCY POLICY (append if observations exist or if not initial step).
         // This guides the LLM to know when to stop searching and provide an answer.
         if ($normalizedsteptype === 'simple_retrieval' || $normalizedsteptype === 'final_reasoning' || $hasobservations) {
-            $policies[] = self::build_sufficiency_policy();
+            $policies[] = self::build_sufficiency_policy($normalizedsteptype, $hasobservations);
         }
 
         // 7. FOLLOW-UP STATE POLICY (only for FINAL_REASONING).
@@ -105,6 +105,7 @@ class prompt_policy_builder {
             return "NON-OPTIONAL RESPONSE CONTRACT POLICY:\n"
                 . "- Return valid JSON only (no markdown).\n"
                 . "- Always include top-level keys: response_type, message, used_triggers, next_step_intent, lang, user_lang.\n"
+                . "- message MUST be a non-empty user-facing sentence (never an empty string).\n"
                 . "- Allowed response_type values: task_call, confirmation_request, confirm_pending, clarification, error.\n"
                 . "- For task_call or confirmation_request, commands MUST be a non-empty array.\n"
                 . "- For clarification, confirm_pending, or error, commands MUST be [].\n"
@@ -115,6 +116,7 @@ class prompt_policy_builder {
             . "- Return valid JSON only (no markdown code fences).\n"
             . "- Every response MUST include a top-level field 'response_type'.\n"
             . "- Every response MUST include a top-level string field 'message'.\n"
+            . "- The 'message' field MUST NOT be empty.\n"
             . "- Allowed response_type values: task_call, confirmation_request, confirm_pending, clarification, error.\n"
             . "- Every response MUST include: used_triggers, next_step_intent, lang, user_lang.\n"
             . "- user_lang MUST be the detected language of the latest user message (ISO 639-1).\n"
@@ -192,8 +194,14 @@ class prompt_policy_builder {
             . "- This sentence must be model-authored (no template text) and in the same language as the user.\n"
             . "- next_step_intent must describe intention (present/future), not completed work.\n"
             . "- Avoid past-tense completion phrasing such as \"I have ...\" or \"Ich habe ...\".\n"
-                . "  Good: \"I will now check the relevant settings.\"\n"
-                . "  Bad: \"I already finished the explanation.\"\n"
+            . "  Good: \"I will now check the relevant settings.\"\n"
+            . "  Bad: \"I already finished the explanation.\"\n"
+            . "- CRITICAL language rule: next_step_intent MUST be written in the SAME language as the user message."
+            . " If lang=de, next_step_intent MUST be in German."
+            . " If lang=fr, next_step_intent MUST be in French."
+            . " Writing next_step_intent in English when lang != en is a contract violation.\n"
+            . "  Bad (lang=de): \"I will retrieve the details of the booking options.\"\n"
+            . "  Good (lang=de): \"Ich rufe jetzt die Buchungsoptionen ab.\"\n"
             . "- If you answer directly without tool calls, next_step_intent should still describe that direct action.";
     }
 
@@ -222,8 +230,8 @@ class prompt_policy_builder {
      *
      * @return string
      */
-    private static function build_sufficiency_policy(): string {
-        return "NON-OPTIONAL SUFFICIENCY POLICY:\n"
+    private static function build_sufficiency_policy(string $steptype = '', bool $hasobservations = false): string {
+        $policy = "NON-OPTIONAL SUFFICIENCY POLICY:\n"
             . "- After executing tool calls and receiving results, evaluate whether you have SUFFICIENT information to answer.\n"
             . "- Answer directly if:\n"
             . "  * You found the requested information (booking options, documentation, user details, etc.).\n"
@@ -232,6 +240,22 @@ class prompt_policy_builder {
             . "- Do NOT continue searching if you already have actionable information.\n"
             . "- Prefer stopping and answering over making redundant tool calls.\n"
             . "- When in doubt: Answer with what you found rather than searching again.";
+
+        // CRITICAL: Apply re-call prevention ONLY to the planner (tool_call_parse), not to synthesis.
+        // This preserves the mini-model (early steps) / large-model (final synthesis) architecture.
+        if ($steptype === 'tool_call_parse' && $hasobservations) {
+            $policy .= "\n- CRITICAL (planner with observations): OBSERVATION blocks contain results from prior steps."
+                . " When observations are available:\n"
+                . "  1. FIRST check if observations contain diagnostic, search, or factual results "
+                . "relevant to the user's request.\n"
+                . "  2. IF YES: return response_type=clarification with commands=[] and message "
+                . "summarizing the observation results.\n"
+                . "  3. IF NO: return response_type=clarification with explanation of what is missing.\n"
+                . "  4. NEVER re-call the same task if its result is already in an OBSERVATION block.\n"
+                . "  5. Re-calling a task whose result already exists is a PROTOCOL VIOLATION.";
+        }
+
+        return $policy;
     }
 
     /**

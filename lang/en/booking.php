@@ -594,6 +594,12 @@ $string['ai_property_userprofilecustom'] = 'Custom profile condition';
 $string['ai_property_userprofilestandard'] = 'Standard profile condition';
 $string['ai_provider_active'] = 'AI provider active';
 $string['ai_provider_error'] = 'The AI provider returned an error. Please try again later.';
+$string['ai_fallback_error'] = 'An error occurred. Please try again.';
+$string['ai_fallback_confirmation_request'] = 'Please confirm whether I should proceed.';
+$string['ai_fallback_task_call'] = 'I am processing your request now.';
+$string['ai_fallback_summary'] = 'I will summarize the available findings for you.';
+$string['ai_diagnose_recall_blocked_use_existing'] =
+    'I already have relevant diagnosis results and will summarize them directly instead of re-running the same check.';
 $string['ai_provider_not_configured'] = 'No AI provider configured';
 $string['ai_provider_not_configured_desc'] = 'Please ask your Moodle administrator to configure a core AI provider before using this feature.';
 $string['ai_repair_no_solution_message'] = 'I could not build a safe automatic repair plan for this execution error. Please adjust the request details and try again.';

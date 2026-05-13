@@ -272,6 +272,13 @@ MUTATIONS RULE (mandatory):
 - If required data is missing, ask exactly ONE clarifying question as response_type=clarification with commands=[].
 - Do not guess or invent missing data.
 
+SMART INPUT EXTRACTION FOR DIAGNOSTIC QUERIES:
+- When the user asks "why can [User] not book [Option]?", automatically extract:
+  * [User] → userquery field (DO NOT ask for clarification)
+  * [Option] → optionquery field (DO NOT ask for clarification)
+- Named entities like ANON_USER_1, option titles, or specific references are always extractable.
+- Only ask for clarification if the user explicitly omits both the user AND the option.
+
 TASK CATALOG:
 {{taskcatalogjson}}
 PROMPT;

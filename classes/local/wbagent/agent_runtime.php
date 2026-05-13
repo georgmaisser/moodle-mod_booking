@@ -28,6 +28,7 @@ namespace mod_booking\local\wbagent;
 
 use core_text;
 use mod_booking\local\wbagent\agent_state;
+use mod_booking\local\wbagent\result_payload_summarizer;
 use mod_booking\local\wbagent\interfaces\issue_code_provider_interface;
 
 /**
@@ -56,6 +57,19 @@ use mod_booking\local\wbagent\interfaces\issue_code_provider_interface;
 class agent_runtime {
     /** Maximum agent loop steps before bailing out. */
     public const MAX_LOOP_STEPS = 6;
+
+    /** Maximum identical readonly command-signature executions per loop invocation. */
+    private const MAX_REPEATED_READONLY_SIGNATURE_STEPS = 2;
+
+    /** Allowed final response_type values for persisted assistant messages. */
+    private const ALLOWED_FINAL_RESPONSE_TYPES = [
+        'task_call',
+        'confirmation_request',
+        'confirm_pending',
+        'clarification',
+        'error',
+        'execution_result',
+    ];
 
     /** @deprecated Use issue_code_provider::get_duplicate_confirmation_issue_codes() instead. */
     public const DUPLICATE_TITLE_ISSUE_CODES = [
@@ -175,6 +189,7 @@ class agent_runtime {
      */
     public function run(int $threadid, int $cmid, int $userid): array {
         $result = $this->run_internal($threadid, $cmid, $userid, []);
+        $result = $this->enforce_final_response_contract($result, $threadid);
         $this->messagepersistence->persist_assistant_message($threadid, $result);
         return $result;
     }
@@ -204,6 +219,7 @@ class agent_runtime {
         $limit = ($maxsteps > 0) ? $maxsteps : self::MAX_LOOP_STEPS;
         $missingcommandsretryused = false;
         $preflightclarificationretryused = false;
+        $readonlysignaturerepeatcounts = [];
 
         // Check whether the previous call hit the step limit and stored its observations
         // for resumption.  If the resume payload is still fresh, pre-load those observations
@@ -276,6 +292,48 @@ class agent_runtime {
 
                 $this->write_step_progress_message($threadid, $step + 1, $result, $anonymizer);
 
+                // Hard stop: repeated readonly fingerprint reached budget.
+                if ($this->is_readonly_signature_budget_reached($readonlysignaturerepeatcounts, $commands, (array)($result['results'] ?? []))) {
+                    $lang = $this->resolve_output_language($threadid, $result);
+                    $final = $this->loop_repeat_narration_result(
+                        $threadid,
+                        $cmid,
+                        $userid,
+                        $state,
+                        $lang,
+                        trim((string)($result['message'] ?? ''))
+                    );
+                    $final['issue_codes'] = array_values(array_unique(array_merge(
+                        (array)($final['issue_codes'] ?? []),
+                        ['LOOP_RESEARCH_BUDGET_REACHED']
+                    )));
+                    $final = $this->attach_loop_results($final, $state);
+                    $final = $this->enforce_final_response_contract($final, $threadid);
+                    $this->messagepersistence->persist_assistant_message($threadid, $final);
+                    return $final;
+                }
+
+                // Hard stop: same readonly step repeated consecutively.
+                if ($this->is_repeated_readonly_step($state, $commands, (array)($result['results'] ?? []))) {
+                    $lang = $this->resolve_output_language($threadid, $result);
+                    $final = $this->loop_repeat_narration_result(
+                        $threadid,
+                        $cmid,
+                        $userid,
+                        $state,
+                        $lang,
+                        trim((string)($result['message'] ?? ''))
+                    );
+                    $final['issue_codes'] = array_values(array_unique(array_merge(
+                        (array)($final['issue_codes'] ?? []),
+                        ['LOOP_REPEAT_DETECTED']
+                    )));
+                    $final = $this->attach_loop_results($final, $state);
+                    $final = $this->enforce_final_response_contract($final, $threadid);
+                    $this->messagepersistence->persist_assistant_message($threadid, $final);
+                    return $final;
+                }
+
                 $final = $this->loopfinalizer->finalize(
                     $result,
                     $state,
@@ -291,6 +349,7 @@ class agent_runtime {
                     // the final user-facing response is composed via final_synthesis.
                     $final = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $final);
                     $final = $this->attach_loop_results($final, $state);
+                    $final = $this->enforce_final_response_contract($final, $threadid);
                     $this->messagepersistence->persist_assistant_message($threadid, $final);
                     return $final;
                 }
@@ -300,13 +359,17 @@ class agent_runtime {
             }
 
             // Planner signals "enough info" — fire one generate_text synthesis step.
-            // Only triggered when the planner returns clarification+commands=[] AND observations
-            // were accumulated (i.e. at least one tool call was executed this turn).
+            // Only triggered when the planner returns clarification+commands=[] AND MORE THAN ONE
+            // observation was accumulated this turn. With exactly one observation, the planner
+            // already summarises the result via the CRITICAL sufficiency rule — synthesis would
+            // only add a redundant extra LLM round-trip without producing new information.
+            // For multi-observation turns (complex multi-step queries) synthesis is still valuable
+            // because it can compose a coherent narrative from all accumulated results.
             if (
                 (string)($result['response_type'] ?? '') === 'clarification'
                 && empty((array)($result['commands'] ?? []))
                 && $this->should_run_synthesis_for_clarification($result)
-                && !empty($state->get_observations())
+                && count($state->get_observations()) > 1
             ) {
                 $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
             }
@@ -337,21 +400,201 @@ class agent_runtime {
 
             // Persist the SINGLE final assistant message and return.
             $result = $this->attach_loop_results($result, $state);
+            $result = $this->enforce_final_response_contract($result, $threadid);
             $this->messagepersistence->persist_assistant_message($threadid, $result);
             return $result;
         }
 
-        // Maximum steps reached without a user-interaction response.
-        // Store observations so the next call can resume where we left off,
-        // then ask the user whether to continue instead of returning an error.
-        $this->store->set_thread_metadata_value($threadid, '_loop_resume', [
-            'observations' => $state->get_observations(),
-            'expiresat'    => time() + 900,
-        ]);
-        $result = $this->loop_continue_result(current_language(), $limit);
+        // Maximum steps reached: for observation-backed loops, answer with available findings
+        // instead of asking for another research continuation.
+        if (!empty($state->get_observations())) {
+            $lang = trim(core_text::strtolower((string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang')));
+            if ($lang === '') {
+                $lang = current_language();
+            }
+            $result = $this->loop_repeat_narration_result($threadid, $cmid, $userid, $state, $lang);
+            $result['issue_codes'] = array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                ['LOOP_RESEARCH_BUDGET_REACHED']
+            )));
+        } else {
+            // Keep explicit continue-question behavior only when no observations were gathered.
+            $this->store->set_thread_metadata_value($threadid, '_loop_resume', [
+                'observations' => $state->get_observations(),
+                'expiresat'    => time() + 900,
+            ]);
+            $result = $this->loop_continue_result(current_language(), $limit);
+        }
         $result = $this->attach_loop_results($result, $state);
+        $result = $this->enforce_final_response_contract($result, $threadid);
         $this->messagepersistence->persist_assistant_message($threadid, $result);
         return $result;
+    }
+
+    /**
+     * Increment readonly signature counters and check whether loop budget is reached.
+     *
+     * @param array<string,int> $counts
+     * @param array $commands
+     * @param array $results
+     * @return bool
+     */
+    private function is_readonly_signature_budget_reached(array &$counts, array $commands, array $results): bool {
+        $signatures = $this->extract_step_command_signatures($commands, $results);
+        if (empty($signatures)) {
+            return false;
+        }
+
+        sort($signatures);
+        $key = hash('sha256', json_encode($signatures, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $counts[$key] = (int)($counts[$key] ?? 0) + 1;
+
+        return $counts[$key] >= self::MAX_REPEATED_READONLY_SIGNATURE_STEPS;
+    }
+
+    /**
+     * Enforce response-contract invariants before persisting user-visible assistant output.
+     *
+     * @param array $result
+     * @param int $threadid
+     * @return array
+     */
+    private function enforce_final_response_contract(array $result, int $threadid): array {
+        $responsetype = trim((string)($result['response_type'] ?? ''));
+        if (!in_array($responsetype, self::ALLOWED_FINAL_RESPONSE_TYPES, true)) {
+            $result['response_type'] = 'clarification';
+            $result['commands'] = [];
+            $result['issue_codes'] = array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                ['CONTRACT_INVALID_RESPONSE_TYPE']
+            )));
+            $responsetype = 'clarification';
+        }
+
+        $commands = $result['commands'] ?? [];
+        if (is_array($commands) && isset($commands['task']) && !array_is_list($commands)) {
+            $commands = [$commands];
+        }
+        if (!is_array($commands)) {
+            $commands = [];
+        }
+
+        if (in_array($responsetype, ['task_call', 'confirmation_request'], true) && empty($commands)) {
+            $result['response_type'] = 'clarification';
+            $result['commands'] = [];
+            $result['issue_codes'] = array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                ['CONTRACT_COMMANDS_REQUIRED']
+            )));
+            $responsetype = 'clarification';
+        } else if (in_array($responsetype, ['clarification', 'confirm_pending', 'error'], true)) {
+            $result['commands'] = [];
+        } else {
+            $result['commands'] = array_values($commands);
+        }
+
+        $message = $this->strip_markdown_fences_from_message(trim((string)($result['message'] ?? '')));
+        if ($message === '') {
+            $message = $this->build_contract_fallback_message($responsetype, $threadid);
+        }
+        $result['message'] = $message;
+
+        $lang = $this->normalize_iso_language((string)($result['lang'] ?? ''));
+        $userlang = $this->normalize_iso_language((string)($result['user_lang'] ?? ''));
+        if ($userlang === '') {
+            $userlang = $lang;
+        }
+        if ($userlang === '') {
+            $userlang = $this->normalize_iso_language((string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang'));
+        }
+        if ($userlang === '') {
+            $userlang = $this->normalize_iso_language((string)current_language());
+        }
+        if ($userlang === '') {
+            $userlang = 'en';
+        }
+
+        // Hard policy: lang must match user_lang unless explicitly overridden upstream.
+        $result['user_lang'] = $userlang;
+        $result['lang'] = $userlang;
+
+        $nextstepintent = trim((string)($result['next_step_intent'] ?? ''));
+        if ($nextstepintent === '') {
+            $nextstepintent = $userlang === 'de'
+                ? 'Ich werde als Nächstes die vorhandenen Ergebnisse zusammenfassen.'
+                : 'I will now summarize the available findings.';
+        }
+        $result['next_step_intent'] = $nextstepintent;
+
+        $usedtriggers = [];
+        foreach ((array)($result['used_triggers'] ?? []) as $trigger) {
+            $trigger = trim((string)$trigger);
+            if ($trigger !== '') {
+                $usedtriggers[] = $trigger;
+            }
+        }
+        $result['used_triggers'] = array_values(array_unique($usedtriggers));
+
+        return $result;
+    }
+
+    /**
+     * Normalize language values to ISO-639-1 lowercase or empty string.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_iso_language(string $value): string {
+        $value = trim(core_text::strtolower($value));
+        if ($value === '') {
+            return '';
+        }
+        $value = substr($value, 0, 2);
+        return preg_match('/^[a-z]{2}$/', $value) === 1 ? $value : '';
+    }
+
+    /**
+     * Remove markdown code fences around assistant messages when present.
+     *
+     * @param string $message
+     * @return string
+     */
+    private function strip_markdown_fences_from_message(string $message): string {
+        if ($message === '') {
+            return '';
+        }
+
+        if (preg_match('/^\x60\x60\x60(?:json)?\s*([\s\S]*?)\s*\x60\x60\x60$/i', $message, $matches) === 1) {
+            $inner = trim((string)($matches[1] ?? ''));
+            if ($inner !== '') {
+                return $inner;
+            }
+        }
+
+        return $message;
+    }
+
+    /**
+     * Build a deterministic fallback message when model output misses user-facing text.
+     *
+     * @param string $responsetype
+     * @param int $threadid
+     * @return string
+     */
+    private function build_contract_fallback_message(string $responsetype, int $threadid): string {
+        $lang = $this->normalize_iso_language((string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang'));
+        if ($lang === '') {
+            $lang = $this->normalize_iso_language((string)current_language());
+        }
+
+        $stringmap = [
+            'error'                => 'ai_fallback_error',
+            'confirmation_request' => 'ai_fallback_confirmation_request',
+            'task_call'            => 'ai_fallback_task_call',
+        ];
+        $stringid = $stringmap[$responsetype] ?? 'ai_fallback_summary';
+
+        return $this->localized_string($stringid, 'mod_booking', null, $lang);
     }
 
     /**
@@ -1295,6 +1538,10 @@ class agent_runtime {
             }
         }
 
+        // Guardrail: If observations already contain diagnosis output, do not allow
+        // a redundant second diagnose task call for the same loop turn.
+        $result = $this->apply_observation_based_recall_guard($result, $observations, $outputlang);
+
         // Infer issue codes when the LLM returned a generic error.
         if (
             (string)($result['response_type'] ?? '') === 'error'
@@ -1336,6 +1583,92 @@ class agent_runtime {
         }
 
         return $result;
+    }
+
+    /**
+     * Prevent redundant diagnose re-calls when observations already contain diagnosis results.
+     *
+     * @param array $result
+     * @param array $observations
+     * @param string $outputlang
+     * @return array
+     */
+    private function apply_observation_based_recall_guard(array $result, array $observations, string $outputlang): array {
+        if (empty($observations) || (string)($result['response_type'] ?? '') !== 'task_call') {
+            return $result;
+        }
+
+        $commands = (array)($result['commands'] ?? []);
+        if (empty($commands) || !$this->all_commands_match_task($commands, 'booking.diagnose_booking_issue')) {
+            return $result;
+        }
+
+        if (!$this->observations_include_diagnosis_result($observations)) {
+            return $result;
+        }
+
+        $result['response_type'] = 'clarification';
+        $result['commands'] = [];
+        $result['issue_codes'] = array_values(array_unique(array_merge(
+            (array)($result['issue_codes'] ?? []),
+            ['LOOP_REDUNDANT_DIAGNOSE_RECALL_BLOCKED']
+        )));
+
+        $currentmessage = trim((string)($result['message'] ?? ''));
+        if ($this->is_low_information_message($currentmessage)) {
+            $result['message'] = $this->localized_string(
+                'ai_diagnose_recall_blocked_use_existing',
+                'mod_booking',
+                null,
+                $outputlang
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check whether every command targets the same task.
+     *
+     * @param array $commands
+     * @param string $taskname
+     * @return bool
+     */
+    private function all_commands_match_task(array $commands, string $taskname): bool {
+        if (empty($commands)) {
+            return false;
+        }
+
+        foreach ($commands as $command) {
+            if (!is_array($command)) {
+                return false;
+            }
+            if (trim((string)($command['task'] ?? '')) !== $taskname) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Detect whether observations already include a diagnosis result summary.
+     *
+     * @param array $observations
+     * @return bool
+     */
+    private function observations_include_diagnosis_result(array $observations): bool {
+        foreach ($observations as $observation) {
+            $text = trim((string)$observation);
+            if ($text === '') {
+                continue;
+            }
+            if (preg_match('/\bdiagnosis\s+for\s+option\b/i', $text) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
