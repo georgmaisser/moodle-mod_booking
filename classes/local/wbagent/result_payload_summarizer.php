@@ -62,9 +62,20 @@ class result_payload_summarizer {
      */
     public static function for_observation(array $results, int $step): string {
         $parts = [];
+        $hasfull = false;
 
         foreach ($results as $entry) {
             if (!is_array($entry)) {
+                continue;
+            }
+
+            // observation_full: task-provided verbatim content that must not be truncated.
+            // Use it directly so list-type results (rules, notifications, etc.) are never cut.
+            $full = isset($entry['observation_full']) ? trim((string)$entry['observation_full']) : '';
+            if ($full !== '') {
+                $parts[] = $full;
+                $hasfull = true;
+                // Do not apply MAX_OBSERVATION_PARTS limit when full content was explicitly provided.
                 continue;
             }
 
@@ -74,7 +85,7 @@ class result_payload_summarizer {
             );
             if ($summary !== '') {
                 $parts[] = $summary;
-                if (count($parts) >= self::MAX_OBSERVATION_PARTS) {
+                if (!$hasfull && count($parts) >= self::MAX_OBSERVATION_PARTS) {
                     break;
                 }
             }
@@ -93,10 +104,12 @@ class result_payload_summarizer {
             return "Step {$step}: {$resultcount} result entries returned.";
         }
 
-        return self::compact_text(
-            "Step {$step}: " . implode(' ', $parts),
-            self::MAX_OBSERVATION_CHARS
-        );
+        $combined = "Step {$step}: " . implode(' ', $parts);
+        // Skip character cap when full list content is present.
+        if ($hasfull) {
+            return $combined;
+        }
+        return self::compact_text($combined, self::MAX_OBSERVATION_CHARS);
     }
 
     /**

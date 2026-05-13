@@ -31,6 +31,9 @@ class create_rule_from_template_task extends booking_task_base implements task_t
     /** Task name constant. */
     public const TASK_NAME = 'booking.create_rule_from_template';
 
+    /** Maximum number of template candidates shown in clarification output. */
+    private const MAX_TEMPLATE_CANDIDATES_IN_CLARIFICATION = 8;
+
     /** @var booking_rules_agent_service */
     private booking_rules_agent_service $ruleservice;
 
@@ -74,6 +77,12 @@ class create_rule_from_template_task extends booking_task_base implements task_t
                     'type' => 'string',
                     'description' => 'Template name fragment if templateid is unknown. '
                         . 'Use the user phrasing directly (e.g. "booking confirmation", "reminder", "cancellation").',
+                    'required' => false,
+                ],
+                'question' => [
+                    'type' => 'string',
+                    'description' => 'Optional original user request text used for '
+                        . 'template inference when templatequery is missing.',
                     'required' => false,
                 ],
                 'rulename' => [
@@ -146,14 +155,28 @@ class create_rule_from_template_task extends booking_task_base implements task_t
 
         $templateid = (int)($input['templateid'] ?? 0);
         $templatequery = trim((string)($input['templatequery'] ?? ''));
+        $rulename = trim((string)($input['rulename'] ?? ''));
+        if ($templateid === 0 && $templatequery === '') {
+            $templatequery = trim((string)($input['question'] ?? $input['userquery'] ?? ''));
+        }
+        if ($templateid === 0 && $templatequery === '' && $rulename !== '') {
+            $templatequery = $rulename;
+        }
+
         if ($templateid === 0 && $templatequery === '') {
             $issues[] = [
                 'code' => 'TEMPLATE_SELECTION_REQUIRED',
                 'severity' => 'needs_clarification',
-                'message' => 'Which of the following templates would you like to use as the base?',
+                'message' => 'Please choose a base template by templateid, for '
+                    . 'example: templateid=-1 (Template - Confirm booking).',
             ];
 
-            foreach ($this->ruleservice->list_templates() as $candidate) {
+            $candidates = array_slice(
+                $this->ruleservice->list_templates(),
+                0,
+                self::MAX_TEMPLATE_CANDIDATES_IN_CLARIFICATION
+            );
+            foreach ($candidates as $candidate) {
                 $issues[] = [
                     'code' => 'TEMPLATE_CANDIDATE',
                     'severity' => 'needs_clarification',
@@ -171,6 +194,18 @@ class create_rule_from_template_task extends booking_task_base implements task_t
         );
 
         if (($resolved['status'] ?? '') === 'error') {
+            $autoselected = $this->try_autoselect_confirmation_template(
+                $templatequery,
+                $rulename,
+                (array)$this->ruleservice->list_templates()
+            );
+            if (is_array($autoselected)) {
+                $prepared = $input;
+                $prepared['templateid'] = (int)($autoselected['templateid'] ?? 0);
+                $prepared['template_name_resolved'] = (string)($autoselected['name'] ?? '');
+                return task_preflight_result::ok($prepared);
+            }
+
             $issues[] = [
                 'code' => 'TEMPLATE_RESOLUTION_FAILED',
                 'severity' => 'needs_clarification',
@@ -182,7 +217,7 @@ class create_rule_from_template_task extends booking_task_base implements task_t
         if (($resolved['status'] ?? '') === 'ambiguity') {
             $autoselected = $this->try_autoselect_confirmation_template(
                 $templatequery,
-                trim((string)($input['rulename'] ?? '')),
+                $rulename,
                 (array)($resolved['candidates'] ?? [])
             );
             if (is_array($autoselected)) {
@@ -197,7 +232,12 @@ class create_rule_from_template_task extends booking_task_base implements task_t
                 'severity' => 'needs_clarification',
                 'message' => (string)($resolved['message'] ?? 'Mehrere Templates passen.'),
             ];
-            foreach ((array)($resolved['candidates'] ?? []) as $candidate) {
+            $candidates = array_slice(
+                (array)($resolved['candidates'] ?? []),
+                0,
+                self::MAX_TEMPLATE_CANDIDATES_IN_CLARIFICATION
+            );
+            foreach ($candidates as $candidate) {
                 $issues[] = [
                     'code' => 'TEMPLATE_CANDIDATE',
                     'severity' => 'needs_clarification',

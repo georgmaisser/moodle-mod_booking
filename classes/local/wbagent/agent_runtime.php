@@ -293,7 +293,13 @@ class agent_runtime {
                 $this->write_step_progress_message($threadid, $step + 1, $result, $anonymizer);
 
                 // Hard stop: repeated readonly fingerprint reached budget.
-                if ($this->is_readonly_signature_budget_reached($readonlysignaturerepeatcounts, $commands, (array)($result['results'] ?? []))) {
+                if (
+                    $this->is_readonly_signature_budget_reached(
+                        $readonlysignaturerepeatcounts,
+                        $commands,
+                        (array)($result['results'] ?? [])
+                    )
+                ) {
                     $lang = $this->resolve_output_language($threadid, $result);
                     $final = $this->loop_repeat_narration_result(
                         $threadid,
@@ -505,10 +511,12 @@ class agent_runtime {
             $userlang = $lang;
         }
         if ($userlang === '') {
-            $userlang = $this->normalize_iso_language((string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang'));
+            $userlang = $this->normalize_iso_language((string)current_language());
         }
         if ($userlang === '') {
-            $userlang = $this->normalize_iso_language((string)current_language());
+            $userlang = $this->normalize_iso_language(
+                (string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang')
+            );
         }
         if ($userlang === '') {
             $userlang = 'en';
@@ -673,14 +681,9 @@ class agent_runtime {
             $summary = $this->build_loop_repeat_summary($accumulated, $current);
             $result['message'] = $this->is_low_information_message($current) ? $summary : ($summary !== '' ? $summary : $current);
         } else {
-            // Keep rich final synthesis answers untouched; only enrich low-information
-            // fallback messages so we don't append tool summaries to polished replies.
-            $current = trim((string)($result['message'] ?? ''));
-            if ($this->is_low_information_message($current)) {
-                $result['message'] = $this->maybe_enrich_message_from_results($current, $accumulated);
-            } else {
-                $result['message'] = $current;
-            }
+            // Preserve LLM-authored formatting/content for normal loop completion.
+            // Observations are already provided to synthesis; avoid runtime appends.
+            $result['message'] = trim((string)($result['message'] ?? ''));
         }
 
         return $result;
@@ -872,8 +875,12 @@ class agent_runtime {
      */
     private function maybe_enrich_message_from_results(string $message, array $results): string {
         $message = trim($message);
-        // Only enrich when the message looks generic (short, no newlines).
-        if ($message !== '' && (strlen($message) > 200 || str_contains($message, "\n"))) {
+        // Keep already detailed messages with links; otherwise allow enrichment.
+        if (
+            $message !== ''
+            && (strlen($message) > 200 || str_contains($message, "\n"))
+            && str_contains(core_text::strtolower($message), 'http')
+        ) {
             return $message;
         }
 
@@ -1511,7 +1518,12 @@ class agent_runtime {
             return $optiontypeshortcut;
         }
 
-        // Plan: always use the compact planner (summarise_text) regardless of observation count.
+        // Plan: initial step uses tool_call_parse; follow-up steps with observations
+        // switch to simple_retrieval so prompt/catalog are significantly smaller.
+        $plannersteptype = !empty($observations)
+            ? orchestrator::STEP_TYPE_SIMPLE_RETRIEVAL
+            : orchestrator::STEP_TYPE_TOOL_CALL_PARSE;
+
         // Final synthesis via generate_text is triggered separately in run_loop() once the planner
         // signals completion with response_type=clarification and commands=[].
         $result = $this->call_orchestrator_step(
@@ -1519,7 +1531,7 @@ class agent_runtime {
             $cmid,
             $userid,
             $observations,
-            orchestrator::STEP_TYPE_TOOL_CALL_PARSE
+            $plannersteptype
         );
 
         $outputlang = $this->resolve_output_language($threadid, $result);
@@ -1841,7 +1853,9 @@ class agent_runtime {
                 $cmid,
                 $userid,
                 $retryobservations,
-                orchestrator::STEP_TYPE_TOOL_CALL_PARSE
+                !empty($observations)
+                    ? orchestrator::STEP_TYPE_SIMPLE_RETRIEVAL
+                    : orchestrator::STEP_TYPE_TOOL_CALL_PARSE
             );
 
             if (!$this->is_hard_contract_error($retryresult)) {
@@ -2146,11 +2160,13 @@ class agent_runtime {
         array $planningresult
     ): array {
         $observations = $state->get_observations();
-        // Append an explicit language reminder so synthesis stays aligned with the
-        // latest user message language rather than prior model output language.
-        $threadlang = $this->resolve_synthesis_user_language($threadid, $planningresult);
-        if ($threadlang !== '' && preg_match('/^[a-z]{2}$/', $threadlang)) {
-            $observations[] = "Language reminder: the user's language is \"{$threadlang}\". "
+        // Only append language reminder when planner returned explicit language.
+        // Avoid forcing stale fallback language into synthesis when planner omits it.
+        $plannerlang = $this->normalize_iso_language(
+            (string)($planningresult['user_lang'] ?? $planningresult['lang'] ?? '')
+        );
+        if ($plannerlang !== '' && preg_match('/^[a-z]{2}$/', $plannerlang)) {
+            $observations[] = "Language reminder: the user's language is \"{$plannerlang}\". "
                 . "Write the entire 'message' field in that language.";
         }
         $synthesis = $this->call_orchestrator_step(
@@ -2226,7 +2242,7 @@ class agent_runtime {
     /**
      * Resolve language reminder source for synthesis.
      *
-     * Enforce explicit source priority: Planner → Thread metadata → UI language.
+     * Enforce explicit source priority: Planner -> UI language -> Thread metadata.
      * NO runtime heuristics or pattern detection — language authority is LLM only.
      *
      * @param int $threadid

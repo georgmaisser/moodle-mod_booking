@@ -898,6 +898,12 @@ class execution_feedback_service {
                 $entry['summary'] = trim($result['summary']);
             }
 
+            // Pass through verbatim observation content so the LLM loop receives
+            // the full list without truncation from compact_text.
+            if (isset($result['observation_full']) && is_string($result['observation_full']) && trim($result['observation_full']) !== '') {
+                $entry['observation_full'] = trim($result['observation_full']);
+            }
+
             $sanitized[] = $entry;
         }
 

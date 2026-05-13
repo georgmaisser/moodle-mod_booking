@@ -59,13 +59,7 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Analyze booking rules visible in the current booking context. '
-                . 'Booking rules define automated actions (e.g. sending e-mails / notifications) '
-                . 'triggered by booking events such as enrolment, cancellation or session reminders. '
-                . 'Use this task to list, inspect, filter or understand which rules are configured '
-                . 'and what notifications or messages they send. '
-                . 'Also use it for read-only questions about whether booking confirmations, reminders '
-                . 'or similar rule-based mails can be sent in this booking context.',
+            'description' => 'Inspect booking rules and notification behavior in this booking context (read-only).',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_search_options',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_search_options',
@@ -243,6 +237,7 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
             'status' => 'executed',
             'detail' => $summary,
             'usermessage' => $summary,
+            'observation_full' => $summary,
             'resultid' => null,
             'rules' => $filtered,
             'templates' => $templates,

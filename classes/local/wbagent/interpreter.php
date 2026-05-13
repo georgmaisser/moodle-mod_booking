@@ -341,6 +341,7 @@ class interpreter implements agent_interpreter {
         if ($taskname !== null) {
             $input = is_array($parsed['input'] ?? null) ? $parsed['input'] : [];
             $input = $this->hydrate_question_field($taskname, $input, $lastusermessage);
+            $input = $this->prune_empty_input_values($input);
             return [[
                 'task' => $taskname,
                 'version' => max(1, (int)($parsed['version'] ?? 1)),
