@@ -116,15 +116,13 @@ class prompt_policy_builder {
         return "NON-OPTIONAL RESPONSE CONTRACT POLICY:\n"
             . "- Return valid JSON only (no markdown code fences).\n"
             . "- Every response MUST include a top-level field 'response_type'.\n"
-            . "- Every response MUST include a top-level string field 'message'.\n"
-            . "- The 'message' field MUST NOT be empty.\n"
+            . "- For response_type=task_call, OMIT the top-level 'message' field entirely.\n"
+            . "- For response_type=confirmation_request, clarification, confirm_pending, or error, include a top-level string field 'message'.\n"
+            . "- For response_type=confirmation_request, clarification, confirm_pending, or error, the 'message' field MUST NOT be empty.\n"
             . "- Allowed response_type values: task_call, confirmation_request, confirm_pending, clarification, error.\n"
-            . "- Every response MUST include: used_triggers, next_step_intent, lang, user_lang.\n"
-            . "- user_lang MUST be the detected language of the latest user message (ISO 639-1).\n"
-            . "- lang MUST match user_lang unless the user explicitly asks for another language.\n"
+            . "- Every response MUST include: used_triggers, commands.\n"
             . "- For response_type=task_call or confirmation_request, include a non-empty commands array.\n"
             . "- For response_type=clarification, confirm_pending, or error, commands MUST be [].\n"
-            . "- In commands entries, use keys: task (string), version (integer), input (object).\n"
             . "- Preserve JSON field types exactly: arrays must be arrays, numbers must be numbers, strings must be strings.\n"
             . "- Never serialize arrays as comma-separated strings.\n"
             . "- Omit optional input fields when you do not have a grounded value; "
@@ -145,12 +143,10 @@ class prompt_policy_builder {
         }
 
         return "NON-OPTIONAL LANGUAGE POLICY:\n"
-            . "- Use the same language as the latest user message for all user-facing text in JSON fields (especially 'message').\n"
+            . "- When a message field is present, use the same language as the latest user message for that field.\n"
             . "- Do not switch language unless the user switches language.\n"
-            . "- Return a valid ISO 639-1 value in 'lang' for the latest user-message language.\n"
-                . "- Return a valid ISO 639-1 value in 'user_lang' for the detected latest user-message language.\n"
-                . "- The field 'next_step_intent' MUST be in exactly the same language as 'message' "
-                . "and must align with 'lang'.";
+            . "- Planner outputs may omit lang, user_lang, and next_step_intent; "
+            . "keep them only if needed for downstream compatibility.";
     }
 
     /**
@@ -160,14 +156,19 @@ class prompt_policy_builder {
      * @return string
      */
     private static function build_trigger_policy(string $triggerjson): string {
+        $triggerlist = self::render_trigger_catalog_for_prompt($triggerjson);
+
         return "NON-OPTIONAL TRIGGER POLICY:\n"
             . "- Evaluate the latest user message against AVAILABLE MESSAGE TRIGGERS below.\n"
             . "- Return a JSON array field 'used_triggers' with trigger ids that apply to the latest user message.\n"
             . "- Do NOT invent trigger ids. Use only ids from the catalog.\n"
             . "- If none apply, return an empty array for 'used_triggers'.\n"
+            . "- HARD RULE: For any response_type=task_call where the selected task is readonly=true and intent is "
+            . "search, get, list, or diagnose, used_triggers MUST include 'core.is_lookup_request'.\n"
+            . "- Omitting core.is_lookup_request in that readonly task_call case is a CONTRACT VIOLATION.\n"
             . "- Keep response_type independent and correct; triggers are additional structured signals.\n"
             . "\nAVAILABLE MESSAGE TRIGGERS:\n"
-            . $triggerjson
+            . $triggerlist
             . "\n\nREQUIRED OUTPUT FIELD:\n"
             . "- Every response MUST include: \"used_triggers\": [\"...\"]";
     }
@@ -181,6 +182,39 @@ class prompt_policy_builder {
         return "NON-OPTIONAL TRIGGER POLICY:\n"
             . "- Keep using only valid trigger ids from the catalog in the current context.\n"
             . "- Return used_triggers as a JSON array (empty array if none apply).";
+    }
+
+    /**
+     * Render trigger catalog for planner prompts with compact empty-example entries.
+     *
+     * @param string $triggerjson
+     * @return string
+     */
+    private static function render_trigger_catalog_for_prompt(string $triggerjson): string {
+        $decoded = json_decode($triggerjson, true);
+        if (!is_array($decoded)) {
+            return $triggerjson;
+        }
+
+        $lines = [];
+        foreach ($decoded as $trigger) {
+            if (!is_array($trigger)) {
+                continue;
+            }
+
+            $examples = (array)($trigger['examples'] ?? []);
+            if (empty($examples)) {
+                $lines[] = json_encode([
+                    'id' => (string)($trigger['id'] ?? ''),
+                    'description' => (string)($trigger['description'] ?? ''),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                continue;
+            }
+
+            $lines[] = json_encode($trigger, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
+        return "[\n" . implode(",\n", $lines) . "\n]";
     }
 
     /**
@@ -223,6 +257,12 @@ class prompt_policy_builder {
      * @return string
      */
     private static function build_step_intent_policy(): string {
+        if (self::is_planner_step_type('tool_call_parse')) {
+            return "NON-OPTIONAL STEP INTENT POLICY:\n"
+                . "- Planner outputs may omit next_step_intent entirely.\n"
+                . "- If present, keep it short and aligned with the user language.";
+        }
+
         return "NON-OPTIONAL STEP INTENT POLICY:\n"
             . "- Every response MUST include an additional top-level JSON field \"next_step_intent\" "
             . "with one short sentence describing your immediate next action.\n"
@@ -238,6 +278,18 @@ class prompt_policy_builder {
             . "  Bad (lang=de): \"I will retrieve the details of the booking options.\"\n"
             . "  Good (lang=de): \"Ich rufe jetzt die Buchungsoptionen ab.\"\n"
             . "- If you answer directly without tool calls, next_step_intent should still describe that direct action.";
+    }
+
+    /**
+     * Detect the planner step type used for routing prompts.
+     *
+     * @param string $steptype
+     * @return bool
+     */
+    private static function is_planner_step_type(string $steptype): bool {
+        return trim(
+            \core_text::strtolower($steptype)
+        ) === 'tool_call_parse';
     }
 
     /**
@@ -266,7 +318,15 @@ class prompt_policy_builder {
      * @return string
      */
     private static function build_sufficiency_policy(string $steptype = '', bool $hasobservations = false): string {
-        $policy = "NON-OPTIONAL SUFFICIENCY POLICY:\n"
+        $policy = "RULE PRIORITY (evaluate top-down — first matching rule wins):\n"
+            . "1. SUFFICIENCY RULE:    observation present AND relevant → response_type=clarification, commands=[].\n"
+            . "2. READ-ONLY RULE:      no observation present → response_type=task_call, commands non-empty.\n"
+            . "3. MUTATIONS RULE:      mutating intent → response_type=confirmation_request, commands non-empty.\n"
+            . "CRITICAL: If an OBSERVATION block exists and is relevant to the current user request,\n"
+            . "you MUST return response_type=clarification with commands=[].\n"
+            . "Returning task_call when a relevant observation already exists is a CONTRACT VIOLATION.\n"
+            . "\n"
+            . "NON-OPTIONAL SUFFICIENCY POLICY:\n"
             . "- After executing tool calls and receiving results, evaluate whether you have SUFFICIENT information to answer.\n"
             . "- Answer directly if:\n"
             . "  * You found the requested information (booking options, documentation, user details, etc.).\n"
@@ -283,8 +343,9 @@ class prompt_policy_builder {
                 . " When observations are available:\n"
                 . "  1. FIRST check if observations contain diagnostic, search, or factual results "
                 . "relevant to the user's request.\n"
-                . "  2. IF YES: return response_type=clarification with commands=[] and message "
-                . "summarizing the observation results.\n"
+                . "  2. IF YES: return response_type=clarification with commands=[] and "
+                . "message='observation_sufficient'. Do NOT summarize or interpret observations. "
+                . "Synthesis will compose the final user-facing answer.\n"
                 . "  3. IF NO: return response_type=clarification with explanation of what is missing.\n"
                 . "  4. NEVER re-call the same command signature "
                 . "(task + normalized input) if it already exists in OBSERVATION blocks.\n"

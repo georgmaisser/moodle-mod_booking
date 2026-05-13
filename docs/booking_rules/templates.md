@@ -10,6 +10,8 @@ To load a template: click **Load a template rule** at the top of the rule editor
 
 ## Quick setup path
 
+If you use the booking AI assistant, you can ask it to set up one of these templates directly, for example: "Set up a booking confirmation email rule." The agent can first check existing rules and then apply a template-based setup after your confirmation.
+
 1. Open booking rules: [/mod/booking/edit_rules.php?contextid=1](/mod/booking/edit_rules.php?contextid=1).
 2. Click Add rule or edit an existing rule.
 3. Apply the configuration from this page.

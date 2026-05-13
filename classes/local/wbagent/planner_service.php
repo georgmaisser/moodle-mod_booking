@@ -319,6 +319,9 @@ class planner_service {
                 . "- topic_hint should be short and semantic.\n"
                 . "- doc_path_candidates should contain 1 to 3 exact paths from docs_index.\n"
                 . "- retrieval_goal should be one of: configure_howto, concept_explanation, troubleshooting, api_reference.\n"
+                . "- Questions about booking confirmations, reminders, cancellation mails, or what happens when someone booked belong to booking_rules/* docs first.\n"
+                . "- Prefer booking_rules/templates.md or booking_rules/actions.md over actions_after_booking/* for rule-based notification questions.\n"
+                . "- Do not map 'wenn jemand gebucht hat' / 'when someone booked' to actions_after_booking unless the user explicitly asks about the Actions After Booking feature.\n"
                 . "- Keep search_queries short and language-agnostic.\n\n"
                 . "docs_index:\n"
                 . implode("\n", $docsindexlines);

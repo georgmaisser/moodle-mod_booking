@@ -311,11 +311,15 @@ $string['agent_booking_diagnose_reason_missing_email_waitinglist_other'] =
 $string['agent_booking_diagnose_reason_none'] =
     'No specific blocking reason could be derived from the current booking state.';
 $string['agent_booking_diagnose_reason_not_enrolled'] =
-    'You are not enrolled in the course that contains this booking activity.';
+    'You are not enrolled in the course that contains this booking activity. This is important context, but not always a blocker by itself.';
 $string['agent_booking_diagnose_reason_not_enrolled_other'] =
-    'The selected user is not enrolled in the course that contains this booking activity.';
+    'The selected user is not enrolled in the course that contains this booking activity. This is important context, but not always a blocker by itself.';
 $string['agent_booking_diagnose_reason_not_enrolled_concrete'] =
-    'Concrete state: User (id={$a}) is not enrolled in the course. Admin action: Enrol the user in the course first — only enrolled users can book.';
+    'Concrete state: User (id={$a}) is not enrolled in the course. Admin action: Verify the option conditions and capability setup before concluding this is the blocking reason.';
+$string['agent_booking_diagnose_reason_not_enrolled_supplementary'] =
+    'Supplementary note: Not being enrolled in the course does not necessarily mean booking is impossible.';
+$string['agent_booking_diagnose_reason_not_enrolled_context_concrete'] =
+    'Context check: capbookingchoose condition active = {$a->choosecondition}; system capability mod/booking:choose = {$a->systemcap}. If the condition is not active, or capability checks permit booking, not being enrolled alone may not prevent booking.';
 $string['agent_booking_diagnose_reason_option_invisible'] =
     'This booking option is set to invisible and is not visible to regular users.';
 $string['agent_booking_diagnose_reason_option_invisible_other'] =

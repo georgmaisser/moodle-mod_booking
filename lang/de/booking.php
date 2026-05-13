@@ -317,11 +317,15 @@ $string['agent_booking_diagnose_reason_missing_email_waitinglist_other'] =
 $string['agent_booking_diagnose_reason_none'] =
     'Aus dem aktuellen Buchungsstatus konnte kein konkreter Blockierungsgrund abgeleitet werden.';
 $string['agent_booking_diagnose_reason_not_enrolled'] =
-    'Sie sind nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt.';
+    'Sie sind nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt. Das ist ein wichtiges Signal, aber nicht immer allein ein Blockierungsgrund.';
 $string['agent_booking_diagnose_reason_not_enrolled_other'] =
-    'Die ausgewaehlte Person ist nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt.';
+    'Die ausgewaehlte Person ist nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt. Das ist ein wichtiges Signal, aber nicht immer allein ein Blockierungsgrund.';
 $string['agent_booking_diagnose_reason_not_enrolled_concrete'] =
-    'Konkreter Zustand: Benutzer (id={$a}) ist nicht im Kurs eingeschrieben. Admin-Aktion: Die Person zuerst in den Kurs einschreiben – nur eingeschriebene Nutzer:innen koennen buchen.';
+    'Konkreter Zustand: Benutzer (id={$a}) ist nicht im Kurs eingeschrieben. Admin-Aktion: Vor einer finalen Schlussfolgerung zunaechst Options-Bedingungen und Capability-Setup pruefen.';
+$string['agent_booking_diagnose_reason_not_enrolled_supplementary'] =
+    'Ergaenzender Hinweis: Eine fehlende Kurseinschreibung bedeutet nicht zwingend, dass eine Buchung unmoeglich ist.';
+$string['agent_booking_diagnose_reason_not_enrolled_context_concrete'] =
+    'Kontextpruefung: capbookingchoose-Bedingung aktiv = {$a->choosecondition}; System-Capability mod/booking:choose = {$a->systemcap}. Wenn die Bedingung nicht aktiv ist oder Capability-Pruefungen die Buchung erlauben, blockiert fehlende Einschreibung allein nicht zwingend.';
 $string['agent_booking_diagnose_reason_option_invisible'] =
     'Diese Buchungsoption ist auf unsichtbar gestellt und fuer normale Nutzer:innen nicht sichtbar.';
 $string['agent_booking_diagnose_reason_option_invisible_other'] =

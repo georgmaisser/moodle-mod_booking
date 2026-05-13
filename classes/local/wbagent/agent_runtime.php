@@ -358,17 +358,19 @@ class agent_runtime {
                 continue;
             }
 
-            // Planner signals "enough info" — fire one generate_text synthesis step.
-            // Trigger this whenever the planner returns clarification+commands=[] and at least
-            // one observation was accumulated this turn. Even a single diagnostic observation
-            // should be synthesized into the final user-facing answer instead of being exposed
-            // as a raw clarification turn.
-            if (
+            // Sufficiency exit: planner only signals readiness; synthesis composes user-facing output.
+            if ($this->is_sufficiency_exit_signal($result, $state)) {
+                $result['sufficiency_exit'] = true;
+                $result['message'] = '';
+                $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
+                $result['sufficiency_exit'] = true;
+            } else if (
                 (string)($result['response_type'] ?? '') === 'clarification'
                 && empty((array)($result['commands'] ?? []))
                 && $this->should_run_synthesis_for_clarification($result)
                 && count($state->get_observations()) > 0
             ) {
+                // Backward-compatible synthesis path for legacy planner outputs.
                 $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
             }
 
@@ -1551,6 +1553,30 @@ class agent_runtime {
             }
         }
 
+        // Contract safety-net: readonly task_call responses must carry lookup trigger.
+        if ((string)($result['response_type'] ?? '') === 'task_call') {
+            $commands = (array)($result['commands'] ?? []);
+            if (!empty($commands)) {
+                $allreadonly = true;
+                foreach ($commands as $command) {
+                    if (!is_array($command)) {
+                        $allreadonly = false;
+                        break;
+                    }
+                    $taskname = trim((string)($command['task'] ?? ''));
+                    if ($taskname === '' || !$this->registry->is_read_only_task($taskname)) {
+                        $allreadonly = false;
+                        break;
+                    }
+                }
+                if ($allreadonly && !$this->result_has_trigger($result, 'core.is_lookup_request')) {
+                    $usedtriggers = (array)($result['used_triggers'] ?? []);
+                    $usedtriggers[] = 'core.is_lookup_request';
+                    $result['used_triggers'] = $triggerregistry->normalize_used_triggers($usedtriggers);
+                }
+            }
+        }
+
         // Signature-based guard: Block readonly task calls when exact signature
         // already completed in prior steps. Generalized to all readonly tasks.
         $result = $this->apply_signature_based_recall_guard($result, $state, $outputlang);
@@ -1808,7 +1834,7 @@ class agent_runtime {
             // First attempt: inject recovery observation and retry.
             $this->store->set_thread_metadata_value($threadid, $retrykey, true);
 
-            $msg = 'SYSTEM: Malformed response. Return valid JSON.';
+            $msg = 'SYSTEM: Malformed response. Return one valid JSON object only, without markdown fences.';
             $retryobservations = array_merge((array)$observations, [$msg]);
             $retryresult = $this->call_orchestrator_step(
                 $threadid,
@@ -2046,14 +2072,15 @@ class agent_runtime {
             return $modellang;
         }
 
-        $threadlang = trim(core_text::strtolower((string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang')));
-        if ($threadlang !== '' && preg_match('/^[a-z]{2}$/', $threadlang)) {
-            return $threadlang;
-        }
-
+        // Prefer current UI/session language for this turn over stale thread metadata.
         $uilang = trim(core_text::strtolower((string)current_language()));
         if ($uilang !== '' && preg_match('/^[a-z]{2}$/', $uilang)) {
             return $uilang;
+        }
+
+        $threadlang = trim(core_text::strtolower((string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang')));
+        if ($threadlang !== '' && preg_match('/^[a-z]{2}$/', $threadlang)) {
+            return $threadlang;
         }
 
         return current_language();
@@ -2119,11 +2146,9 @@ class agent_runtime {
         array $planningresult
     ): array {
         $observations = $state->get_observations();
-        // Append an explicit language reminder so the synthesis model does not anchor
-        // on the (English) observation texts when the user wrote in another language.
-        $threadlang = trim(core_text::strtolower(
-            (string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang')
-        ));
+        // Append an explicit language reminder so synthesis stays aligned with the
+        // latest user message language rather than prior model output language.
+        $threadlang = $this->resolve_synthesis_user_language($threadid, $planningresult);
         if ($threadlang !== '' && preg_match('/^[a-z]{2}$/', $threadlang)) {
             $observations[] = "Language reminder: the user's language is \"{$threadlang}\". "
                 . "Write the entire 'message' field in that language.";
@@ -2151,6 +2176,86 @@ class agent_runtime {
         $planningresult['loop_step'] = $state->step_count();
         $planningresult['loop_max_steps'] = self::MAX_LOOP_STEPS;
         return $planningresult;
+    }
+
+    /**
+     * Determine whether planner output is a strict sufficiency-exit signal.
+     *
+     * @param array $result
+     * @param agent_state $state
+     * @return bool
+     */
+    private function is_sufficiency_exit_signal(array $result, agent_state $state): bool {
+        if ((string)($result['response_type'] ?? '') !== 'clarification') {
+            return false;
+        }
+
+        if (!empty((array)($result['commands'] ?? []))) {
+            return false;
+        }
+
+        if (count($state->get_observations()) < 1) {
+            return false;
+        }
+
+        return trim((string)($result['message'] ?? '')) === 'observation_sufficient';
+    }
+
+    /**
+     * Check whether normalized planner result contains a specific trigger id.
+     *
+     * @param array $result
+     * @param string $triggerid
+     * @return bool
+     */
+    private function result_has_trigger(array $result, string $triggerid): bool {
+        $needle = trim($triggerid);
+        if ($needle === '') {
+            return false;
+        }
+
+        foreach ((array)($result['used_triggers'] ?? []) as $id) {
+            if (trim((string)$id) === $needle) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolve language reminder source for synthesis.
+     *
+     * Enforce explicit source priority: Planner → Thread metadata → UI language.
+     * NO runtime heuristics or pattern detection — language authority is LLM only.
+     *
+     * @param int $threadid
+     * @param array $planningresult
+     * @return string
+     */
+    private function resolve_synthesis_user_language(int $threadid, array $planningresult): string {
+        // 1. Planner explicit language output.
+        $planninglang = $this->normalize_iso_language((string)($planningresult['user_lang'] ?? $planningresult['lang'] ?? ''));
+        if ($planninglang !== '') {
+            return $planninglang;
+        }
+
+        // 2. UI language for the current turn.
+        $uilang = $this->normalize_iso_language((string)current_language());
+        if ($uilang !== '') {
+            return $uilang;
+        }
+
+        // 3. Thread metadata (from previous synthesis outputs).
+        $threadlang = $this->normalize_iso_language(
+            (string)$this->store->get_thread_metadata_value($threadid, 'last_output_lang')
+        );
+        if ($threadlang !== '') {
+            return $threadlang;
+        }
+
+        // 4. Final fallback.
+        return $this->normalize_iso_language((string)current_language());
     }
 
     /**

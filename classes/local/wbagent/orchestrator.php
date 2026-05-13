@@ -259,6 +259,17 @@ ACTION-SPECIFIC GUIDANCE FOR ROUTING:
 - Route the latest user message to exactly ONE task_call OR ask for missing data.
 - Use only exact task names from the TASK CATALOG. Never invent aliases.
 
+IMMEDIATE EXECUTION RULE (highest priority, apply FIRST):
+- For diagnostic queries (diagnose_booking_issue task), IMMEDIATELY extract and execute.
+- DO NOT ask for clarification when the user identifies the option being diagnosed.
+- EXAMPLES OF IMMEDIATE EXECUTION (no clarification):
+  * User says "can I book option X?" → EXTRACT: optionquery="X", omit userquery, execute booking.diagnose_booking_issue NOW.
+  * User says "why am I not booked for Y?" → EXTRACT: optionquery="Y", omit userquery, execute NOW.
+  * User says "can [Name] book option Z?" → EXTRACT: optionquery="Z", userquery="Name", execute NOW.
+- EXAMPLES OF WHEN TO ASK CLARIFICATION (user omits both person AND option):
+  * User says "why can't I book?" (no option mentioned) → ASK: "Which booking option?"
+  * User says "can Max book?" (no option mentioned) → ASK: "Which booking option?"
+
 READ-ONLY RULE (mandatory):
 - For read-only intents (list, search, get, diagnose), return response_type=task_call.
 - task_call MUST include commands with the task and ALL collected input fields.
@@ -273,11 +284,13 @@ MUTATIONS RULE (mandatory):
 - Do not guess or invent missing data.
 
 SMART INPUT EXTRACTION FOR DIAGNOSTIC QUERIES:
-- When the user asks "why can [User] not book [Option]?", automatically extract:
-  * [User] → userquery field (DO NOT ask for clarification)
+- When the user asks "why can [User] not book [Option]?" with both parties identifiable, extract:
+  * [User] → userquery field (only if asking about ANOTHER person, DO NOT ask for clarification)
   * [Option] → optionquery field (DO NOT ask for clarification)
+- CRITICAL: If user is diagnosing for THEMSELVES (e.g., "can I book", "why am I", "why can't I"), OMIT userquery entirely.
+  Do NOT send empty string; do NOT send self-reference phrases like "you", "vous", "me", "ich". Simply omit the field.
 - Named entities like ANON_USER_1, option titles, or specific references are always extractable.
-- Only ask for clarification if the user explicitly omits both the user AND the option.
+- Only ask for clarification if the user explicitly omits both the person AND the option reference.
 
 TASK CATALOG:
 {{taskcatalogjson}}
@@ -386,6 +399,9 @@ PROMPT;
     ): string {
         $schemas = $this->registry->get_all_schemas();
         $taskcatalog = $adaptivecatalog ?? $this->registry->get_all_prompt_contracts();
+        if ($this->normalize_step_type($steptype) === self::STEP_TYPE_TOOL_CALL_PARSE) {
+            $taskcatalog = $this->slim_prompt_catalog_for_planner($taskcatalog);
+        }
         $tasklist = implode(', ', $this->registry->get_task_names());
         $fullschemajson = json_encode($schemas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $taskcatalogjson = json_encode($taskcatalog, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -435,6 +451,31 @@ PROMPT;
         $prompt .= $policybuilder->build_all_policies($triggerjson, $steptype, $hasobservations);
 
         return $prompt;
+    }
+
+    /**
+     * Reduce task catalog entries to planner-facing routing metadata only.
+     *
+     * @param array $taskcatalog
+     * @return array
+     */
+    private function slim_prompt_catalog_for_planner(array $taskcatalog): array {
+        $slimcatalog = [];
+
+        foreach ($taskcatalog as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $slimcatalog[] = [
+                'task' => (string)($entry['task'] ?? ''),
+                'description' => (string)($entry['description'] ?? ''),
+                'readonly' => (bool)($entry['readonly'] ?? false),
+                'intent' => (string)($entry['intent'] ?? ''),
+            ];
+        }
+
+        return $slimcatalog;
     }
 
     /**

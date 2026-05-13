@@ -63,7 +63,9 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
                 . 'Booking rules define automated actions (e.g. sending e-mails / notifications) '
                 . 'triggered by booking events such as enrolment, cancellation or session reminders. '
                 . 'Use this task to list, inspect, filter or understand which rules are configured '
-                . 'and what notifications or messages they send.',
+                . 'and what notifications or messages they send. '
+                . 'Also use it for read-only questions about whether booking confirmations, reminders '
+                . 'or similar rule-based mails can be sent in this booking context.',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_search_options',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_search_options',
@@ -113,12 +115,17 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
                 'id' => 'booking.analyze_rules',
                 'description' => 'User asks to inspect, understand, list or summarize booking rules, '
                     . 'automated notifications, e-mails or messages that are sent by the booking instance, '
-                    . 'or wants to know which rules are active / configured.',
+                    . 'or wants to know which rules are active / configured. '
+                    . 'This also covers read-only capability questions about booking confirmations, '
+                    . 'reminders or mails triggered after a booking.',
                 'examples' => [
                     'Which messages are currently being sent here?',
                     'What notifications does this booking send?',
                     'Show me all active booking rules.',
                     'What emails are triggered when someone books?',
+                    'Kann ich in booking eine Buchungsbestätigung schicken?',
+                    'Welche Regel verschickt eine Buchungsbestätigung, wenn jemand gebucht hat?',
+                    'Gibt es eine Buchungsbestätigung, wenn jemand gebucht hat?',
                     'Are there any rules configured for cancellations?',
                     'List all rules in this booking.',
                     'What automated actions are set up?',

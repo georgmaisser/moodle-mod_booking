@@ -58,6 +58,12 @@ class interpreter implements agent_interpreter {
     /** @var slot_booking_normalizer */
     private slot_booking_normalizer $slotbookingnormalizer;
 
+    /** @var string Last parse issue code for hard contract gate handling. */
+    private string $lastparseissuecode = '';
+
+    /** @var string Truncated raw parse input excerpt for diagnostics. */
+    private string $lastparseinputexcerpt = '';
+
     /**
      * Constructor.
      *
@@ -78,12 +84,20 @@ class interpreter implements agent_interpreter {
      * @return array
      */
     public function interpret(string $rawresponse, int $cmid, int $userid, string $lastusermessage = ''): array {
+        $this->lastparseissuecode = '';
+        $this->lastparseinputexcerpt = '';
+
         // Stage 1: Parse.
         $parsed = $this->parse($rawresponse);
         if ($parsed === null) {
+            $excerpt = $this->lastparseinputexcerpt;
+            $message = 'Failed to parse LLM response as JSON.';
+            if ($excerpt !== '') {
+                $message .= ' Raw excerpt: ' . $excerpt;
+            }
             return $this->error_result_with_issue_code(
-                'Failed to parse LLM response as JSON.',
-                'CONTRACT_PARSE_FAILED'
+                $message,
+                $this->lastparseissuecode !== '' ? $this->lastparseissuecode : 'CONTRACT_PARSE_ERROR'
             );
         }
 
@@ -122,10 +136,17 @@ class interpreter implements agent_interpreter {
 
         // Passthrough for clarification, error, and confirm_pending types.
         if ($responsetype === 'clarification') {
+            $clearmessage = $this->strip_command_prefix($this->safe_string($parsed['message'] ?? ''));
+            if ($clearmessage === '') {
+                return $this->error_result_with_issue_code(
+                    'CONTRACT_VIOLATION: clarification response has empty message field',
+                    'CONTRACT_EMPTY_MESSAGE_CLARIFICATION'
+                );
+            }
             return $this->with_optional_next_step_intent([
                 'response_type' => 'clarification',
                 'lang'          => $lang,
-                'message'       => $this->strip_command_prefix($this->safe_string($parsed['message'] ?? '')),
+                'message'       => $clearmessage,
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
                 'ambiguities'   => [],
@@ -136,6 +157,9 @@ class interpreter implements agent_interpreter {
 
         if ($responsetype === 'error') {
             $errormessage = $this->strip_command_prefix($this->safe_string($parsed['message'] ?? 'AI returned an error.'));
+            if ($errormessage === '') {
+                $errormessage = 'AI returned an error (message was empty).';
+            }
             return $this->with_optional_next_step_intent([
                 'response_type' => 'error',
                 'lang'          => $lang,
@@ -149,10 +173,17 @@ class interpreter implements agent_interpreter {
         }
 
         if ($responsetype === 'confirm_pending') {
+            $confirmmessage = $this->strip_command_prefix($this->safe_string($parsed['message'] ?? ''));
+            if ($confirmmessage === '') {
+                return $this->error_result_with_issue_code(
+                    'CONTRACT_VIOLATION: confirm_pending response has empty message field',
+                    'CONTRACT_EMPTY_MESSAGE_CONFIRM_PENDING'
+                );
+            }
             return $this->with_optional_next_step_intent([
                 'response_type' => 'confirm_pending',
                 'lang'          => $lang,
-                'message'       => $this->strip_command_prefix($this->safe_string($parsed['message'] ?? '')),
+                'message'       => $confirmmessage,
                 'used_triggers' => $usedtriggers,
                 'commands'      => [],
                 'ambiguities'   => [],
@@ -254,9 +285,9 @@ class interpreter implements agent_interpreter {
      * Normalize command payload shapes to a canonical list of command objects.
      *
      * Accepts:
-     * - commands as list: [{task,version,input}, ...]
-     * - commands as single object: {task,version,input}
-     * - top-level task/version/input fields when commands is missing
+    * - Commands as list: [{task,version,input}, ...]
+    * - Commands as single object: {task,version,input}
+    * - Top-level task/version/input fields when commands is missing
      *
      * @param array $parsed
      * @param string $lastusermessage
@@ -266,7 +297,6 @@ class interpreter implements agent_interpreter {
         $allowedtasks = $this->registry->get_task_names();
         $commands = $parsed['commands'] ?? null;
 
-        // commands provided as a single object instead of a list.
         if (is_array($commands) && isset($commands['task']) && !array_is_list($commands)) {
             $commands = [$commands];
         }
@@ -283,8 +313,18 @@ class interpreter implements agent_interpreter {
                     continue;
                 }
 
-                $input = is_array($command['input'] ?? null) ? $command['input'] : [];
+                $input = is_array($command['parameters'] ?? null) ? $command['parameters'] : [];
+                if (is_array($command['input'] ?? null)) {
+                    $input = array_merge($input, $command['input']);
+                }
+                // Accept compact command format where input fields are provided
+                // directly at command level (e.g. {task, optionquery, userquery}).
+                $flatinput = $this->extract_flat_command_input($command);
+                if (!empty($flatinput)) {
+                    $input = array_merge($flatinput, $input);
+                }
                 $input = $this->hydrate_question_field($taskname, $input, $lastusermessage);
+                $input = $this->prune_empty_input_values($input);
 
                 $normalized[] = [
                     'task' => $taskname,
@@ -309,6 +349,52 @@ class interpreter implements agent_interpreter {
         }
 
         return [];
+    }
+
+    /**
+     * Extract non-meta fields from compact command objects as input payload.
+     *
+     * @param array $command
+     * @return array
+     */
+    private function extract_flat_command_input(array $command): array {
+        $flat = $command;
+        unset($flat['task'], $flat['version'], $flat['input'], $flat['parameters'], $flat['description']);
+
+        return is_array($flat) ? $flat : [];
+    }
+
+    /**
+     * Remove empty scalar placeholders from normalized input payloads.
+     *
+     * Keeps numeric 0 and boolean false values intact.
+     *
+     * @param array $input
+     * @return array
+     */
+    private function prune_empty_input_values(array $input): array {
+        $cleaned = [];
+        foreach ($input as $key => $value) {
+            if (is_array($value)) {
+                $nested = $this->prune_empty_input_values($value);
+                if (!empty($nested)) {
+                    $cleaned[$key] = $nested;
+                }
+                continue;
+            }
+
+            if (is_string($value) && trim($value) === '') {
+                continue;
+            }
+
+            if ($value === null) {
+                continue;
+            }
+
+            $cleaned[$key] = $value;
+        }
+
+        return $cleaned;
     }
 
     /**
@@ -555,16 +641,71 @@ class interpreter implements agent_interpreter {
      * @return array|null Parsed array or null on failure.
      */
     private function parse(string $rawresponse): ?array {
-        $text = trim($rawresponse);
-
-        foreach ($this->extract_json_candidates($text) as $candidate) {
-            $data = json_decode($candidate, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
-                return $data;
-            }
+        $candidate = $this->sanitize_json_payload($rawresponse);
+        if ($candidate === null) {
+            return null;
         }
 
-        return null;
+        $data = json_decode($candidate, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
+            $this->lastparseissuecode = 'CONTRACT_PARSE_ERROR';
+            $this->lastparseinputexcerpt = $this->truncate_parse_excerpt($candidate);
+            return null;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Sanitize raw model output to a single JSON object candidate.
+     *
+     * @param string $rawresponse
+     * @return string|null
+     */
+    private function sanitize_json_payload(string $rawresponse): ?string {
+        $candidate = trim($rawresponse);
+        if ($candidate === '') {
+            $this->lastparseissuecode = 'CONTRACT_PARSE_ERROR';
+            $this->lastparseinputexcerpt = '';
+            return null;
+        }
+
+        // Remove optional UTF-8 BOM.
+        if (strpos($candidate, "\xEF\xBB\xBF") === 0) {
+            $candidate = substr($candidate, 3);
+            $candidate = trim($candidate);
+        }
+
+        if (preg_match('/^\x60\x60\x60(?:json)?\s*([\s\S]*?)\s*\x60\x60\x60$/i', $candidate, $matches) === 1) {
+            $candidate = trim((string)($matches[1] ?? ''));
+        }
+
+        if ($candidate === '' || $candidate[0] !== '{' || substr($candidate, -1) !== '}') {
+            $this->lastparseissuecode = 'CONTRACT_PARSE_ERROR';
+            $this->lastparseinputexcerpt = $this->truncate_parse_excerpt($candidate);
+            return null;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Build safe parse excerpt for diagnostics.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function truncate_parse_excerpt(string $value): string {
+        $value = trim(str_replace(["\r", "\n", "\t"], ' ', $value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (strlen($value) > 200) {
+            $value = substr($value, 0, 200);
+        }
+
+        return $value;
     }
 
     /**
@@ -856,9 +997,9 @@ class interpreter implements agent_interpreter {
                 if ($part === '') {
                     continue;
                 }
-                $normalizedparts[] = $this->is_self_reference_phrase($part)
-                    ? self::CURRENT_USER_TOKEN
-                    : $part;
+                // Self-reference marker is explicit: only the canonical token is recognized.
+                // Fuzzy phrases (e.g., 'vous', 'me') must NOT be auto-detected; Planner must use the token.
+                $normalizedparts[] = $part;
             }
 
             if (!empty($normalizedparts)) {
@@ -883,6 +1024,12 @@ class interpreter implements agent_interpreter {
     private function canonicalize_command_input(string $taskname, array $input): array {
         $input = $this->slotbookingnormalizer->normalize($taskname, $input);
 
+        // Self-reference for diagnose_booking_issue must be explicit:
+        // Planner MUST send either empty userquery (self) or the canonical token.
+        // NO fuzzy phrase detection (e.g., 'vous', 'me', 'ich') — these are ambiguous.
+        // If userquery is present as a fuzzy phrase, it indicates LLM misconfiguration.
+        // (No auto-normalization here; validation layer will catch it.)
+
         // Normalize search_queries: LLMs sometimes serialize arrays as comma-separated strings.
         if (isset($input['search_queries']) && is_string($input['search_queries'])) {
             $parts = array_values(array_filter(array_map('trim', explode(',', $input['search_queries']))));
@@ -899,37 +1046,7 @@ class interpreter implements agent_interpreter {
         return $input;
     }
 
-    /**
-     * Decide whether a phrase refers to the current executor user.
-     *
-     * @param string $value
-     * @return bool
-     */
-    private function is_self_reference_phrase(string $value): bool {
-        $normalized = strtolower(trim($value, " \t\n\r\0\x0B.,;:!?\"'"));
-        $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
 
-        $selfrefkeywords = [
-            'me',
-            'myself',
-            'i',
-            'ich',
-            'mich',
-            'current',
-            'current user',
-            'the current user',
-            'currentuser',
-            'aktueller benutzer',
-            'der aktuelle benutzer',
-            'self',
-            'my',
-            'mein',
-            'ich halte',
-            self::CURRENT_USER_TOKEN,
-        ];
-
-        return in_array($normalized, $selfrefkeywords, true);
-    }
 
     /**
      * Build a standard error result.

@@ -8,6 +8,15 @@ Every rule must have exactly one action.
 ---
 ## Quick setup path
 
+### Use the AI agent to configure this for you
+
+If you are using the booking AI assistant, you can ask directly in plain language, for example:
+
+- "Kannst du eine automatische Buchungsbestaetigung einrichten?"
+- "Please create a booking confirmation rule when someone books."
+
+The agent can guide you in read-only mode (what is already configured) and can also configure a booking rule for you after confirmation.
+
 ### Send a confirmation email when a user books
 
 1. Open **Booking Rules**: `/mod/booking/edit_rules.php?contextid=1`

@@ -85,7 +85,9 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
                 'userquery' => [
                     'type' => 'string',
                     'description' => 'User reference (name, email, id-like text) when diagnosing for another person. '
-                        . 'Omit if diagnosing for the current user (self-service).',
+                        . 'Omit (do NOT send empty string) to diagnose for the current user. '
+                        . 'CRITICAL: Omit this field entirely for self-diagnosis — do not send fuzzy phrases like "vous", "me", "ich", etc. '
+                        . 'Only send concrete user identifiers (names, emails, user IDs).',
                     'required' => false,
                 ],
                 'targetuserid' => [
@@ -156,6 +158,8 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
                         "Reading with Georg", userquery="Maxima".',
                     '- Same applies to German input: "Warum kann Maxima \'Lesung mit Georg\' nicht buchen?"
                         → optionquery="Lesung mit Georg", userquery="Maxima".',
+                    '- CRITICAL: For self-diagnosis (current user), OMIT the userquery field entirely.
+                        Do NOT send fuzzy self-reference phrases like "you", "vous", "me", "ich", etc.',
                     '- Pass the full original user question as the "question" field so the task can classify the issue type.',
                     '- Do NOT ask for clarification when the option name or person name appears in the user message
                         — extract directly.',
@@ -678,7 +682,23 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
             return ['status' => 'ok', 'userid' => (int)($resolved['userid'] ?? $currentuserid)];
         }
 
-        return $resolved;
+        // User resolution failed (not found or ambiguous).
+        // Ensure we return a clear, user-facing error message.
+        if (($resolved['status'] ?? '') === 'error') {
+            // Specific error — use the message from support layer or provide a clear fallback.
+            return [
+                'status' => 'error',
+                'message' => (string)($resolved['message'] ??
+                    $this->localized_string('agent_booking_diagnose_error_user_not_found', $userquery, $lang)),
+            ];
+        }
+
+        // Ambiguity or other status.
+        return [
+            'status' => 'error',
+            'message' => (string)($resolved['message'] ??
+                $this->localized_string('agent_booking_diagnose_error_user_resolution_failed', $userquery, $lang)),
+        ];
     }
 
     /**
@@ -828,7 +848,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         // --- Fundamental access checks (evaluated for all issue types) ---
 
         // Check 1: Course enrollment.
-        // Not being enrolled blocks booking entirely.
+        // Not being enrolled is supplementary context and not necessarily a blocker on its own.
         if (isset($instancecontext['isenrolled']) && !$instancecontext['isenrolled']) {
             $reasons[] = $this->localized_string(
                 $isselfdiagnosis
@@ -840,6 +860,11 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
             $reasons[] = $this->localized_string(
                 'agent_booking_diagnose_reason_not_enrolled_concrete',
                 (int)($instancecontext['courseid'] ?? 0),
+                $lang
+            );
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_not_enrolled_supplementary',
+                null,
                 $lang
             );
         }
