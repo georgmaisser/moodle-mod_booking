@@ -254,6 +254,17 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
         $bookinginformation = $ba->return_all_booking_information($diagnosticuserid);
         $userstatus = (string)$ba->user_status_as_string($diagnosticuserid);
 
+        // Step 4b: Check course enrollment.
+        // A user who is not enrolled in the course cannot have an active booking to cancel.
+        $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
+        $coursecontext = \context_course::instance((int)$cm->course);
+        $isenrolled = is_enrolled($coursecontext, $diagnosticuserid, '', true);
+
+        // Step 4c: Check option visibility.
+        // invisible=1 → hidden (non-privileged users cannot see or interact with the option).
+        // invisible=2 → not shown in list, but still accessible via direct link (informational only).
+        $invisiblevalue = (int)($settings->invisible ?? 0);
+
         // Step 5: Collect all cancellation-related configuration values into a context array.
         // These values are passed to build_reason_lines() to avoid repeated DB/config lookups.
         $optiondisablecancel = !empty(booking_option::get_value_of_json_by_key($optionid, 'disablecancel'));
@@ -275,12 +286,16 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
             'waitforconfirmation'   => !empty($settings->waitforconfirmation), // waitinglist confirmation flow
             'hasprice'              => !empty($settings->jsonobject->useprice), // option has a price
             'shoppingcartexists'    => class_exists('local_shopping_cart\\shopping_cart'), // plugin present
+            'isenrolled'            => $isenrolled,               // whether user is enrolled in the course
+            'invisiblevalue'        => $invisiblevalue,            // 0=visible, 1=hidden, 2=not in list
+            'courseid'              => (int)$cm->course,
         ];
 
         // Step 6: Build human-readable reason lines.
-        // Checks (in order): instance/option disablecancel, canceluntil deadlines, price without cart,
-        // activity completion, not-booked / reserved states, cancancelbook disabled,
-        // effective deadline, shopping-cart policy, waitinglist confirmation flow, cooling-off period.
+        // Checks (in order): enrollment, option visibility, instance/option disablecancel,
+        // canceluntil deadlines, price without cart, activity completion, not-booked / reserved states,
+        // cancancelbook disabled, effective deadline, shopping-cart policy,
+        // waitinglist confirmation flow, cooling-off period.
         $reasons = $this->build_reason_lines(
             $conditionresults,
             $highestblocker,
@@ -386,6 +401,40 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
         $isselfdiagnosis = ($diagnosticuserid === $currentuserid);
 
         $highestid = (int)($highestblocker['id'] ?? 0);
+
+        // --- Structural pre-checks: enrollment and visibility ---
+        // These are checked first; if they block, further checks are still shown for completeness.
+
+        if (empty($reasoncontext['isenrolled'])) {
+            $reasons[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_reason_not_enrolled'
+                    : 'agent_booking_diagnose_reason_not_enrolled_other',
+                null,
+                $lang
+            );
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_not_enrolled_concrete',
+                (object)['courseid' => (int)($reasoncontext['courseid'] ?? 0)],
+                $lang
+            );
+        }
+
+        $invisiblevalue = (int)($reasoncontext['invisiblevalue'] ?? 0);
+        if ($invisiblevalue === 1) {
+            $reasons[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_reason_option_invisible'
+                    : 'agent_booking_diagnose_reason_option_invisible_other',
+                null,
+                $lang
+            );
+            $reasons[] = $this->localized_string('agent_booking_diagnose_reason_option_invisible_concrete', null, $lang);
+        } else if ($invisiblevalue === 2) {
+            $reasons[] = $this->localized_string('agent_booking_diagnose_reason_option_hidden_from_list_concrete', null, $lang);
+        }
+
+        // --- Cancellation-specific checks ---
 
         if (!empty($reasoncontext['instancedisablecancel'])) {
             $reasons[] = $this->localized_string('agent_booking_diagnose_cancel_reason_instance_disablecancel', null, $lang);

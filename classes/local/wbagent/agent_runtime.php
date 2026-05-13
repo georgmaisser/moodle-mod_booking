@@ -359,17 +359,15 @@ class agent_runtime {
             }
 
             // Planner signals "enough info" — fire one generate_text synthesis step.
-            // Only triggered when the planner returns clarification+commands=[] AND MORE THAN ONE
-            // observation was accumulated this turn. With exactly one observation, the planner
-            // already summarises the result via the CRITICAL sufficiency rule — synthesis would
-            // only add a redundant extra LLM round-trip without producing new information.
-            // For multi-observation turns (complex multi-step queries) synthesis is still valuable
-            // because it can compose a coherent narrative from all accumulated results.
+            // Trigger this whenever the planner returns clarification+commands=[] and at least
+            // one observation was accumulated this turn. Even a single diagnostic observation
+            // should be synthesized into the final user-facing answer instead of being exposed
+            // as a raw clarification turn.
             if (
                 (string)($result['response_type'] ?? '') === 'clarification'
                 && empty((array)($result['commands'] ?? []))
                 && $this->should_run_synthesis_for_clarification($result)
-                && count($state->get_observations()) > 1
+                && count($state->get_observations()) > 0
             ) {
                 $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
             }

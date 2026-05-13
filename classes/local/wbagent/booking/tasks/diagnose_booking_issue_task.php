@@ -363,6 +363,55 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         $optionstats['userstatus'] = $userstatus;
         $isselfdiagnosis = ($diagnosticuserid === $userid);
 
+        // Step 5b: Load booking instance settings (needed for instance-level restriction checks).
+        $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($cmid);
+
+        // Step 5c: Check course enrollment.
+        // Only enrolled users can book; non-enrollment is a fundamental blocker.
+        $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
+        $coursecontext = \context_course::instance((int)$cm->course);
+        $isenrolled = is_enrolled($coursecontext, $diagnosticuserid, '', true);
+
+        // Step 5d: Check option visibility.
+        // invisible = 0 → visible; 1 → hidden (non-privileged users cannot see/book);
+        // invisible = 2 → not shown in list but accessible via direct link (does not block booking).
+        $invisiblevalue = (int)($settings->invisible ?? 0);
+
+        // Step 5e: Check instance-level booking restrictions from booking_settings.
+        // disablebooking: booking disabled for the whole instance.
+        // maxperuser: max active bookings per user (0 = unlimited).
+        // banusernames: comma-separated list of usernames blocked from booking.
+        $instancedisablebooking = !empty($bookingsettings->disablebooking);
+        $maxperuser = (int)($bookingsettings->maxperuser ?? 0);
+        $userbookingcount = 0;
+        if ($maxperuser > 0) {
+            // Count confirmed bookings (waitinglist = 0) for this user in this booking instance.
+            $userbookingcount = (int)$DB->count_records('booking_answers', [
+                'bookingid' => (int)$bookingsettings->id,
+                'userid'    => $diagnosticuserid,
+                'waitinglist' => MOD_BOOKING_STATUSPARAM_BOOKED,
+            ]);
+        }
+        $userisbannedfrominstance = false;
+        $banusernames = trim((string)($bookingsettings->banusernames ?? ''));
+        if ($banusernames !== '') {
+            $diagnosticuser = $DB->get_record('user', ['id' => $diagnosticuserid], 'username', IGNORE_MISSING);
+            $bannedlist = array_map('trim', explode(',', $banusernames));
+            if ($diagnosticuser && in_array((string)$diagnosticuser->username, $bannedlist, true)) {
+                $userisbannedfrominstance = true;
+            }
+        }
+
+        $instancecontext = [
+            'isenrolled' => $isenrolled, // Whether user is enrolled in the course.
+            'invisiblevalue' => $invisiblevalue, // Visibility: 0=visible, 1=hidden, 2=not in list.
+            'instancedisablebooking' => $instancedisablebooking, // Disablebooking set on the instance.
+            'maxperuser' => $maxperuser, // Max bookings per user (0=unlimited).
+            'userbookingcount' => $userbookingcount, // Current confirmed booking count.
+            'userisbannedfrominstance' => $userisbannedfrominstance, // Username in banusernames.
+            'courseid' => (int)$cm->course,
+        ];
+
         // Step 6: Build consistency payload — detects mismatches between LLM-supplied and resolved IDs/names.
         $consistency = $this->build_consistency_payload($preparedinput, $diagnosticuserid, $optionid, $optionname);
 
@@ -376,7 +425,8 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
             $conditionresults,
             $settings,
             $isselfdiagnosis,
-            $outputlang
+            $outputlang,
+            $instancecontext
         );
 
         $introk = $isselfdiagnosis
@@ -402,6 +452,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
                 'optionname' => $optionname,
                 'userstatus' => $userstatus,
                 'stats' => $optionstats,
+                'instance_checks' => $instancecontext,
                 'reasons' => $reasons,
                 'consistency' => $consistency,
             ],
@@ -759,6 +810,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
      * @param mixed $settings booking_option_settings instance from singleton_service.
      * @param bool $isselfdiagnosis
      * @param string $lang
+     * @param array $instancecontext Optional instance-level and enrollment context from execute().
      * @return array
      */
     private function build_reason_lines(
@@ -767,10 +819,107 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         array $conditionresults,
         $settings,
         bool $isselfdiagnosis,
-        string $lang = ''
+        string $lang = '',
+        array $instancecontext = []
     ): array {
         $reasons = [];
         $userstatus = (string)($optionstats['userstatus'] ?? 'notbooked');
+
+        // --- Fundamental access checks (evaluated for all issue types) ---
+
+        // Check 1: Course enrollment.
+        // Not being enrolled blocks booking entirely.
+        if (isset($instancecontext['isenrolled']) && !$instancecontext['isenrolled']) {
+            $reasons[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_reason_not_enrolled'
+                    : 'agent_booking_diagnose_reason_not_enrolled_other',
+                null,
+                $lang
+            );
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_not_enrolled_concrete',
+                (int)($instancecontext['courseid'] ?? 0),
+                $lang
+            );
+        }
+
+        // Check 2: Option visibility.
+        // invisible=1 → hidden for non-privileged users (hard blocker).
+        // invisible=2 → not shown in list, but still accessible via direct link (soft, informational).
+        $invisiblevalue = (int)($instancecontext['invisiblevalue'] ?? 0);
+        if ($invisiblevalue === 1) {
+            $reasons[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_reason_option_invisible'
+                    : 'agent_booking_diagnose_reason_option_invisible_other',
+                null,
+                $lang
+            );
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_option_invisible_concrete',
+                null,
+                $lang
+            );
+        } else if ($invisiblevalue === 2) {
+            $reasons[] = $this->localized_string('agent_booking_diagnose_reason_option_hidden_from_list', null, $lang);
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_option_hidden_from_list_concrete',
+                null,
+                $lang
+            );
+        }
+
+        // Check 3: Instance-level booking disabled.
+        if (!empty($instancecontext['instancedisablebooking'])) {
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_instance_disablebooking',
+                null,
+                $lang
+            );
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_instance_disablebooking_concrete',
+                null,
+                $lang
+            );
+        }
+
+        // Check 4: Max bookings per user exceeded.
+        $maxperuser = (int)($instancecontext['maxperuser'] ?? 0);
+        $userbookingcount = (int)($instancecontext['userbookingcount'] ?? 0);
+        if ($maxperuser > 0 && $userbookingcount >= $maxperuser) {
+            $reasons[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_reason_maxperuser_exceeded'
+                    : 'agent_booking_diagnose_reason_maxperuser_exceeded_other',
+                $maxperuser,
+                $lang
+            );
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_maxperuser_exceeded_concrete',
+                (object)['max' => $maxperuser, 'current' => $userbookingcount],
+                $lang
+            );
+        }
+
+        // Check 5: Banned username.
+        if (!empty($instancecontext['userisbannedfrominstance'])) {
+            $reasons[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_reason_banned_username'
+                    : 'agent_booking_diagnose_reason_banned_username_other',
+                null,
+                $lang
+            );
+            $reasons[] = $this->localized_string(
+                'agent_booking_diagnose_reason_banned_username_concrete',
+                null,
+                $lang
+            );
+        }
+
+        // --- Issue-type specific checks ---
+
         $statusstats = [];
         foreach (['notbooked', 'iambooked', 'iamreserved', 'onwaitinglist', 'onnotifylist'] as $statuskey) {
             if (!empty($optionstats[$statuskey]) && is_array($optionstats[$statuskey])) {

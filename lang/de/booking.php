@@ -316,6 +316,38 @@ $string['agent_booking_diagnose_reason_missing_email_waitinglist_other'] =
     'Die ausgewaehlte Person steht auf der Warteliste, wodurch andere Benachrichtigungen als bei einer bestaetigten Buchung moeglich sind.';
 $string['agent_booking_diagnose_reason_none'] =
     'Aus dem aktuellen Buchungsstatus konnte kein konkreter Blockierungsgrund abgeleitet werden.';
+$string['agent_booking_diagnose_reason_not_enrolled'] =
+    'Sie sind nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt.';
+$string['agent_booking_diagnose_reason_not_enrolled_other'] =
+    'Die ausgewaehlte Person ist nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt.';
+$string['agent_booking_diagnose_reason_not_enrolled_concrete'] =
+    'Konkreter Zustand: Benutzer (id={$a}) ist nicht im Kurs eingeschrieben. Admin-Aktion: Die Person zuerst in den Kurs einschreiben – nur eingeschriebene Nutzer:innen koennen buchen.';
+$string['agent_booking_diagnose_reason_option_invisible'] =
+    'Diese Buchungsoption ist auf unsichtbar gestellt und fuer normale Nutzer:innen nicht sichtbar.';
+$string['agent_booking_diagnose_reason_option_invisible_other'] =
+    'Die ausgewaehlte Buchungsoption ist auf unsichtbar gestellt und fuer normale Nutzer:innen nicht sichtbar.';
+$string['agent_booking_diagnose_reason_option_invisible_concrete'] =
+    'Konkrete Einstellung: booking_options.invisible = 1. Admin-Aktion: Die Option in den Buchungsoptionseinstellungen auf "sichtbar" stellen.';
+$string['agent_booking_diagnose_reason_option_hidden_from_list'] =
+    'Diese Buchungsoption ist aus der Buchungsliste ausgeblendet (invisible = 2), kann aber ueber einen direkten Link aufgerufen werden.';
+$string['agent_booking_diagnose_reason_option_hidden_from_list_concrete'] =
+    'Konkrete Einstellung: booking_options.invisible = 2. Die Option ist per Direktlink weiterhin buchbar – die Buchung selbst wird dadurch nicht blockiert.';
+$string['agent_booking_diagnose_reason_instance_disablebooking'] =
+    'Das Buchen ist fuer diese gesamte Buchungsinstanz aktuell deaktiviert.';
+$string['agent_booking_diagnose_reason_instance_disablebooking_concrete'] =
+    'Konkrete Einstellung: booking.json.disablebooking = 1. Admin-Aktion: In den Instanzeinstellungen "Buchen fuer diese Instanz deaktivieren" deaktivieren.';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded'] =
+    'Die maximale Anzahl an Buchungen pro Nutzer:in wurde erreicht ({$a} Buchungen erlaubt).';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded_other'] =
+    'Die ausgewaehlte Person hat die maximale Anzahl an Buchungen pro Nutzer:in erreicht ({$a} Buchungen erlaubt).';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded_concrete'] =
+    'Konkrete Einstellung: booking.maxperuser = {$a->max}. Aktive Buchungen dieser Person in dieser Instanz: {$a->current}. Admin-Aktion: Eine bestehende Buchung stornieren oder maxperuser in den Instanzeinstellungen erhoehen.';
+$string['agent_booking_diagnose_reason_banned_username'] =
+    'Ihr Benutzername steht auf der Sperrliste dieser Buchungsinstanz.';
+$string['agent_booking_diagnose_reason_banned_username_other'] =
+    'Der Benutzername der ausgewaehlten Person steht auf der Sperrliste dieser Buchungsinstanz.';
+$string['agent_booking_diagnose_reason_banned_username_concrete'] =
+    'Konkrete Einstellung: booking.banusernames enthaelt diesen Benutzernamen. Admin-Aktion: Den Benutzernamen aus dem Feld "Gesperrte Benutzernamen" in den Instanzeinstellungen entfernen.';
 $string['agent_booking_diagnose_reason_status_booked'] =
     'Sie haben fuer diese Option bereits eine bestaetigte Buchung.';
 $string['agent_booking_diagnose_reason_status_booked_other'] =

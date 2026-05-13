@@ -55,6 +55,8 @@ class privacy_anonymizer {
     ];
     /** @var array<int,string> Fields that should always resolve to original literal text for SQL updates. */
     private const SQL_TEXT_FIELDS = ['text', 'description', 'optionquery'];
+    /** @var array<int,string> Fields that represent user references and should prefer shorter observed variants. */
+    private const USER_REFERENCE_FIELDS = ['userquery', 'teacherquery', 'targetuserquery'];
 
     /** @var conversation_store */
     private conversation_store $store;
@@ -370,7 +372,15 @@ class privacy_anonymizer {
             '/\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b/i',
             function (array $match) use (&$tokenmap, &$count): string {
                 $email = (string)$match[0];
-                $token = $this->get_or_create_token($tokenmap, 'email', $email, $email);
+                $identity = $this->resolve_identity_from_email($email);
+                $token = $this->get_or_create_token(
+                    $tokenmap,
+                    (string)($identity['identitykey'] ?? ('email:' . core_text::strtolower($email))),
+                    'email',
+                    $email,
+                    $email,
+                    (array)($identity['variants'] ?? ['email' => $email])
+                );
                 $count++;
                 return $token;
             },
@@ -441,7 +451,23 @@ class privacy_anonymizer {
             $fullmatchusers = $fullusers[$fullkey] ?? [];
             if (is_array($fullmatchusers) && !empty($fullmatchusers)) {
                 $fullname = $firsttoken . $between . $lasttoken;
-                $replaceword[$i] = $this->get_or_create_token($tokenmap, 'both', $fullname, $fullname);
+                $identity = $this->resolve_identity_from_user_ids(array_keys($fullmatchusers), [
+                    'both' => $fullname,
+                    'firstname' => $firsttoken,
+                    'lastname' => $lasttoken,
+                ]);
+                $replaceword[$i] = $this->get_or_create_token(
+                    $tokenmap,
+                    (string)($identity['identitykey'] ?? ('name:' . $fullkey)),
+                    'both',
+                    $fullname,
+                    $fullname,
+                    (array)($identity['variants'] ?? [
+                        'both' => $fullname,
+                        'firstname' => $firsttoken,
+                        'lastname' => $lasttoken,
+                    ])
+                );
                 $replaceword[$i + 1] = '';
                 $skipword[$i + 1] = true;
                 $count++;
@@ -477,7 +503,23 @@ class privacy_anonymizer {
                 $matchtype = 'firstname';
             }
 
-            $replaceword[$idx] = $this->get_or_create_token($tokenmap, $matchtype, $tokenvalue, $tokenvalue);
+            $candidateuserids = [];
+            if ($matchtype === 'firstname') {
+                $candidateuserids = array_keys((array)($firstusers[$normalized] ?? []));
+            } else if ($matchtype === 'lastname') {
+                $candidateuserids = array_keys((array)($lastusers[$normalized] ?? []));
+            }
+            $identity = $this->resolve_identity_from_user_ids($candidateuserids, [
+                $matchtype => $tokenvalue,
+            ]);
+            $replaceword[$idx] = $this->get_or_create_token(
+                $tokenmap,
+                (string)($identity['identitykey'] ?? ($matchtype . ':' . $normalized)),
+                $matchtype,
+                $tokenvalue,
+                $tokenvalue,
+                (array)($identity['variants'] ?? [$matchtype => $tokenvalue])
+            );
             $count++;
         }
 
@@ -700,7 +742,14 @@ class privacy_anonymizer {
      * @param string $original
      * @return string
      */
-    private function get_or_create_token(array &$map, string $type, string $value, string $original): string {
+    private function get_or_create_token(
+        array &$map,
+        string $identitykey,
+        string $type,
+        string $value,
+        string $original,
+        array $variants = []
+    ): string {
         $entries = $map['entries'] ?? [];
         if (!is_array($entries)) {
             $entries = [];
@@ -711,8 +760,19 @@ class privacy_anonymizer {
                 continue;
             }
 
+            if ((string)($entry['identitykey'] ?? '') === $identitykey && $identitykey !== '') {
+                $entry['type'] = $type;
+                $entry['value'] = $value;
+                $entry['original'] = $original;
+                $entry['variants'] = $this->merge_identity_variants((array)($entry['variants'] ?? []), $variants);
+                $entries[$token] = $entry;
+                $map['entries'] = $entries;
+                return (string)$token;
+            }
+
             if (
-                (string)($entry['type'] ?? '') === $type
+                $identitykey === ''
+                && (string)($entry['type'] ?? '') === $type
                 && (string)($entry['value'] ?? '') === $value
                 && (string)($entry['original'] ?? '') === $original
             ) {
@@ -723,9 +783,11 @@ class privacy_anonymizer {
         $nextid = max(1, (int)($map['nextid'] ?? 1));
         $token = 'ANON_USER_' . $nextid;
         $entries[$token] = [
+            'identitykey' => $identitykey,
             'type' => $type,
             'value' => $value,
             'original' => $original,
+            'variants' => $this->merge_identity_variants([], $variants),
         ];
         $map['entries'] = $entries;
         $map['nextid'] = $nextid + 1;
@@ -747,6 +809,7 @@ class privacy_anonymizer {
         $original = (string)($entry['original'] ?? '');
         $value = (string)($entry['value'] ?? '');
         $matchtype = (string)($entry['type'] ?? '');
+        $variants = is_array($entry['variants'] ?? null) ? (array)$entry['variants'] : [];
         $normalizedfield = core_text::strtolower(trim($fieldkey));
 
         if ($original === '' && $value === '') {
@@ -760,6 +823,161 @@ class privacy_anonymizer {
             return $original !== '' ? $original : $value;
         }
 
+        if ($this->is_user_reference_field($normalizedfield)) {
+            foreach (['firstname', 'both', 'lastname', 'email'] as $variantkey) {
+                $variant = trim((string)($variants[$variantkey] ?? ''));
+                if ($variant !== '') {
+                    return $variant;
+                }
+            }
+        }
+
         return $value !== '' ? $value : ($original !== '' ? $original : $fallback);
+    }
+
+    /**
+     * Resolve a stable identity from an e-mail address when possible.
+     *
+     * @param string $email
+     * @return array
+     */
+    private function resolve_identity_from_email(string $email): array {
+        global $DB;
+
+        $normalizedemail = trim(core_text::strtolower($email));
+        if ($normalizedemail === '') {
+            return [
+                'identitykey' => '',
+                'variants' => ['email' => $email],
+            ];
+        }
+
+        $user = $DB->get_record('user', ['email' => $normalizedemail, 'deleted' => 0], 'id,firstname,lastname,email', IGNORE_MISSING);
+        if (!$user) {
+            return [
+                'identitykey' => 'email:' . $normalizedemail,
+                'variants' => ['email' => $email],
+            ];
+        }
+
+        return [
+            'identitykey' => 'user:' . (int)$user->id,
+            'variants' => $this->build_identity_variants_from_user_record($user, ['email' => $email]),
+        ];
+    }
+
+    /**
+     * Resolve a stable identity from a candidate user-id set.
+     *
+     * If the name fragment is ambiguous, keep a representation-based fallback identity.
+     *
+     * @param array $candidateuserids
+     * @param array $observedvariants
+     * @return array
+     */
+    private function resolve_identity_from_user_ids(array $candidateuserids, array $observedvariants = []): array {
+        $candidateuserids = array_values(array_unique(array_map('intval', $candidateuserids)));
+        if (count($candidateuserids) === 1 && $candidateuserids[0] > 0) {
+            $user = $this->load_user_identity_record($candidateuserids[0]);
+            if ($user) {
+                return [
+                    'identitykey' => 'user:' . $candidateuserids[0],
+                    'variants' => $this->build_identity_variants_from_user_record($user, $observedvariants),
+                ];
+            }
+        }
+
+        $fallbackseed = json_encode($observedvariants);
+        return [
+            'identitykey' => 'literal:' . sha1((string)$fallbackseed),
+            'variants' => $observedvariants,
+        ];
+    }
+
+    /**
+     * Load user identity fields for token enrichment.
+     *
+     * @param int $userid
+     * @return object|null
+     */
+    private function load_user_identity_record(int $userid): ?object {
+        global $DB;
+
+        if ($userid <= 0) {
+            return null;
+        }
+
+        $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], 'id,firstname,lastname,email', IGNORE_MISSING);
+        return $user ?: null;
+    }
+
+    /**
+     * Build normalized identity variants from a Moodle user record.
+     *
+     * @param object $user
+     * @param array $observedvariants
+     * @return array
+     */
+    private function build_identity_variants_from_user_record(object $user, array $observedvariants = []): array {
+        $variants = [];
+        $firstname = trim((string)($user->firstname ?? ''));
+        $lastname = trim((string)($user->lastname ?? ''));
+        $email = trim((string)($user->email ?? ''));
+        $fullname = trim($firstname . ' ' . $lastname);
+
+        if ($firstname !== '') {
+            $variants['firstname'] = $firstname;
+        }
+        if ($lastname !== '') {
+            $variants['lastname'] = $lastname;
+        }
+        if ($fullname !== '') {
+            $variants['both'] = $fullname;
+        }
+        if ($email !== '') {
+            $variants['email'] = $email;
+        }
+
+        return $this->merge_identity_variants($variants, $observedvariants);
+    }
+
+    /**
+     * Merge observed variants into the stored variant set without dropping known values.
+     *
+     * @param array $basevariants
+     * @param array $incomingvariants
+     * @return array
+     */
+    private function merge_identity_variants(array $basevariants, array $incomingvariants): array {
+        foreach ($incomingvariants as $key => $variant) {
+            if (!is_string($key)) {
+                continue;
+            }
+            $variant = trim((string)$variant);
+            if ($variant === '') {
+                continue;
+            }
+            $basevariants[$key] = $variant;
+        }
+
+        return $basevariants;
+    }
+
+    /**
+     * Check whether a field semantically refers to a user identity.
+     *
+     * @param string $normalizedfield
+     * @return bool
+     */
+    private function is_user_reference_field(string $normalizedfield): bool {
+        if ($normalizedfield === '') {
+            return false;
+        }
+
+        if (in_array($normalizedfield, self::USER_REFERENCE_FIELDS, true)) {
+            return true;
+        }
+
+        return str_ends_with($normalizedfield, 'userquery');
     }
 }

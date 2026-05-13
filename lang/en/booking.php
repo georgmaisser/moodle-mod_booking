@@ -310,6 +310,38 @@ $string['agent_booking_diagnose_reason_missing_email_waitinglist_other'] =
     'The selected user is on the waiting list, which may trigger different notifications than a confirmed booking.';
 $string['agent_booking_diagnose_reason_none'] =
     'No specific blocking reason could be derived from the current booking state.';
+$string['agent_booking_diagnose_reason_not_enrolled'] =
+    'You are not enrolled in the course that contains this booking activity.';
+$string['agent_booking_diagnose_reason_not_enrolled_other'] =
+    'The selected user is not enrolled in the course that contains this booking activity.';
+$string['agent_booking_diagnose_reason_not_enrolled_concrete'] =
+    'Concrete state: User (id={$a}) is not enrolled in the course. Admin action: Enrol the user in the course first — only enrolled users can book.';
+$string['agent_booking_diagnose_reason_option_invisible'] =
+    'This booking option is set to invisible and is not visible to regular users.';
+$string['agent_booking_diagnose_reason_option_invisible_other'] =
+    'The selected booking option is set to invisible and is not visible to regular users.';
+$string['agent_booking_diagnose_reason_option_invisible_concrete'] =
+    'Concrete setting: booking_options.invisible = 1. Admin action: Change the option visibility to "visible" in the booking option settings.';
+$string['agent_booking_diagnose_reason_option_hidden_from_list'] =
+    'This booking option is hidden from the booking list (invisible = 2), but is still accessible via a direct link.';
+$string['agent_booking_diagnose_reason_option_hidden_from_list_concrete'] =
+    'Concrete setting: booking_options.invisible = 2. The option can still be booked via direct link — this does not block booking itself.';
+$string['agent_booking_diagnose_reason_instance_disablebooking'] =
+    'Booking is currently disabled for this entire booking instance.';
+$string['agent_booking_diagnose_reason_instance_disablebooking_concrete'] =
+    'Concrete setting: booking.json.disablebooking = 1. Admin action: In the booking instance settings, uncheck "Disable booking for this instance".';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded'] =
+    'The maximum number of bookings per user has been reached ({$a} bookings allowed).';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded_other'] =
+    'The selected user has reached the maximum number of bookings per user ({$a} bookings allowed).';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded_concrete'] =
+    'Concrete setting: booking.maxperuser = {$a->max}. Current active bookings for this user in this instance: {$a->current}. Admin action: Cancel one of the existing bookings or increase maxperuser in the booking instance settings.';
+$string['agent_booking_diagnose_reason_banned_username'] =
+    'Your username is on the blocked username list for this booking instance.';
+$string['agent_booking_diagnose_reason_banned_username_other'] =
+    "The selected user's username is on the blocked username list for this booking instance.";
+$string['agent_booking_diagnose_reason_banned_username_concrete'] =
+    'Concrete setting: booking.banusernames contains this username. Admin action: Remove the username from the "Banned usernames" field in the booking instance settings.';
 $string['agent_booking_diagnose_reason_status_booked'] =
     'You already have a confirmed booking for this option.';
 $string['agent_booking_diagnose_reason_status_booked_other'] =
