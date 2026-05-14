@@ -285,9 +285,9 @@ class interpreter implements agent_interpreter {
      * Normalize command payload shapes to a canonical list of command objects.
      *
      * Accepts:
-    * - Commands as list: [{task,version,input}, ...]
-    * - Commands as single object: {task,version,input}
-    * - Top-level task/version/input fields when commands is missing
+     * - Commands as list: [{task,version,input}, ...]
+     * - Commands as single object: {task,version,input}
+     * - Top-level task/version/input fields when commands is missing
      *
      * @param array $parsed
      * @param string $lastusermessage
