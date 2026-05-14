@@ -35,6 +35,7 @@ use core_ai\aiactions\generate_text;
 use core_ai\aiactions\responses\response_base;
 use core_ai\aiactions\responses\response_generate_text;
 use core_ai\aiactions\summarise_text;
+use mod_booking\external\ai_confirm_run;
 use mod_booking\external\ai_send_message;
 
 /**
@@ -245,6 +246,24 @@ final class ai_send_message_mock_llm_test extends abstract_agent_testcase {
         $this->assertNotEmpty((string)($entry->requesttext ?? ''));
         $this->assertStringContainsString('ac=', (string)($entry->source ?? ''));
         $this->assertStringContainsString('confirmation_request', (string)($entry->responsetext ?? ''));
+
+        set_config('aiexecutionmode', 'direct', 'booking');
+        $_POST['sesskey'] = sesskey();
+        $confirm = ai_confirm_run::execute(
+            (int)$this->booking->cmid,
+            (int)$response['threadid'],
+            (string)($response['commands'] ?? '[]')
+        );
+
+        $this->assertTrue((bool)($confirm['success'] ?? false), (string)($confirm['message'] ?? ''));
+        $this->assertGreaterThan(0, (int)($confirm['runid'] ?? 0));
+
+        $created = $DB->get_record('booking_options', [
+            'bookingid' => (int)$this->booking->id,
+            'text' => $title,
+        ]);
+        $this->assertNotFalse($created, 'Confirmed run must create the booking option.');
+        $this->assertSame(7, (int)$created->maxanswers);
     }
 
     /**

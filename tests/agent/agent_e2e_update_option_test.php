@@ -74,6 +74,26 @@ final class agent_e2e_update_option_test extends abstract_agent_testcase {
     }
 
     /**
+     * Legacy visible alias must map to invisible=0 so "make visible" actually shows the option.
+     */
+    public function test_update_visible_alias_sets_option_visible(): void {
+        $option = $this->create_option('Visibility Target');
+
+        $hidden = $this->get_option_from_db((int)$option->id);
+        $this->assertEquals(MOD_BOOKING_OPTION_INVISIBLE, (int)$hidden->invisible);
+
+        $result = $this->exec_command('booking.update_option', [
+            'optionid' => $option->id,
+            'visible' => 1,
+        ]);
+
+        $this->assertEquals('executed', $result['status'], $result['detail'] ?? '');
+
+        $updated = $this->get_option_from_db((int)$option->id);
+        $this->assertEquals(MOD_BOOKING_OPTION_VISIBLE, (int)$updated->invisible);
+    }
+
+    /**
      * Update both maxanswers and maxoverbooking in a single command.
      */
     public function test_update_seats_and_waitinglist_together(): void {

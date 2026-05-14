@@ -195,6 +195,19 @@ final class booking_task_provider_test extends booking_advanced_testcase {
     }
 
     /**
+     * Legacy visible alias should validate for update_option and map to visible state.
+     */
+    public function test_update_option_visible_alias_passes_validation(): void {
+        $result = $this->provider->validate('booking.update_option', [
+            'optionquery' => 'last option',
+            'visible' => 1,
+        ], (int)$this->booking->cmid);
+
+        $this->assertTrue($result['valid']);
+        $this->assertEmpty($result['errors']);
+    }
+
+    /**
      * Invalid visibility values should be rejected.
      */
     public function test_update_option_visibility_rejects_invalid_value(): void {
