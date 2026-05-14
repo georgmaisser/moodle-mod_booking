@@ -67,6 +67,7 @@ class agent_runtime {
         'confirmation_request',
         'confirm_pending',
         'clarification',
+        'sufficient',
         'error',
         'execution_result',
     ];
@@ -1536,6 +1537,16 @@ class agent_runtime {
 
         $outputlang = $this->resolve_output_language($threadid, $result);
         $this->store->set_thread_metadata_value($threadid, 'last_output_lang', $outputlang);
+
+        // Option A language detection: on the first (TCP) call the model may return the user's
+        // language. Persist it as a separate key so subsequent SR steps cannot overwrite it.
+        if ($plannersteptype === orchestrator::STEP_TYPE_TOOL_CALL_PARSE) {
+            $explicitlang = $this->normalize_iso_language((string)($result['user_lang'] ?? $result['lang'] ?? ''));
+            if ($explicitlang !== '') {
+                $this->store->set_thread_metadata_value($threadid, 'user_input_lang', $explicitlang);
+            }
+        }
+
         $result['used_triggers'] = $triggerregistry->normalize_used_triggers($result['used_triggers'] ?? []);
 
         // HARD CONTRACT GATE: Detect and recover from parse/schema errors before routing.
@@ -1565,28 +1576,38 @@ class agent_runtime {
             }
         }
 
-        // Contract safety-net: readonly task_call responses must carry lookup trigger.
+        // Server-authoritative derivation of core.is_lookup_request.
+        // The LLM value is intentionally ignored: the trigger is set/cleared purely
+        // based on whether all commands reference read-only tasks in the registry.
         if ((string)($result['response_type'] ?? '') === 'task_call') {
             $commands = (array)($result['commands'] ?? []);
-            if (!empty($commands)) {
-                $allreadonly = true;
-                foreach ($commands as $command) {
-                    if (!is_array($command)) {
-                        $allreadonly = false;
-                        break;
-                    }
-                    $taskname = trim((string)($command['task'] ?? ''));
-                    if ($taskname === '' || !$this->registry->is_read_only_task($taskname)) {
-                        $allreadonly = false;
-                        break;
-                    }
+            $allreadonly = !empty($commands);
+            foreach ($commands as $command) {
+                if (!is_array($command)) {
+                    $allreadonly = false;
+                    break;
                 }
-                if ($allreadonly && !$this->result_has_trigger($result, 'core.is_lookup_request')) {
-                    $usedtriggers = (array)($result['used_triggers'] ?? []);
-                    $usedtriggers[] = 'core.is_lookup_request';
-                    $result['used_triggers'] = $triggerregistry->normalize_used_triggers($usedtriggers);
+                $taskname = trim((string)($command['task'] ?? ''));
+                if ($taskname === '' || !$this->registry->is_read_only_task($taskname)) {
+                    $allreadonly = false;
+                    break;
                 }
             }
+            // Rebuild used_triggers: remove any LLM-provided is_lookup_request, then re-add if warranted.
+            $usedtriggers = array_values(array_filter(
+                (array)($result['used_triggers'] ?? []),
+                static fn(string $t): bool => $t !== 'core.is_lookup_request'
+            ));
+            if ($allreadonly) {
+                $usedtriggers[] = 'core.is_lookup_request';
+            }
+            $result['used_triggers'] = $triggerregistry->normalize_used_triggers($usedtriggers);
+        } else if (in_array((string)($result['response_type'] ?? ''), ['confirmation_request', 'sufficient'], true)) {
+            // Mutating or terminal responses must never carry the lookup trigger.
+            $result['used_triggers'] = array_values(array_filter(
+                (array)($result['used_triggers'] ?? []),
+                static fn(string $t): bool => $t !== 'core.is_lookup_request'
+            ));
         }
 
         // Signature-based guard: Block readonly task calls when exact signature
@@ -2160,11 +2181,18 @@ class agent_runtime {
         array $planningresult
     ): array {
         $observations = $state->get_observations();
-        // Only append language reminder when planner returned explicit language.
-        // Avoid forcing stale fallback language into synthesis when planner omits it.
+        // Derive language for synthesis:
+        // 1. SR/planning result explicit lang (current turn).
+        // 2. TCP-detected user language (Option A: stored on first call, survives SR steps).
+        // Avoid injecting the generic UI-lang fallback — prefer silence over wrong language.
         $plannerlang = $this->normalize_iso_language(
             (string)($planningresult['user_lang'] ?? $planningresult['lang'] ?? '')
         );
+        if ($plannerlang === '') {
+            $plannerlang = $this->normalize_iso_language(
+                (string)$this->store->get_thread_metadata_value($threadid, 'user_input_lang')
+            );
+        }
         if ($plannerlang !== '' && preg_match('/^[a-z]{2}$/', $plannerlang)) {
             $observations[] = "Language reminder: the user's language is \"{$plannerlang}\". "
                 . "Write the entire 'message' field in that language.";
@@ -2202,7 +2230,15 @@ class agent_runtime {
      * @return bool
      */
     private function is_sufficiency_exit_signal(array $result, agent_state $state): bool {
-        if ((string)($result['response_type'] ?? '') !== 'clarification') {
+        $rt = (string)($result['response_type'] ?? '');
+
+        // New explicit signal: SR/SYN returns response_type=sufficient.
+        if ($rt === 'sufficient') {
+            return empty((array)($result['commands'] ?? []));
+        }
+
+        // Legacy signal: clarification with magic sentinel message.
+        if ($rt !== 'clarification') {
             return false;
         }
 
@@ -2372,7 +2408,8 @@ class agent_runtime {
      * @return bool
      */
     private function is_final_clarification_without_commands(array $result): bool {
-        if ((string)($result['response_type'] ?? '') !== 'clarification') {
+        $rt = (string)($result['response_type'] ?? '');
+        if ($rt !== 'clarification' && $rt !== 'sufficient') {
             return false;
         }
 

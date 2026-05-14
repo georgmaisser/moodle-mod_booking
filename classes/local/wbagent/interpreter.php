@@ -47,7 +47,7 @@ use mod_booking\local\wbagent\interfaces\agent_interpreter;
  */
 class interpreter implements agent_interpreter {
     /** Allowed response_type values from the LLM. */
-    private const ALLOWED_RESPONSE_TYPES = ['clarification', 'confirmation_request', 'task_call', 'error', 'confirm_pending'];
+    private const ALLOWED_RESPONSE_TYPES = ['clarification', 'confirmation_request', 'task_call', 'error', 'confirm_pending', 'sufficient'];
 
     /** Canonical token representing the current executor user. */
     private const CURRENT_USER_TOKEN = '__current_user__';
@@ -133,6 +133,20 @@ class interpreter implements agent_interpreter {
             $lang = strtolower(substr($lang, 0, 2));
         }
         $usedtriggers = $this->extract_used_triggers($parsed);
+
+        // Passthrough for sufficient: SR/SYN signals that observations are complete.
+        if ($responsetype === 'sufficient') {
+            return $this->with_optional_next_step_intent([
+                'response_type' => 'sufficient',
+                'lang'          => $lang,
+                'message'       => $this->strip_command_prefix($this->safe_string($parsed['message'] ?? '')),
+                'used_triggers' => $usedtriggers,
+                'commands'      => [],
+                'ambiguities'   => [],
+                'ambiguity_options' => [],
+                'errors'        => [],
+            ], $nextstepintent);
+        }
 
         // Passthrough for clarification, error, and confirm_pending types.
         if ($responsetype === 'clarification') {

@@ -68,7 +68,6 @@ final class ai_send_message_mock_scenarios {
                         'prompt_contains' => ['Create booking option'],
                         'responses' => [[
                             'response_type' => 'confirmation_request',
-                            'lang' => 'en',
                             'message' => 'Please confirm creating this booking option.',
                             'commands' => [[
                                 'task' => 'booking.create_option',
@@ -100,7 +99,6 @@ final class ai_send_message_mock_scenarios {
                         'prompt_contains' => ['Explique-moi comment envoyer automatiquement des confirmations de reservation'],
                         'responses' => [[
                             'response_type' => 'confirmation_request',
-                            'lang' => 'fr',
                             'message' => 'Veuillez confirmer la création d’une règle de confirmation de réservation.',
                             'commands' => [[
                                 'task' => 'booking.create_rule_from_template',
@@ -152,8 +150,6 @@ final class ai_send_message_mock_scenarios {
                         'responses' => [
                             [
                                 'response_type' => 'task_call',
-                                'lang' => 'de',
-                                'message' => 'Ich diagnostiziere, warum Nutzer A bei Buchungsoption B nicht buchen kann.',
                                 'commands' => [[
                                     'task' => 'booking.diagnose_booking_issue',
                                     'version' => 1,
@@ -166,15 +162,18 @@ final class ai_send_message_mock_scenarios {
                                 ]],
                             ],
                             [
-                                'response_type' => 'clarification',
-                                'lang' => 'de',
-                                'message' => 'Ich habe die Buchungsdiagnose ausgeführt und die Gründe zusammengefasst.',
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                                'message' => 'Nutzer A kann die Option nicht buchen, da alle Plätze belegt sind.',
+                                'user_lang' => 'de',
                             ],
                         ],
                     ]],
                     'option' => $option,
                     'blockeduser' => $blockeduser,
-                    'expected_response_type' => 'clarification',
+                    'expected_response_type' => 'sufficient',
                     'expected_tasks' => ['booking.diagnose_booking_issue'],
                     'min_debug_rows' => 2,
                     'expected_loop_depth' => 2,
@@ -194,8 +193,6 @@ final class ai_send_message_mock_scenarios {
                         'responses' => [
                             [
                                 'response_type' => 'task_call',
-                                'lang' => 'de',
-                                'message' => 'Ich liste alle Buchungsoptionen auf.',
                                 'commands' => [[
                                     'task' => 'booking.search_options',
                                     'version' => 1,
@@ -205,15 +202,18 @@ final class ai_send_message_mock_scenarios {
                                 ]],
                             ],
                             [
-                                'response_type' => 'clarification',
-                                'lang' => 'de',
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
                                 'message' => 'Hier ist die Liste aller verfügbaren Buchungsoptionen.',
+                                'user_lang' => 'de',
                             ],
                         ],
                     ]],
                     'option1' => $option1,
                     'option2' => $option2,
-                    'expected_response_type' => 'clarification',
+                    'expected_response_type' => 'sufficient',
                     'expected_tasks' => ['booking.search_options'],
                     'min_debug_rows' => 2,
                     'expected_loop_depth' => 2,
@@ -233,8 +233,6 @@ final class ai_send_message_mock_scenarios {
                         'responses' => [
                             [
                                 'response_type' => 'task_call',
-                                'lang' => 'en',
-                                'message' => 'Searching for matching booking options.',
                                 'commands' => [[
                                     'task' => 'booking.search_options',
                                     'version' => 1,
@@ -244,16 +242,19 @@ final class ai_send_message_mock_scenarios {
                                 ]],
                             ],
                             [
-                                'response_type' => 'clarification',
-                                'lang' => 'en',
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
                                 'message' => 'I found matching options and prepared the result summary.',
+                                'user_lang' => 'en',
                             ],
                         ],
                     ]],
                     'prefix' => $prefix,
                     'option1' => $option1,
                     'option2' => $option2,
-                    'expected_response_type' => 'clarification',
+                    'expected_response_type' => 'sufficient',
                     'expected_tasks' => ['booking.search_options'],
                     'min_debug_rows' => 2,
                     'expected_loop_depth' => 2,

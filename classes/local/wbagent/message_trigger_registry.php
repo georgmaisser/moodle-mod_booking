@@ -43,6 +43,7 @@ class message_trigger_registry {
         'confirmation_request',
         'confirm_pending',
         'clarification',
+        'sufficient',
         'error',
         'execution_result',
     ];
