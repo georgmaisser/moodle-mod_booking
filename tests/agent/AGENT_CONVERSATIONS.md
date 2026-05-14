@@ -29,7 +29,6 @@ Real-LLM tests are skipped by default.
 Enable them with:
 
 ```bash
-export BOOKING_AI_REAL_LLM=1
 export BOOKING_TEST_AI_KEY=sk-...
 export BOOKING_TEST_AI_MODEL=gpt-4o
 export BOOKING_TEST_AI_ENDPOINT=https://api.openai.com/v1/chat/completions
@@ -38,15 +37,14 @@ export BOOKING_TEST_AI_ENDPOINT=https://api.openai.com/v1/chat/completions
 Run a single task file:
 
 ```bash
-BOOKING_AI_REAL_LLM=1 \
-  vendor/bin/phpunit public/mod/booking/tests/agent/create_option_real_llm_test.php
+./vendor/bin/phpunit -c phpunit.xml \
+  public/mod/booking/tests/agent/real_llm/create_option_real_llm_test.php
 ```
 
 Run all per-task files:
 
 ```bash
-BOOKING_AI_REAL_LLM=1 \
-  vendor/bin/phpunit public/mod/booking/tests/agent/ \
+./vendor/bin/phpunit -c phpunit.xml public/mod/booking/tests/agent/real_llm/ \
   --filter real_llm
 ```
 
@@ -55,7 +53,7 @@ BOOKING_AI_REAL_LLM=1 \
 ## Conversation Index
 
 ### Task: `booking.create_option`
-**File:** `create_option_real_llm_test.php`
+**File:** `real_llm/create_option_real_llm_test.php`
 
 | ID | Type | User Says | Agent Does | Verified |
 |----|------|-----------|-----------|---------|
@@ -66,7 +64,7 @@ BOOKING_AI_REAL_LLM=1 \
 ---
 
 ### Task: `booking.update_option`
-**File:** `update_option_real_llm_test.php`
+**File:** `real_llm/update_option_real_llm_test.php`
 
 | ID | Type | User Says | Agent Does | Verified |
 |----|------|-----------|-----------|---------|
@@ -78,7 +76,7 @@ BOOKING_AI_REAL_LLM=1 \
 ---
 
 ### Task: `booking.book_users`
-**File:** `book_users_real_llm_test.php`
+**File:** `real_llm/book_users_real_llm_test.php`
 
 | ID | Type | User Says | Agent Does | Verified |
 |----|------|-----------|-----------|---------|
@@ -88,7 +86,7 @@ BOOKING_AI_REAL_LLM=1 \
 ---
 
 ### Task: `booking.diagnose_booking_issue`
-**File:** `diagnose_booking_issue_real_llm_test.php`
+**File:** `real_llm/diagnose_booking_issue_real_llm_test.php`
 
 | ID | Type | User Says | Agent Does | Verified |
 |----|------|-----------|-----------|---------|
@@ -98,7 +96,7 @@ BOOKING_AI_REAL_LLM=1 \
 ---
 
 ### Task: `booking.diagnose_cancellation_issue`
-**File:** `diagnose_cancellation_issue_real_llm_test.php`
+**File:** `real_llm/diagnose_cancellation_issue_real_llm_test.php`
 
 | ID | Type | User Says | Agent Does | Verified |
 |----|------|-----------|-----------|---------|
@@ -108,7 +106,7 @@ BOOKING_AI_REAL_LLM=1 \
 ---
 
 ### Task: `booking.bulk_update_options`
-**File:** `bulk_update_options_real_llm_test.php`
+**File:** `real_llm/bulk_update_options_real_llm_test.php`
 
 | ID | Type | User Says | Agent Does | Verified |
 |----|------|-----------|-----------|---------|
@@ -118,18 +116,18 @@ BOOKING_AI_REAL_LLM=1 \
 ---
 
 ### Task: `booking.search_options`
-**File:** `search_options_real_llm_test.php`
+**File:** `real_llm/search_options_real_llm_test.php`
 
 | ID | Type | User Says | Agent Does | Verified |
 |----|------|-----------|-----------|---------|
-| CONV-13 | Happy path (auto-execute) | "Show me all Search Test Kurs options" | auto-execute (read-only → no confirmation) → `execution_result` | Response contains both options |
-| CONV-14 | Multi-turn follow-up | Turn 1: search for "Search Multi Kurs"<br>Turn 2: "Which of those have more than 5 free spots?" | Turn 1: `execution_result`<br>Turn 2: non-empty response referencing free spots | Turn 2 message is non-empty |
+| CONV-13 | Happy path (auto-execute) | "Show me all Search Test Kurs options" | auto-execute (read-only) → `clarification` with `results` | Response/results contain both options |
+| CONV-14 | Multi-turn follow-up | Turn 1: search for "Search Multi Kurs"<br>Turn 2: "Which of those have more than 5 free spots?" | Turn 1: `clarification` with `results`<br>Turn 2: contextual follow-up response | Turn 2 message is non-empty |
 
 ---
 
 ## HTTP API Smoke Tests
 
-These tests live in **`agent_real_llm_test.php`** and test a **different layer** from the
+These tests live in **`real_llm/agent_real_llm_test.php`** and test a **different layer** from the
 AgentRuntime tests above. They call the Moodle webservice endpoints directly
 (`ai_send_message`, `ai_confirm_run`, `ai_poll_run_status`) and verify that the HTTP layer
 routes, serialises, and responds correctly.
@@ -182,7 +180,7 @@ every CI pass without any environment variables:
 ## Adding a New Conversation
 
 1. Pick the next free CONV-ID from this file.
-2. Create (or open) the per-task file: `{taskname}_real_llm_test.php`.
+2. Create (or open) the per-task file in `real_llm/`: `{taskname}_real_llm_test.php`.
 3. Add the PHP test method following the boilerplate in any existing per-task file.
 4. Update the table above (both the task section and the summary).
-5. Run the new test with `BOOKING_AI_REAL_LLM=1 vendor/bin/phpunit {file}` to verify it works.
+5. Run the new test with `BOOKING_TEST_AI_KEY/BOOKING_TEST_AI_MODEL/BOOKING_TEST_AI_ENDPOINT` and `./vendor/bin/phpunit -c phpunit.xml {file}`.

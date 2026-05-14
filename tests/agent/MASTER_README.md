@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-**Status**: ✅ **Fully Implemented** | **45 Tests** | **293 Assertions** | **All Passing**
+**Status**: Active and maintained. Use folder-based runs below for the current ground truth.
 
 This document provides a complete overview of the three-wave test architecture for `mod_booking`'s AI agent (`wbagent`) subsystem. The test suite validates:
 - Architecture contracts and interface stability
@@ -76,19 +76,19 @@ This gives a clear structural counterpart to `real_llm/`: same scenario family, 
 **File**: `agent_e2e_scenarios_test.php`
 **Pattern**: Direct executor calls with full DB assertion chains
 
-### Wave 3: Real LLM Integration (3 tests, skipped by default)
+### Wave 3: Real LLM Integration (folder-based)
 
-**Purpose**: Full pipeline orchestrator→LLM→interpreter→executor with actual option creation
+**Purpose**: Full pipeline orchestrator→LLM→interpreter→executor with real provider responses.
 
-**Activation**: `BOOKING_AI_REAL_LLM=1`
+**Activation**: `BOOKING_TEST_AI_KEY` + `BOOKING_TEST_AI_MODEL` + `BOOKING_TEST_AI_ENDPOINT`
 
-| Test | Scenario |
-|------|----------|
-| `test_create_option_via_real_llm` | Natural language → LLM → create_option → DB |
-| `test_search_options_via_llm` | Search intent → LLM extraction → filtered results |
-| `test_create_then_update_workflow_via_llm` | Multi-step workflow with state tracking |
+**Folder**: `real_llm/`
 
-**File**: `agent_wave3_real_llm_test.php`
+**Coverage examples**:
+- create/update/search conversations
+- booking/bulk update conversations
+- diagnose issue/cancellation conversations
+- multi-step loop conversations
 
 **Key Features**:
 - Graceful skip when LLM API unavailable (no test failure)
@@ -97,33 +97,28 @@ This gives a clear structural counterpart to `real_llm/`: same scenario family, 
 
 ## Running Tests
 
-### All Tests (Default - 42 Active, 3 Skipped)
+### All Tests (Repository Root)
 ```bash
 cd /var/www/moodle
-phpunit -c phpunit.xml \
+./vendor/bin/phpunit -c phpunit.xml \
   public/mod/booking/tests/agent/permanent/contracts/*.php \
   public/mod/booking/tests/agent/permanent/llm_sim/*.php \
   public/mod/booking/tests/agent/permanent/tasks/*.php \
   public/mod/booking/tests/agent/agent_task_execution_test.php \
   public/mod/booking/tests/agent/agent_privacy_mode_test.php \
   public/mod/booking/tests/agent/agent_e2e_scenarios_test.php \
-  public/mod/booking/tests/agent/agent_wave3_real_llm_test.php
+  public/mod/booking/tests/agent/real_llm/ \
+  public/mod/booking/tests/agent/simulated_llm/
 ```
-
-**Expected Output**:
-- Tests: 45
-- Assertions: 293
-- Skipped: 3
-- Exit Code: 0
 
 ### Wave 1 Only (Architecture Baseline)
 ```bash
-phpunit -c phpunit.xml public/mod/booking/tests/agent/permanent/
+./vendor/bin/phpunit -c phpunit.xml public/mod/booking/tests/agent/permanent/
 ```
 
 ### Wave 2 Only (Pragmatic Execution)
 ```bash
-phpunit -c phpunit.xml \
+./vendor/bin/phpunit -c phpunit.xml \
   public/mod/booking/tests/agent/agent_task_execution_test.php \
   public/mod/booking/tests/agent/agent_privacy_mode_test.php \
   public/mod/booking/tests/agent/agent_e2e_scenarios_test.php
@@ -131,8 +126,11 @@ phpunit -c phpunit.xml \
 
 ### Wave 3 Only (Real LLM - Opt-in)
 ```bash
-BOOKING_AI_REAL_LLM=1 phpunit -c phpunit.xml \
-  public/mod/booking/tests/agent/agent_wave3_real_llm_test.php
+BOOKING_TEST_AI_KEY=... \
+BOOKING_TEST_AI_MODEL=... \
+BOOKING_TEST_AI_ENDPOINT=... \
+./vendor/bin/phpunit -c phpunit.xml \
+  public/mod/booking/tests/agent/real_llm/
 ```
 
 ### Conversation Suite Only (Real LLM, Opt-in)
@@ -140,12 +138,12 @@ BOOKING_AI_REAL_LLM=1 phpunit -c phpunit.xml \
 BOOKING_TEST_AI_KEY=... \
 BOOKING_TEST_AI_MODEL=... \
 BOOKING_TEST_AI_ENDPOINT=... \
-phpunit -c phpunit.xml public/mod/booking/tests/agent/real_llm/
+./vendor/bin/phpunit -c phpunit.xml public/mod/booking/tests/agent/real_llm/
 ```
 
 ### Conversation Suite Only (Simulated LLM, Deterministic)
 ```bash
-phpunit -c phpunit.xml public/mod/booking/tests/agent/simulated_llm/
+./vendor/bin/phpunit -c phpunit.xml public/mod/booking/tests/agent/simulated_llm/
 ```
 
 ## Parameter Verification Pattern (Used Across All Waves)
@@ -273,19 +271,21 @@ $this->gen->create_table_for_one_option($optionid)
 - name: Run Booking Agent Tests
   run: |
     cd /var/www/moodle
-    phpunit -c phpunit.xml \
+    ./vendor/bin/phpunit -c phpunit.xml \
       public/mod/booking/tests/agent/permanent/contracts/*.php \
       public/mod/booking/tests/agent/permanent/llm_sim/*.php \
       public/mod/booking/tests/agent/permanent/tasks/*.php \
-      public/mod/booking/tests/agent/agent_*.php
+      public/mod/booking/tests/agent/agent_*.php \
+      public/mod/booking/tests/agent/simulated_llm/*.php
   env:
-    BOOKING_AI_REAL_LLM: 0  # Disable real LLM in CI
+    BOOKING_TEST_AI_KEY: ''
+    BOOKING_TEST_AI_MODEL: ''
+    BOOKING_TEST_AI_ENDPOINT: ''
 ```
 
 ### Success Criteria
-- 42 tests pass (Wave 1-2)
-- 3 tests skipped (Wave 3, LLM disabled)
-- 293 assertions pass
+- Local run exits 0 for deterministic suites (`permanent/`, Wave 2 files, `simulated_llm/`)
+- Real LLM suite is opt-in and only executed when `BOOKING_TEST_AI_*` variables are set
 - Exit code 0
 
 ## Debugging Failed Tests
@@ -311,11 +311,11 @@ File: agent_e2e_scenarios_test.php:81
 ```
 
 **Investigation**:
-1. Is `BOOKING_AI_REAL_LLM=1` set?
+1. Are `BOOKING_TEST_AI_KEY`, `BOOKING_TEST_AI_MODEL`, `BOOKING_TEST_AI_ENDPOINT` set?
 2. Is LLM API accessible? Check `core_ai` admin settings
 3. Check network connectivity to LLM provider
 
-**Solution**: Set ENV variable and ensure LLM API access
+**Solution**: Set `BOOKING_TEST_AI_KEY`, `BOOKING_TEST_AI_MODEL`, `BOOKING_TEST_AI_ENDPOINT` and ensure LLM API access
 
 ## File Structure
 
@@ -323,7 +323,7 @@ File: agent_e2e_scenarios_test.php:81
 /var/www/moodle/public/mod/booking/tests/agent/
 ├── abstract_agent_testcase.php          # Base test class
 ├── MASTER_README.md                     # This file
-├── WAVE_2_README.md                     # Wave 2 details
+├── AGENT_CONVERSATIONS.md               # Conversation matrix and mapping
 ├── WAVE_3_README.md                     # Wave 3 details
 ├── real_llm/                            # Conversation tests with live provider (opt-in)
 ├── simulated_llm/                       # Conversation tests with scripted LLM responses
@@ -331,9 +331,9 @@ File: agent_e2e_scenarios_test.php:81
 ├── agent_task_execution_test.php        # Wave 2A (7 tests)
 ├── agent_privacy_mode_test.php          # Wave 2B (5 tests)
 ├── agent_e2e_scenarios_test.php         # Wave 2C (5 tests)
-├── agent_wave3_real_llm_test.php        # Wave 3 (3 tests)
 │
 └── permanent/
+  ├── WAVE_2_README.md                 # Wave 2 details
     ├── contracts/
     │   ├── agent_architecture_contract_test.php  # Wave 1A (5 tests)
     │   └── agent_inventory_contract_test.php     # Wave 1B (3 tests)
@@ -347,18 +347,14 @@ File: agent_e2e_scenarios_test.php:81
 
 ## Performance Metrics
 
-| Suite | Tests | Assertions | Time | Memory |
-|-------|-------|-----------|------|--------|
-| Wave 1 | 25 | 225 | ~10s | ~90MB |
-| Wave 2 | 17 | 68 | ~7s | ~100MB |
-| Wave 3 (skipped) | 3 | 0 | <1s | ~95MB |
-| **Total** | **45** | **293** | **~17s** | **~117MB** |
+Execution time and memory depend on the current test selection and environment.
+Use the folder-based commands above as the source of truth and capture metrics from your latest CI run.
 
 ## Quality Gates
 
 ✅ **Automated Checks**:
-- All 42 active tests pass
-- Wave 3 tests skip gracefully (no failures)
+- Deterministic suites pass (`permanent/`, Wave 2 files, `simulated_llm/`)
+- Real-LLM suites are opt-in and isolated in `real_llm/`
 - Code coverage: Executor, interpreter, privacy_anonymizer paths covered
 - PHPUnit 11.5.46 compatible
 - No fatal errors or exceptions
@@ -371,10 +367,9 @@ File: agent_e2e_scenarios_test.php:81
 
 ## Recent Updates
 
-- **2025-04-19**: Wave 3 Real LLM Integration tests added (3 tests, all skipped by default, ready for LLM environment)
-- **2025-04-19**: Wave 2 E2E Scenarios refined with create_payload helper (5 tests passing)
-- **2025-04-19**: Wave 1 permanent suite established (25 tests, 225 assertions)
-- **2025-04-19**: Documentation complete (MASTER_README.md, WAVE_2_README.md, WAVE_3_README.md)
+- **2026-05-14**: Added `simulated_llm/` as deterministic counterpart to `real_llm/`.
+- **2026-05-14**: Removed stale file/path references and legacy env flag usage.
+- **2026-05-14**: Updated run commands to folder-based execution and `./vendor/bin/phpunit`.
 
 ## Links & References
 
@@ -387,14 +382,14 @@ File: agent_e2e_scenarios_test.php:81
 ## Contact & Support
 
 For test failures or enhancements, consult:
-1. **Specific Wave README** (WAVE_1/2/3_README.md)
+1. **Specific README** (`MASTER_README.md`, `WAVE_3_README.md`, `permanent/WAVE_2_README.md`)
 2. **Test file comments** (each test includes detailed assertions)
 3. **abstract_agent_testcase.php** (test helpers documentation)
 4. **Privacy anonymizer logic** (see privacy_anonymizer.php comments)
 
 ---
 
-**Total Test Coverage**: 45 tests | 293 assertions | All passing ✅
-**Last Updated**: 2025-04-19
+**Total Test Coverage**: Use the current CI job output for exact counts.
+**Last Updated**: 2026-05-14
 **Moodle Version**: 5.1.1+
 **PHPUnit**: 11.5.46+
