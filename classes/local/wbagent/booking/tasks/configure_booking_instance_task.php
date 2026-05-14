@@ -594,10 +594,10 @@ class configure_booking_instance_task extends booking_task_base {
      *
      * @param string $taskname
      * @param array  $input
-     * @param array  $facts
+     * @param array  $extra
      * @return string
      */
-    private function build_task_debug_message(string $taskname, array $input, array $facts): string {
-        return $taskname . ' | ' . implode(', ', $facts);
+    protected function build_task_debug_message(string $taskname, array $input, array $extra = []): string {
+        return $taskname . ' | ' . implode(', ', $extra);
     }
 }

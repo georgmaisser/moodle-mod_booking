@@ -558,7 +558,12 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
             return '';
         }
 
-        $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], 'id,username,firstname,lastname,email', IGNORE_MISSING);
+        $user = $DB->get_record(
+            'user',
+            ['id' => $userid, 'deleted' => 0],
+            'id,username,firstname,lastname,email,firstnamephonetic,lastnamephonetic,middlename,alternatename',
+            IGNORE_MISSING
+        );
         if (!$user) {
             return '';
         }
