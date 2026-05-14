@@ -45,6 +45,7 @@ final class interpreter_realistic_llm_matrix_test extends booking_advanced_testc
         parent::setUp();
         $this->resetAfterTest();
         $this->setAdminUser();
+        $this->preventResetByRollback();
 
         $course = $this->getDataGenerator()->create_course();
         $booking = $this->getDataGenerator()->create_module('booking', [

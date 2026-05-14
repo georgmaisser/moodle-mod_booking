@@ -25,6 +25,11 @@ In addition to the wave grouping, conversation-style agent tests are now organiz
   - Runs without network and without a configured LLM provider.
   - Executes commands against the real executor + test DB for stable integration coverage.
 
+- `webservice_mock_llm/`
+  - Uses `ai_send_message` as the entry point and injects a scripted `core_ai\manager`.
+  - Keeps the runtime, loop, executor, persistence, and `booking_ai_llm_debug` logging real.
+  - Covers the whole agent stack without a live provider.
+
 This gives a clear structural counterpart to `real_llm/`: same scenario family, but deterministic execution.
 
 ## Test Wave Breakdown
@@ -144,6 +149,11 @@ BOOKING_TEST_AI_ENDPOINT=... \
 ### Conversation Suite Only (Simulated LLM, Deterministic)
 ```bash
 ./vendor/bin/phpunit -c phpunit.xml public/mod/booking/tests/agent/simulated_llm/
+```
+
+### Conversation Suite Only (Webservice Mock LLM)
+```bash
+./vendor/bin/phpunit -c phpunit.xml public/mod/booking/tests/agent/webservice_mock_llm/
 ```
 
 ## Parameter Verification Pattern (Used Across All Waves)
