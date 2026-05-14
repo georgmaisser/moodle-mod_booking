@@ -12,6 +12,21 @@ This document provides a complete overview of the three-wave test architecture f
 - End-to-end executor workflows
 - Real LLM integration (Wave 3, opt-in)
 
+## Conversation Test Folders (Real vs Simulated)
+
+In addition to the wave grouping, conversation-style agent tests are now organized in two parallel folders:
+
+- `real_llm/`
+  - Uses a real provider via `BOOKING_TEST_AI_KEY`, `BOOKING_TEST_AI_MODEL`, `BOOKING_TEST_AI_ENDPOINT`.
+  - Validates real provider behavior and end-to-end orchestration with live LLM output.
+
+- `simulated_llm/`
+  - Uses deterministic scripted orchestrator responses (`task_call`, `confirmation_request`, `clarification`).
+  - Runs without network and without a configured LLM provider.
+  - Executes commands against the real executor + test DB for stable integration coverage.
+
+This gives a clear structural counterpart to `real_llm/`: same scenario family, but deterministic execution.
+
 ## Test Wave Breakdown
 
 ### Wave 1: Permanent Architecture Contracts (25 tests, 225 assertions)
@@ -118,6 +133,19 @@ phpunit -c phpunit.xml \
 ```bash
 BOOKING_AI_REAL_LLM=1 phpunit -c phpunit.xml \
   public/mod/booking/tests/agent/agent_wave3_real_llm_test.php
+```
+
+### Conversation Suite Only (Real LLM, Opt-in)
+```bash
+BOOKING_TEST_AI_KEY=... \
+BOOKING_TEST_AI_MODEL=... \
+BOOKING_TEST_AI_ENDPOINT=... \
+phpunit -c phpunit.xml public/mod/booking/tests/agent/real_llm/
+```
+
+### Conversation Suite Only (Simulated LLM, Deterministic)
+```bash
+phpunit -c phpunit.xml public/mod/booking/tests/agent/simulated_llm/
 ```
 
 ## Parameter Verification Pattern (Used Across All Waves)
@@ -297,6 +325,8 @@ File: agent_e2e_scenarios_test.php:81
 ├── MASTER_README.md                     # This file
 ├── WAVE_2_README.md                     # Wave 2 details
 ├── WAVE_3_README.md                     # Wave 3 details
+├── real_llm/                            # Conversation tests with live provider (opt-in)
+├── simulated_llm/                       # Conversation tests with scripted LLM responses
 │
 ├── agent_task_execution_test.php        # Wave 2A (7 tests)
 ├── agent_privacy_mode_test.php          # Wave 2B (5 tests)
