@@ -23,7 +23,6 @@
  * - TRIGGER POLICY
  * - STEP INTENT POLICY
  * - DOCS ANSWER POLICY
- * - FOLLOW-UP STATE POLICY
  *
  * @package    mod_booking
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
@@ -47,14 +46,12 @@ class prompt_policy_builder {
      *
      * @param string $triggerjson    JSON string of available triggers.
      * @param string $steptype       Orchestrator step type (from orchestrator.php constants).
-     * @param array  $assistantstateblocks Optional assistant state blocks for FINAL_REASONING.
      * @return string
      */
     public static function build_all_policies(
         string $triggerjson,
         string $steptype = 'tool_call_parse',
-        bool $hasobservations = false,
-        array $assistantstateblocks = []
+        bool $hasobservations = false
     ): string {
         $policies = [];
         $normalizedsteptype = trim(\core_text::strtolower($steptype));
@@ -75,7 +72,7 @@ class prompt_policy_builder {
 
         // 4. STEP INTENT POLICY (skip for final synthesis — synthesis does not step).
         if ($normalizedsteptype !== 'final_synthesis') {
-            $policies[] = self::build_step_intent_policy();
+            $policies[] = self::build_step_intent_policy($normalizedsteptype);
         }
 
         // 5. DOCS ANSWER POLICY (only for reasoning steps with observations, not final synthesis).
@@ -92,13 +89,8 @@ class prompt_policy_builder {
                 $policies[] = self::build_sufficiency_policy($normalizedsteptype, $hasobservations);
             }
         } else {
-            // simple_retrieval, final_reasoning, final_synthesis all get sufficiency guidance.
+            // Simple_retrieval, final_reasoning, final_synthesis all get sufficiency guidance.
             $policies[] = self::build_sufficiency_policy($normalizedsteptype, $hasobservations);
-        }
-
-        // 7. FOLLOW-UP STATE POLICY (only for FINAL_REASONING).
-        if ($steptype === 'final_reasoning' && !empty($assistantstateblocks)) {
-            $policies[] = self::build_follow_up_state_policy();
         }
 
         return "\n\n" . implode("\n\n", $policies);
@@ -114,8 +106,10 @@ class prompt_policy_builder {
             return "NON-OPTIONAL RESPONSE CONTRACT POLICY:\n"
                 . "- Return valid JSON only (no markdown).\n"
                 . "- Always include top-level keys: response_type, message, used_triggers, next_step_intent, lang, user_lang.\n"
-                . "- message MUST be a non-empty user-facing sentence (never an empty string) EXCEPT for response_type=sufficient (omit message or leave empty).\n"
-                . "- Allowed response_type values: task_call, confirmation_request, confirm_pending, clarification, sufficient, error.\n"
+                . "- message MUST be a non-empty user-facing sentence (never an empty string) "
+                . "EXCEPT for response_type=sufficient (omit message or leave empty).\n"
+                . "- Allowed response_type values: task_call, confirmation_request, "
+                . "confirm_pending, clarification, sufficient, error.\n"
                 . "- For task_call or confirmation_request, commands MUST be a non-empty array.\n"
                 . "- For clarification, confirm_pending, sufficient, or error, commands MUST be [].\n"
                 . "- Keep JSON field types stable (arrays as arrays, numbers as numbers, strings as strings).";
@@ -125,8 +119,10 @@ class prompt_policy_builder {
             . "- Return valid JSON only (no markdown code fences).\n"
             . "- Every response MUST include a top-level field 'response_type'.\n"
             . "- For response_type=task_call, OMIT the top-level 'message' field entirely.\n"
-            . "- For response_type=confirmation_request, clarification, confirm_pending, or error, include a top-level string field 'message'.\n"
-            . "- For response_type=confirmation_request, clarification, confirm_pending, or error, the 'message' field MUST NOT be empty.\n"
+            . "- For response_type=confirmation_request, clarification, confirm_pending, or error, "
+            . "include a top-level string field 'message'.\n"
+            . "- For response_type=confirmation_request, clarification, confirm_pending, or error, "
+            . "the 'message' field MUST NOT be empty.\n"
             . "- Allowed response_type values: task_call, confirmation_request, confirm_pending, clarification, error.\n"
             . "- Every response MUST include: commands, used_triggers.\n"
             . "- For response_type=task_call or confirmation_request, include a non-empty commands array.\n"
@@ -171,27 +167,14 @@ class prompt_policy_builder {
             . "- Evaluate the latest user message against AVAILABLE MESSAGE TRIGGERS below.\n"
             . "- Return a JSON array field 'used_triggers' with trigger ids that apply to the latest user message.\n"
             . "- Do NOT invent trigger ids. Use only ids from the catalog.\n"
-            . "- If none apply, return an empty array for 'used_triggers'.\n"
-            . "\n** CRITICAL EXCLUSION **\n"
-            . "- NEVER include 'core.is_lookup_request' in your response, even if the user asks to list/search/lookup options.\n"
-            . "- core.is_lookup_request is EXCLUSIVELY managed server-side based on task readonly properties.\n"
-            . "- EXAMPLES of WHAT NOT TO DO:\n"
-            . "  * User asks \"list all options\" → WRONG: used_triggers=[\"core.is_lookup_request\"]\n"
-            . "  * User asks \"show me options\" → WRONG: used_triggers=[\"core.is_lookup_request\"]\n"
-            . "  * Task is booking.search_options → WRONG: include is_lookup_request\n"
-            . "- CORRECT BEHAVIOR: Omit is_lookup_request entirely. Server will add it based on task properties.\n"
-            . "\n** OTHER TRIGGERS **\n"
-            . "- For all OTHER triggers (e.g., is_confirmation_message, is_preview_request), detect and include them normally.\n"
-            . "- EXAMPLES of CORRECT TRIGGERS to include:\n"
-            . "  * User says \"yes, create it\" → include 'core.is_confirmation_message'\n"
-            . "  * User says \"preview\" → include 'core.is_preview_request'\n"
-            . "  * User names 'booking.create_rule_from_template' action → include relevant booking.*_request triggers\n"
+            . "- If none apply, return 'used_triggers': [].\n"
+            . "- CRITICAL: NEVER include 'core.is_lookup_request' in used_triggers.\n"
+            . "- 'core.is_lookup_request' is server-managed from task readonly properties.\n"
+            . "- All other valid triggers (e.g. core.is_confirmation_message) should be detected normally.\n"
             . "\nAVAILABLE MESSAGE TRIGGERS:\n"
             . $triggerlist
             . "\n\nREQUIRED OUTPUT FIELD:\n"
-            . "- Every response MUST include: \"used_triggers\": [...] (may be empty, but field MUST exist).\n"
-            . "- used_triggers may be [] (empty array) but the field itself is required.\n"
-            . "- EXCEPTION: Do not include 'core.is_lookup_request' — it is server-managed.";
+            . "- Every response MUST include used_triggers as a JSON array (field required, may be empty).";
     }
 
     /**
@@ -271,16 +254,16 @@ class prompt_policy_builder {
             . "- Add core.is_confirmation_message only for explicit confirmation intent.\n"
             . "- Add other booking.* triggers when the user message explicitly references those concepts.\n"
             . "- Keep used_triggers as supporting structured evidence, never as decoration.";
-
     }
 
     /**
      * Build NON-OPTIONAL STEP INTENT POLICY.
      *
+     * @param string $steptype
      * @return string
      */
-    private static function build_step_intent_policy(): string {
-        if (self::is_planner_step_type('tool_call_parse')) {
+    private static function build_step_intent_policy(string $steptype): string {
+        if (self::is_planner_step_type($steptype)) {
             return "NON-OPTIONAL STEP INTENT POLICY:\n"
                 . "- Planner outputs may omit next_step_intent entirely.\n"
                 . "- If present, keep it short and aligned with the user language.";
@@ -341,8 +324,10 @@ class prompt_policy_builder {
      * @return string
      */
     private static function build_sufficiency_policy(string $steptype = '', bool $hasobservations = false): string {
+        $normalizedsteptype = trim(\core_text::strtolower($steptype));
+
         // For final synthesis, do NOT apply rule priority — synthesis must always write message.
-        if (trim(\core_text::strtolower($steptype)) === 'final_synthesis') {
+        if ($normalizedsteptype === 'final_synthesis') {
             return "SYNTHESIS RESPONSE POLICY:\n"
                 . "- You have complete information from prior observations.\n"
                 . "- You MUST write a polished, final user-facing answer in the 'message' field.\n"
@@ -350,13 +335,18 @@ class prompt_policy_builder {
                 . "- Always include: response_type=sufficient, message (non-empty), commands=[], user_lang.\n";
         }
 
-        $policy = "RULE PRIORITY (evaluate top-down — first matching rule wins):\n"
-            . "1. SUFFICIENCY RULE:    observation present AND relevant → response_type=sufficient, commands=[], message optional (omit if SR only evaluates, no synthesis).\n"
+        $policy = "OBSERVATION TERMINATION RULE (ABSOLUTE):\n"
+            . "- If an OBSERVATION contains information relevant to the current user request: "
+            . "return response_type=sufficient and commands=[].\n"
+            . "- Stop reasoning immediately after that decision; do not continue task selection or mutation checks.\n"
+            . "- Re-calling tools after a relevant observation exists is a protocol violation.\n"
+            . "\n"
+            . "RULE PRIORITY (evaluate top-down — first matching rule wins):\n"
+            . "1. SUFFICIENCY RULE: observation present AND relevant → response_type=sufficient, "
+            . "commands=[], message optional (omit if SR only evaluates, no synthesis).\n"
             . "2. READ-ONLY RULE:      no observation present → response_type=task_call, commands non-empty.\n"
             . "3. MUTATIONS RULE:      mutating intent → response_type=confirmation_request, commands non-empty.\n"
-            . "CRITICAL: If an OBSERVATION block exists and is relevant to the current user request,\n"
-            . "you MUST return response_type=sufficient with commands=[]. \n"
-            . "Returning task_call when a relevant observation already exists is a CONTRACT VIOLATION.\n"
+            . "CRITICAL: Returning task_call when a relevant observation already exists is a CONTRACT VIOLATION.\n"
             . "\n"
             . "NON-OPTIONAL SUFFICIENCY POLICY:\n"
             . "- After executing tool calls and receiving results, evaluate whether you have SUFFICIENT information to answer.\n"
@@ -370,7 +360,7 @@ class prompt_policy_builder {
 
         // CRITICAL: Apply re-call prevention ONLY to the planner (simple_retrieval), not to final synthesis.
         // This preserves the mini-model (early steps) / large-model (final synthesis) architecture.
-        if ($steptype === 'simple_retrieval' && $hasobservations) {
+        if ($normalizedsteptype === 'simple_retrieval' && $hasobservations) {
             $policy .= "\n- CRITICAL (reasoning step with observations): OBSERVATION blocks contain results from prior steps."
                 . " When observations are available:\n"
                 . "  1. FIRST check if observations contain diagnostic, search, or factual results "

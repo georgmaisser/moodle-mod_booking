@@ -585,6 +585,7 @@ $string['ai_no_commands'] = 'No commands to execute.';
 $string['ai_no_pending_intent'] = 'There is nothing pending to confirm. Please describe what you would like to do.';
 $string['ai_optiontype_help_message'] = 'By type, I mean the booking option type. You can choose: 1) normal: regular booking with date(s), location, and optional teacher, 2) self-learning: self-paced option without fixed sessions, 3) slot booking: bookable time slots. Please tell me one type (normal, self-learning, or slot booking), then I will continue creating the option.';
 $string['ai_optiontype_help_next_step_intent'] = 'I am waiting for your type selection (normal, self-learning, or slot booking).';
+$string['ai_pending_intent_resolution_required'] = 'You still have a pending action ({$a->action}, code {$a->code}). Please confirm it first, or explicitly discard it before starting a new request.';
 $string['ai_preview_latest_option'] = 'Here is the most recently created or updated booking option.';
 $string['ai_preview_no_commands'] = 'No command preview available.';
 $string['ai_preview_no_matching_option'] = 'No existing option could be identified for row preview. Please confirm the target option first.';

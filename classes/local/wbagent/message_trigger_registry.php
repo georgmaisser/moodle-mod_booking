@@ -58,6 +58,11 @@ class message_trigger_registry {
             'description' => 'Latest user message confirms or approves execution of the pending confirmation request.',
         ],
         [
+            'id' => 'core.discard_pending_confirmation',
+            'description' => 'Latest user message explicitly asks to discard/cancel '
+                . 'the currently pending confirmation intent before continuing.',
+        ],
+        [
             'id' => 'core.is_lookup_request',
             'description' => 'Latest user message asks to list/search/lookup information (read-only intent).',
         ],

@@ -21,7 +21,7 @@ This `docs/` directory is the central reference for administrators, teachers, an
 | Import booking options in bulk | [CSV Import User Guide](CSV_IMPORT_USER_GUIDE.md) |
 | Run a time-limited booking campaign (discount / block) | [Campaigns](campaigns/README.md) |
 | Let participants choose add-ons or time slots | [Sub-bookings](subbookings/README.md) |
-| Trigger actions automatically when someone books | [Actions after booking](actions_after_booking/README.md) |
+| Trigger actions automatically when someone books - NOT used for notification or messages | [Actions after booking](actions_after_booking/README.md) |
 | Understand scheduled background tasks | [Scheduled tasks](scheduled_tasks/README.md) |
 | Allow external links to bypass profile-field restrictions | [Override user field](override_user_field/README.md) |
 | Build or install a booking extension (subplugin) | [Booking extensions](booking_extensions/README.md) |
@@ -73,7 +73,7 @@ Common next steps:
 |-----------|-------------|
 | [`booking-option/`](booking-option/README.md) | Every field in the booking option form: general settings, dates, teachers, availability, price, linked course, advanced settings, confirmation workflow |
 | [`booking_conditions/`](booking_conditions/README.md) | Availability conditions that control who can book and when |
-| [`booking_rules/`](booking_rules/README.md) | Rule-based automation: triggers, conditions, actions, templates, and examples |
+| [`booking_rules/`](booking_rules/README.md) | Rule-based automation: templates, and examples |
 | [`placeholders/`](placeholders/README.md) | Complete reference of all `{token}` placeholders available in email templates and confirmation texts |
 | [`shortcodes/`](shortcodes/README.md) | Moodle shortcodes for embedding booking lists, approval panels, and more on any page |
 | [`subbookings/`](subbookings/README.md) | Sub-booking types: additional items, additional persons, and time slot selection |

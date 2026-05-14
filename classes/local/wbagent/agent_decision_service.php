@@ -70,6 +70,9 @@ class agent_decision_service {
     /** Response type constant for unknown/invalid responses from normalization. */
     private const RESPONSE_TYPE_UNKNOWN = 'UNKNOWN_TYPE';
 
+    /** Trigger id: user explicitly discards current pending confirmation intent. */
+    private const TRIGGER_DISCARD_PENDING_CONFIRMATION = 'core.discard_pending_confirmation';
+
     /** @deprecated Use issue_code_provider::get_duplicate_confirmation_issue_codes() instead. */
     public const DUPLICATE_TITLE_ISSUE_CODES = [
         'DUPLICATE_TITLE_CONFIRM_REQUIRED',
@@ -168,6 +171,21 @@ class agent_decision_service {
                 'issue_codes'               => array_values(array_unique((array)($result['issue_codes'] ?? []))),
                 'pending_confirmation_code' => '',
             ];
+        }
+
+        // 1b. Step-8 guard: when a confirmation intent is pending, block unrelated
+        // new intents until the user either confirms or explicitly discards.
+        $pendingintent = $this->store->get_pending_intent($threadid);
+        if ($pendingintent !== null) {
+            if ($this->result_has_trigger($result, self::TRIGGER_DISCARD_PENDING_CONFIRMATION)) {
+                $this->store->clear_pending_intent($threadid);
+                $result['used_triggers'] = array_values(array_filter(
+                    (array)($result['used_triggers'] ?? []),
+                    static fn(string $trigger): bool => $trigger !== self::TRIGGER_DISCARD_PENDING_CONFIRMATION
+                ));
+            } else if ($this->should_block_new_intent_while_pending($result)) {
+                return $this->build_pending_resolution_clarification($result, $pendingintent, $outputlang);
+            }
         }
 
         // 2. Normalise task_call with confirmation trigger → confirm_pending.
@@ -342,6 +360,97 @@ class agent_decision_service {
         }
 
         return $result;
+    }
+
+    /**
+     * Decide whether current model output should be blocked while a pending
+     * confirmation intent exists.
+     *
+     * @param array $result
+     * @return bool
+     */
+    private function should_block_new_intent_while_pending(array $result): bool {
+        if ($this->result_has_trigger($result, 'core.is_confirmation_message')) {
+            return false;
+        }
+
+        $responsetype = (string)($result['response_type'] ?? '');
+        if ($responsetype === self::RESPONSE_TYPE_CONFIRM_PENDING) {
+            return false;
+        }
+
+        if (!empty((array)($result['commands'] ?? []))) {
+            return true;
+        }
+
+        return in_array(
+            $responsetype,
+            [self::RESPONSE_TYPE_TASK_CALL, self::RESPONSE_TYPE_CONFIRMATION_REQUEST, 'sufficient'],
+            true
+        );
+    }
+
+    /**
+     * Build the clarification response instructing the user to resolve the
+     * current pending confirmation before starting a new intent.
+     *
+     * @param array $result
+     * @param array $pendingintent
+     * @param string $outputlang
+     * @return array
+     */
+    private function build_pending_resolution_clarification(array $result, array $pendingintent, string $outputlang): array {
+        $pendingcommands = is_array($pendingintent['commands'] ?? null) ? (array)$pendingintent['commands'] : [];
+        $summary = $this->build_pending_intent_summary($pendingcommands, $outputlang);
+        $confirmationcode = trim((string)($pendingintent['confirmationcode'] ?? ''));
+        $message = $this->localized_string(
+            'ai_pending_intent_resolution_required',
+            'mod_booking',
+            (object)[
+                'action' => $summary !== ''
+                    ? $summary
+                    : $this->localized_string('ai_status_confirm_default', 'mod_booking', null, $outputlang),
+                'code' => $confirmationcode !== '' ? $confirmationcode : '-',
+            ],
+            $outputlang
+        );
+
+        return [
+            'response_type'             => self::RESPONSE_TYPE_CLARIFICATION,
+            'message'                   => $message,
+            'commands'                  => [],
+            'ambiguities'               => array_values(array_unique((array)($result['ambiguities'] ?? []))),
+            'ambiguity_options'         => [],
+            'errors'                    => array_values(array_unique((array)($result['errors'] ?? []))),
+            'attempted_tasks'           => array_values(array_unique((array)($result['attempted_tasks'] ?? []))),
+            'issue_codes'               => array_values(array_unique(array_merge(
+                (array)($result['issue_codes'] ?? []),
+                ['PENDING_CONFIRMATION_EXISTS']
+            ))),
+            'pending_confirmation_code' => $confirmationcode,
+            'used_triggers'             => (array)($result['used_triggers'] ?? []),
+            'runid'                     => 0,
+            'results'                   => [],
+        ];
+    }
+
+    /**
+     * Create a concise human-readable summary of the currently pending commands.
+     *
+     * @param array $pendingcommands
+     * @param string $outputlang
+     * @return string
+     */
+    private function build_pending_intent_summary(array $pendingcommands, string $outputlang): string {
+        if (empty($pendingcommands)) {
+            return '';
+        }
+
+        return trim($this->build_fallback_message([
+            'response_type' => self::RESPONSE_TYPE_CONFIRMATION_REQUEST,
+            'commands' => $pendingcommands,
+            'message' => '',
+        ], $outputlang));
     }
 
     /**

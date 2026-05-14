@@ -308,7 +308,8 @@ ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - Do not propose extra tool calls if the available context already answers the request.
 - Use only exact task names from the TASK CATALOG below.
 - Never invent aliases or category names such as docs.search or documentation.query.
-- If observations already contain sufficient information, MUST return response_type="sufficient" with commands=[] and NO message field.
+- If observations already contain sufficient information, MUST return
+    response_type="sufficient" with commands=[] and NO message field.
 - If information is still missing for a mutating action, ask one focused clarification question.
 - In final reasoning mode, prefer response_type=sufficient (no message) when observations answer the request.
 - For documented read-only questions, if observations are still insufficient,
@@ -405,22 +406,10 @@ PROMPT;
             $taskcatalog = $this->slim_prompt_catalog_for_planner($taskcatalog);
         }
         $tasklist = implode(', ', $this->registry->get_task_names());
-        $fullschemajson = json_encode($schemas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        $taskcatalogjson = json_encode($taskcatalog, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $fullschemajson = json_encode($schemas, JSON_UNESCAPED_UNICODE);
+        $taskcatalogjson = json_encode($taskcatalog, JSON_UNESCAPED_UNICODE);
         $triggerregistry = new message_trigger_registry($this->registry);
-        $triggerjson = json_encode($triggerregistry->get_available_triggers(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        $timezonename = (string)(get_config('core', 'timezone') ?? '');
-        if ($timezonename === '' || $timezonename === '99') {
-            $timezonename = date_default_timezone_get();
-        }
-        try {
-            $tz = new \DateTimeZone($timezonename);
-        } catch (\Throwable $e) {
-            $timezonename = date_default_timezone_get();
-            $tz = new \DateTimeZone($timezonename);
-        }
-        $cm = get_coursemodule_from_id('booking', $cmid);
-        $bookingname = $cm ? format_string($cm->name) : 'this booking instance';
+        $triggerjson = json_encode($triggerregistry->get_available_triggers(), JSON_UNESCAPED_UNICODE);
 
         // Keep core operational prompts fixed to avoid admin misconfiguration risks.
         // Only a single optional synthesis prefix is allowed via aiinitialprompt_summarise_text.
@@ -436,8 +425,9 @@ PROMPT;
         }
 
         $prompt = strtr($template, [
-            '{{bookingname}}' => $bookingname,
-            '{{timezonename}}' => $timezonename,
+            // Keep placeholders stable across requests for better prompt-prefix caching.
+            '{{bookingname}}' => '[SYSTEM_RUNTIME.booking_name]',
+            '{{timezonename}}' => '[SYSTEM_RUNTIME.timezone]',
             '{{nowiso}}' => '[SYSTEM_RUNTIME.now_iso]',
             '{{tasklist}}' => $tasklist,
             '{{schemajson}}' => (string)$taskcatalogjson,

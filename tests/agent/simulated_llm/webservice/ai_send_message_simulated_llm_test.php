@@ -240,4 +240,157 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
                 break;
         }
     }
+
+    /**
+     * Step 8 guard: when a pending confirmation exists, a new intent must be
+     * blocked until the user confirms or discards the pending action.
+     *
+     * @return void
+     */
+    public function test_pending_confirmation_blocks_new_intent_until_resolved(): void {
+        global $DB;
+
+        $this->setUser($this->teacher);
+
+        $title = 'Webservice Pending Guard ' . uniqid('', true);
+
+        $this->install_routed_ai_manager([
+            [
+                'prompt_contains' => ['Create booking option'],
+                'responses' => [
+                    [
+                        'response_type' => 'confirmation_request',
+                        'message' => 'Please confirm creating this booking option.',
+                        'commands' => [[
+                            'task' => 'booking.create_option',
+                            'version' => 1,
+                            'input' => [
+                                'text' => $title,
+                                'optiontype' => 'normal',
+                                'maxanswers' => 7,
+                                'coursestarttime' => '2045-11-01T09:00:00',
+                                'courseendtime' => '2045-11-01T11:00:00',
+                                'teacherquery' => 'current',
+                            ],
+                        ]],
+                    ],
+                    [
+                        'response_type' => 'task_call',
+                        'commands' => [[
+                            'task' => 'booking.search_options',
+                            'version' => 1,
+                            'input' => [
+                                'query' => '',
+                            ],
+                        ]],
+                        'used_triggers' => [],
+                    ],
+                ],
+            ],
+        ]);
+
+        $_POST['sesskey'] = sesskey();
+        $firstresponse = ai_send_message::execute(
+            (int)$this->booking->cmid,
+            'Create booking option "' . $title . '" with 7 spots from 2045-11-01T09:00:00 to 2045-11-01T11:00:00.'
+        );
+
+        $this->assertSame('confirmation_request', (string)($firstresponse['response_type'] ?? ''));
+        $firstcode = trim((string)($firstresponse['pendingconfirmationcode'] ?? ''));
+        $this->assertNotSame('', $firstcode);
+
+        $_POST['sesskey'] = sesskey();
+        $secondresponse = ai_send_message::execute((int)$this->booking->cmid, 'zeige mir alle buchungsoptionen');
+
+        $this->assertSame('clarification', (string)($secondresponse['response_type'] ?? ''));
+        $secondmessage = (string)($secondresponse['message'] ?? '');
+        $this->assertTrue(
+            str_contains($secondmessage, 'pending action') || str_contains($secondmessage, 'ausstehende Aktion'),
+            'Expected pending-intent clarification message in either EN or DE.'
+        );
+        $this->assertSame($firstcode, trim((string)($secondresponse['pendingconfirmationcode'] ?? '')));
+
+        $secondcommands = json_decode((string)($secondresponse['commands'] ?? '[]'), true);
+        $this->assertIsArray($secondcommands);
+        $this->assertCount(0, $secondcommands);
+
+        $this->assertFalse(
+            $DB->record_exists('booking_options', ['bookingid' => (int)$this->booking->id, 'text' => $title]),
+            'Pending confirmation must not be auto-executed while a new intent is blocked.'
+        );
+    }
+
+    /**
+     * Step 8 discard path: explicit discard trigger clears pending intent and
+     * allows the new user intent to continue in the same turn.
+     *
+     * @return void
+     */
+    public function test_pending_confirmation_discard_allows_new_intent(): void {
+        $this->setUser($this->teacher);
+
+        $title = 'Webservice Pending Discard ' . uniqid('', true);
+        $option = $this->create_option('Webservice Discard Target ' . uniqid('', true), []);
+
+        $this->install_routed_ai_manager([
+            [
+                'prompt_contains' => ['Create booking option'],
+                'responses' => [
+                    [
+                        'response_type' => 'confirmation_request',
+                        'message' => 'Please confirm creating this booking option.',
+                        'commands' => [[
+                            'task' => 'booking.create_option',
+                            'version' => 1,
+                            'input' => [
+                                'text' => $title,
+                                'optiontype' => 'normal',
+                                'maxanswers' => 7,
+                                'coursestarttime' => '2045-11-01T09:00:00',
+                                'courseendtime' => '2045-11-01T11:00:00',
+                                'teacherquery' => 'current',
+                            ],
+                        ]],
+                    ],
+                    [
+                        'response_type' => 'task_call',
+                        'commands' => [[
+                            'task' => 'booking.get_option_details',
+                            'version' => 1,
+                            'input' => [
+                                'optionid' => (int)$option->id,
+                            ],
+                        ]],
+                        'used_triggers' => ['core.discard_pending_confirmation'],
+                    ],
+                    [
+                        'response_type' => 'sufficient',
+                        'message' => 'I discarded the pending action and fetched the requested option details.',
+                        'user_lang' => 'en',
+                    ],
+                ],
+            ],
+        ]);
+
+        $_POST['sesskey'] = sesskey();
+        $firstresponse = ai_send_message::execute(
+            (int)$this->booking->cmid,
+            'Create booking option "' . $title . '" with 7 spots from 2045-11-01T09:00:00 to 2045-11-01T11:00:00.'
+        );
+
+        $this->assertSame('confirmation_request', (string)($firstresponse['response_type'] ?? ''));
+        $this->assertNotSame('', trim((string)($firstresponse['pendingconfirmationcode'] ?? '')));
+
+        $_POST['sesskey'] = sesskey();
+        $secondresponse = ai_send_message::execute((int)$this->booking->cmid, 'discard that and show option details');
+
+        $this->assertSame('sufficient', (string)($secondresponse['response_type'] ?? ''));
+        $this->assertSame('', trim((string)($secondresponse['pendingconfirmationcode'] ?? '')));
+
+        $results = json_decode((string)($secondresponse['resultsjson'] ?? '[]'), true);
+        $this->assertIsArray($results);
+        $resulttext = json_encode($results, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->assertIsString($resulttext);
+        $this->assertStringContainsString((string)$option->text, $resulttext);
+    }
 }

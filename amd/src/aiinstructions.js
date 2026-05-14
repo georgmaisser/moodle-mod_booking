@@ -1919,7 +1919,7 @@ const sendMessage = (message) => {
             renderOptionPreviewsInline(currentCmid, [Number(resp.previewoptionid)]);
         }
 
-        if (resp.response_type === 'clarification' || resp.response_type === 'error') {
+        if (resp.response_type === 'clarification' || resp.response_type === 'sufficient' || resp.response_type === 'error') {
             appendAssistantPrivacyNote(resp, 'ai_send_message');
             const attemptedTasks = parseJsonList(resp.attemptedtasksjson);
             const errors = parseJsonList(resp.errorsjson);

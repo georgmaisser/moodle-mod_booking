@@ -583,6 +583,7 @@ $string['ai_followup_update_option_query'] = 'Bitte aktualisieren Sie diese Buch
 $string['ai_lookup_detected_blocked_mutation'] = 'Ich habe Ihre Nachricht als Such-/Listenanfrage verstanden und deshalb keine Aenderung vorbereitet. Bitte sagen Sie, was ich genau suchen soll.';
 $string['ai_optiontype_help_message'] = 'Mit Typ meine ich die Art der Buchungsoption. Sie koennen waehlen zwischen: 1) normal: regulaere Buchung mit Termin(en), Ort und optional Lehrperson, 2) selbstgesteuert: Selbstlern-Option ohne feste Termine, 3) Slot-Buchung: buchbare Zeitslots. Nennen Sie bitte einen Typ (normal, selbstgesteuert oder Slot-Buchung), dann erstelle ich die Option weiter.';
 $string['ai_optiontype_help_next_step_intent'] = 'Ich warte jetzt auf Ihre Typ-Auswahl (normal, selbstgesteuert oder Slot-Buchung).';
+$string['ai_pending_intent_resolution_required'] = 'Es gibt noch eine ausstehende Aktion ({$a->action}, Code {$a->code}). Bitte bestaetigen Sie diese zuerst oder verwerfen Sie sie explizit, bevor wir mit einer neuen Anfrage fortfahren.';
 $string['ai_preview_latest_option'] =
     'Hier ist die zuletzt erstellte oder aktualisierte Buchungsoption.';
 $string['ai_preview_no_commands'] = 'Keine Befehlsvorschau verfuegbar.';

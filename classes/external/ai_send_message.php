@@ -176,20 +176,6 @@ class ai_send_message extends external_api {
         $formattedmessage = self::format_ws_message((string)($result['message'] ?? ''), $context);
         $formatteddisplaymessage = self::format_ws_message($displaymessage, $context);
 
-        // Extract preview option id from latest execution results (e.g., search_options task).
-        $previewoptionid = 0;
-        $results = $result['results'] ?? [];
-        if (is_array($results) && !empty($results)) {
-            $latestresult = end($results);
-            if (is_array($latestresult)) {
-                $previewoptionids = (array)($latestresult['previewoptionids'] ?? []);
-                if (!empty($previewoptionids)) {
-                    // Take the first preview option id if available.
-                    $previewoptionid = (int)reset($previewoptionids);
-                }
-            }
-        }
-
         return [
             'response_type'         => $result['response_type'] ?? 'error',
             'message'               => $formattedmessage,
@@ -205,7 +191,7 @@ class ai_send_message extends external_api {
             'threadid'              => $threadid,
             'runid'                 => (int)($result['runid'] ?? 0),
             'resultsjson'           => json_encode($result['results'] ?? []),
-            'previewoptionid'       => $previewoptionid,
+            'previewoptionid'       => 0,
         ];
     }
 
