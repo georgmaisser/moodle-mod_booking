@@ -1,4 +1,4 @@
-# Webservice Mock LLM Tests
+# Webservice Simulated LLM Tests
 
 Deterministic whole-agent tests for the `ai_send_message` webservice entry point.
 
@@ -8,5 +8,5 @@ Run them with:
 
 ```bash
 cd /var/www/moodle
-./vendor/bin/phpunit -c phpunit.xml public/mod/booking/tests/agent/webservice_mock_llm/
+./vendor/bin/phpunit -c phpunit.xml public/mod/booking/tests/agent/simulated_llm/webservice
 ```
