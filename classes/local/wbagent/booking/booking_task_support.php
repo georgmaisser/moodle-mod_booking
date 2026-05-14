@@ -410,7 +410,7 @@ class booking_task_support {
             $register(MOD_BOOKING_OPTION_FIELD_DISABLECANCEL, get_string('disablecancel', 'booking'));
         }
 
-        if (self::has_any_input_key($input, ['invisible', 'visibility'])) {
+        if (self::has_any_input_key($input, ['invisible', 'visibility', 'visible'])) {
             $register(MOD_BOOKING_OPTION_FIELD_INVISIBLE, get_string('optionvisibility', 'mod_booking'));
         }
 
@@ -1462,6 +1462,7 @@ class booking_task_support {
             'disablecancel' => ['disablecancel', 'booking'],
             'invisible' => ['optionvisibility', 'mod_booking'],
             'visibility' => ['optionvisibility', 'mod_booking'],
+            'visible' => ['optionvisibility', 'mod_booking'],
             'duration' => ['duration', 'booking'],
             'coursequery' => ['associatedcourse', 'booking'],
             'prices' => ['price', 'booking'],
@@ -1998,6 +1999,7 @@ class booking_task_support {
      * Supported sources:
      * - invisible: 0|1|2 (int/string) or bool
      * - visibility: visible|invisible|directlink (plus common aliases)
+     * - visible: 0|1 (int/string) or bool (legacy alias; inverted to invisible)
      *
      * @param array $input
      * @return array
@@ -2005,6 +2007,7 @@ class booking_task_support {
     public static function normalize_visibility_input(array $input): array {
         $frominvisible = null;
         $fromvisibility = null;
+        $fromvisible = null;
 
         if (array_key_exists('invisible', $input)) {
             $raw = $input['invisible'];
@@ -2068,8 +2071,47 @@ class booking_task_support {
             $fromvisibility = $map[$normalized];
         }
 
+        if (array_key_exists('visible', $input)) {
+            $raw = $input['visible'];
+            if (is_bool($raw)) {
+                $fromvisible = $raw ? MOD_BOOKING_OPTION_VISIBLE : MOD_BOOKING_OPTION_INVISIBLE;
+            } else if (is_int($raw) || (is_string($raw) && preg_match('/^\d+$/', trim($raw)))) {
+                $value = (int)$raw;
+                if (!in_array($value, [0, 1], true)) {
+                    return ['error' => 'Field "visible" must be one of: 1 (visible), 0 (invisible).'];
+                }
+                $fromvisible = $value === 1 ? MOD_BOOKING_OPTION_VISIBLE : MOD_BOOKING_OPTION_INVISIBLE;
+            } else if (is_string($raw)) {
+                $normalized = strtolower(trim($raw));
+                $map = [
+                    'visible' => MOD_BOOKING_OPTION_VISIBLE,
+                    'public' => MOD_BOOKING_OPTION_VISIBLE,
+                    'invisible' => MOD_BOOKING_OPTION_INVISIBLE,
+                    'hidden' => MOD_BOOKING_OPTION_INVISIBLE,
+                    'directlink' => MOD_BOOKING_OPTION_VISIBLEWITHLINK,
+                    'visiblewithlink' => MOD_BOOKING_OPTION_VISIBLEWITHLINK,
+                    'visible_with_link' => MOD_BOOKING_OPTION_VISIBLEWITHLINK,
+                    'linkonly' => MOD_BOOKING_OPTION_VISIBLEWITHLINK,
+                ];
+                if (!isset($map[$normalized])) {
+                    return ['error' => 'Field "visible" string value must be one of: visible, invisible, directlink.'];
+                }
+                $fromvisible = $map[$normalized];
+            } else {
+                return ['error' => 'Field "visible" must be a boolean, 0/1, or visibility string.'];
+            }
+        }
+
         if ($frominvisible !== null && $fromvisibility !== null && $frominvisible !== $fromvisibility) {
             return ['error' => 'Fields "invisible" and "visibility" conflict. Provide only one visibility value.'];
+        }
+
+        if ($frominvisible !== null && $fromvisible !== null && $frominvisible !== $fromvisible) {
+            return ['error' => 'Fields "invisible" and "visible" conflict. Provide only one visibility value.'];
+        }
+
+        if ($fromvisibility !== null && $fromvisible !== null && $fromvisibility !== $fromvisible) {
+            return ['error' => 'Fields "visibility" and "visible" conflict. Provide only one visibility value.'];
         }
 
         if ($frominvisible !== null) {
@@ -2077,6 +2119,9 @@ class booking_task_support {
         }
         if ($fromvisibility !== null) {
             return ['value' => $fromvisibility];
+        }
+        if ($fromvisible !== null) {
+            return ['value' => $fromvisible];
         }
 
         return [];

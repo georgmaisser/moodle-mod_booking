@@ -74,7 +74,11 @@ class booking_mutation_validation {
             }
         }
 
-        if (array_key_exists('invisible', $input) || array_key_exists('visibility', $input)) {
+        if (
+            array_key_exists('invisible', $input)
+            || array_key_exists('visibility', $input)
+            || array_key_exists('visible', $input)
+        ) {
             $normalizedvisibility = booking_task_support::normalize_visibility_input($input);
             if (!empty($normalizedvisibility['error'])) {
                 $errors[] = (string)$normalizedvisibility['error'];

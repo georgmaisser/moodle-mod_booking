@@ -159,7 +159,8 @@ class orchestrator {
             !empty($observations),
             $adaptivecatalog
         );
-        $prompt = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype);
+        $runtimecontext = $this->build_runtime_context_block($cmid);
+        $prompt = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype, $runtimecontext);
         $historycount = count(array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype)));
         $observationcount = count($observations);
         $primaryprovider = $this->resolve_primary_provider_for_action($manager, $actionclass);
@@ -417,8 +418,6 @@ PROMPT;
             $timezonename = date_default_timezone_get();
             $tz = new \DateTimeZone($timezonename);
         }
-        $nowiso = (new \DateTime('now', $tz))->format(\DateTimeInterface::ATOM);
-
         $cm = get_coursemodule_from_id('booking', $cmid);
         $bookingname = $cm ? format_string($cm->name) : 'this booking instance';
 
@@ -438,7 +437,7 @@ PROMPT;
         $prompt = strtr($template, [
             '{{bookingname}}' => $bookingname,
             '{{timezonename}}' => $timezonename,
-            '{{nowiso}}' => $nowiso,
+            '{{nowiso}}' => '[SYSTEM_RUNTIME.now_iso]',
             '{{tasklist}}' => $tasklist,
             '{{schemajson}}' => (string)$taskcatalogjson,
             '{{taskcatalogjson}}' => (string)$taskcatalogjson,
@@ -527,13 +526,15 @@ PROMPT;
      * @param  string      $systemprompt
      * @param  \stdClass[] $messages
      * @param  string[]    $observations  Structured observation strings (may be empty).
+     * @param  string      $runtimecontext Dynamic per-request context appended after static system prompt.
      * @return string
      */
     private function build_prompt(
         string $systemprompt,
         array $messages,
         array $observations = [],
-        string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE
+        string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
+        string $runtimecontext = ''
     ): string {
         $normalizedsteptype = $this->normalize_step_type($steptype);
         $trimmedmessages = array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype));
@@ -557,6 +558,10 @@ PROMPT;
 
         $parts = ["[SYSTEM]\n{$systemprompt}"];
 
+        if ($runtimecontext !== '') {
+            $parts[] = "[SYSTEM_RUNTIME]\n{$runtimecontext}";
+        }
+
         foreach ($trimmedmessages as $msg) {
             $role    = strtoupper($msg->role ?? 'user');
             $content = $msg->content ?? '';
@@ -577,6 +582,39 @@ PROMPT;
 
         $parts[] = '[ASSISTANT]';
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * Build a small dynamic runtime context block for this request.
+     *
+     * Keeping per-request values out of the static [SYSTEM] block improves
+     * prompt-prefix stability for upstream prompt caching.
+     *
+     * @param int $cmid
+     * @return string
+     */
+    private function build_runtime_context_block(int $cmid): string {
+        $timezonename = (string)(get_config('core', 'timezone') ?? '');
+        if ($timezonename === '' || $timezonename === '99') {
+            $timezonename = date_default_timezone_get();
+        }
+
+        try {
+            $tz = new \DateTimeZone($timezonename);
+        } catch (\Throwable $e) {
+            $timezonename = date_default_timezone_get();
+            $tz = new \DateTimeZone($timezonename);
+        }
+
+        $cm = get_coursemodule_from_id('booking', $cmid);
+        $bookingname = $cm ? format_string($cm->name) : 'this booking instance';
+        $nowiso = (new \DateTime('now', $tz))->format(\DateTimeInterface::ATOM);
+
+        return implode("\n", [
+            'booking_name: ' . $bookingname,
+            'timezone: ' . $timezonename,
+            'now_iso: ' . $nowiso,
+        ]);
     }
 
     /**
