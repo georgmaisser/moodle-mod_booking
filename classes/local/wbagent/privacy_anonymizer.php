@@ -52,6 +52,8 @@ class privacy_anonymizer {
         'sein', 'ihre', 'ihren', 'soll', 'sollen', 'bitte', 'hier', 'dort', 'im', 'in',
         'am', 'an', 'auf', 'zu', 'zur', 'zum', 'for', 'and', 'or', 'the', 'a', 'an',
         'to', 'with', 'by', 'is', 'are', 'be',
+        // Generic nouns frequently found in result summaries must never be treated as names.
+        'user', 'users', 'benutzer', 'teilnehmer', 'teilnehmende',
     ];
     /** @var array<int,string> Fields that should always resolve to original literal text for SQL updates. */
     private const SQL_TEXT_FIELDS = ['text', 'description', 'optionquery'];
@@ -852,7 +854,12 @@ class privacy_anonymizer {
             ];
         }
 
-        $user = $DB->get_record('user', ['email' => $normalizedemail, 'deleted' => 0], 'id,firstname,lastname,email', IGNORE_MISSING);
+        $user = $DB->get_record(
+            'user',
+            ['email' => $normalizedemail, 'deleted' => 0],
+            'id,firstname,lastname,email',
+            IGNORE_MISSING
+        );
         if (!$user) {
             return [
                 'identitykey' => 'email:' . $normalizedemail,

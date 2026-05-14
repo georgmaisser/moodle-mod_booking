@@ -420,7 +420,27 @@ PROMPT;
             // contains the "You are an expert..." opening, so skip when no override is set.
             $summaryprefix = trim((string)(get_config('booking', 'aiinitialprompt_summarise_text') ?? ''));
             if ($summaryprefix !== '') {
-                $template = $summaryprefix . "\n\n" . ltrim($template);
+                $trimmedtemplate = ltrim($template);
+                $isexpertopening = static function (string $text): bool {
+                    return preg_match(
+                        '/^You are an expert that composes polished, helpful answers for the /',
+                        trim($text)
+                    ) === 1;
+                };
+
+                // Avoid duplicate synthesis intros when both prefix and template start
+                // with the same expert-opening sentence.
+                if ($isexpertopening($summaryprefix) && $isexpertopening($trimmedtemplate)) {
+                    $newlinepos = strpos($trimmedtemplate, "\n");
+                    if ($newlinepos === false) {
+                        $template = $summaryprefix;
+                    } else {
+                        $template = $summaryprefix . "\n"
+                            . ltrim(substr($trimmedtemplate, $newlinepos + 1), "\n");
+                    }
+                } else {
+                    $template = $summaryprefix . "\n\n" . $trimmedtemplate;
+                }
             }
         }
 

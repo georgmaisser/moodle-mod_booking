@@ -68,6 +68,12 @@ class ai_send_message extends external_api {
         return new external_function_parameters([
             'cmid'    => new external_value(PARAM_INT, 'Course-module id of the booking instance.'),
             'message' => new external_value(PARAM_RAW, 'User message text.'),
+            'threadid' => new external_value(
+                PARAM_INT,
+                'Optional thread id to pin this message to an existing active thread.',
+                VALUE_DEFAULT,
+                0
+            ),
         ]);
     }
 
@@ -76,16 +82,21 @@ class ai_send_message extends external_api {
      *
      * @param int    $cmid
      * @param string $message
+     * @param int    $threadid
      * @return array
      */
-    public static function execute(int $cmid, string $message): array {
+    public static function execute(int $cmid, string $message, int $threadid = 0): array {
         global $USER;
 
         require_sesskey();
 
-        $params = self::validate_parameters(self::execute_parameters(), ['cmid' => $cmid, 'message' => $message]);
+        $params = self::validate_parameters(
+            self::execute_parameters(),
+            ['cmid' => $cmid, 'message' => $message, 'threadid' => $threadid]
+        );
         $cmid    = $params['cmid'];
         $message = trim($params['message']);
+        $threadid = (int)($params['threadid'] ?? 0);
         $authz = new authorization_service();
         $authz->require_valid_context($cmid);
         $context = context_module::instance($cmid);
@@ -139,7 +150,23 @@ class ai_send_message extends external_api {
             ];
         }
 
-        $thread = $store->get_or_create_thread((int)$USER->id, $cmid, (int)$cm->instance);
+        $thread = null;
+        if ($threadid > 0) {
+            global $DB;
+            $candidate = $DB->get_record('booking_ai_threads', [
+                'id' => $threadid,
+                'userid' => (int)$USER->id,
+                'cmid' => $cmid,
+                'status' => 'active',
+            ]);
+            if ($candidate) {
+                $thread = $candidate;
+            }
+        }
+
+        if ($thread === null) {
+            $thread = $store->get_or_create_thread((int)$USER->id, $cmid, (int)$cm->instance);
+        }
         $threadid = (int)$thread->id;
         $anonymizer = new privacy_anonymizer($store);
 

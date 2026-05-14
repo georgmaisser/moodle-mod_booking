@@ -1878,7 +1878,11 @@ const sendMessage = (message) => {
 
         return Ajax.call([{
         methodname: 'mod_booking_ai_send_message',
-        args: {cmid: currentCmid, message: sanitizedMessage},
+        args: {
+            cmid: currentCmid,
+            message: sanitizedMessage,
+            threadid: Number(currentThreadId || 0),
+        },
     }])[0].then((resp) => {
         // Stop step polling and remove ephemeral step bubbles before showing final answer.
         stopStepPolling();

@@ -152,6 +152,8 @@ class agent_decision_service {
         int $previewoptionid,
         bool $hasobservationscontext = false
     ): array {
+        $commandfallback = $this->normalize_commands_for_contract_recovery($result['commands'] ?? []);
+
         // 1. Preview shortcut: if the user asked for a preview and one is available.
         if ($previewoptionid > 0 && $this->result_has_trigger($result, 'core.is_preview_request')) {
             return [
@@ -323,23 +325,39 @@ class agent_decision_service {
             )
         ) {
             $result = $this->handle_command_routing($result, $threadid, $cmid, $userid, $outputlang);
+            $candidatefallback = $this->normalize_commands_for_contract_recovery($result['commands'] ?? []);
+            if (!empty($candidatefallback)) {
+                $commandfallback = $candidatefallback;
+            }
         }
 
         // 8. Run preflight on confirmation commands: resolve entities, detect conflicts,
         // update commands to carry prepared_input, route based on preflight result.
         if (($result['response_type'] ?? '') === self::RESPONSE_TYPE_CONFIRMATION_REQUEST && !empty($result['commands'])) {
             $result = $this->handle_preflight($result, $threadid, $cmid, $userid, $outputlang);
+            $candidatefallback = $this->normalize_commands_for_contract_recovery($result['commands'] ?? []);
+            if (!empty($candidatefallback)) {
+                $commandfallback = $candidatefallback;
+            }
         }
 
         // 9. Augment teacher autocreate when user allows it.
         $result = $this->augment_missing_teacher_autocreate_confirmation($result, $usermessage, $outputlang);
+        $candidatefallback = $this->normalize_commands_for_contract_recovery($result['commands'] ?? []);
+        if (!empty($candidatefallback)) {
+            $commandfallback = $candidatefallback;
+        }
 
         // 9c. Final boundary guard: a readonly-only task_call must never leave
         // this service as task_call; execute it here and return execution_result.
         $result = $this->enforce_task_boundary_invariants($result, $threadid, $cmid, $userid, $outputlang);
+        $candidatefallback = $this->normalize_commands_for_contract_recovery($result['commands'] ?? []);
+        if (!empty($candidatefallback)) {
+            $commandfallback = $candidatefallback;
+        }
 
         // 9d. Contract hardening: normalize impossible response_type/commands combinations.
-        $result = $this->enforce_response_contract_invariants($result);
+        $result = $this->enforce_response_contract_invariants($result, $commandfallback);
 
         // 10. Ensure message is never empty before storing pending intent.
         $message = trim((string)($result['message'] ?? ''));
@@ -487,9 +505,9 @@ class agent_decision_service {
      * @param array $result
      * @return array
      */
-    private function enforce_response_contract_invariants(array $result): array {
+    private function enforce_response_contract_invariants(array $result, array $fallbackcommands = []): array {
         $responsetype = (string)($result['response_type'] ?? '');
-        $commands = (array)($result['commands'] ?? []);
+        $commands = $this->normalize_commands_for_contract_recovery($result['commands'] ?? []);
         $issuecodes = (array)($result['issue_codes'] ?? []);
 
         $requirescommands = in_array(
@@ -498,6 +516,12 @@ class agent_decision_service {
             true
         );
         if ($requirescommands && empty($commands)) {
+            if (!empty($fallbackcommands)) {
+                $result['commands'] = array_values($fallbackcommands);
+                $result['issue_codes'] = array_values(array_unique(array_merge($issuecodes, ['CONTRACT_COMMANDS_RECOVERED'])));
+                return $result;
+            }
+
             $result['response_type'] = self::RESPONSE_TYPE_CLARIFICATION;
             $result['commands'] = [];
             $result['issue_codes'] = array_values(array_unique(array_merge($issuecodes, ['CONTRACT_COMMANDS_REQUIRED'])));
@@ -515,6 +539,38 @@ class agent_decision_service {
         }
 
         return $result;
+    }
+
+    /**
+     * Normalize potentially mixed command payloads into a list of command arrays.
+     *
+     * @param mixed $commands
+     * @return array<int,array>
+     */
+    private function normalize_commands_for_contract_recovery($commands): array {
+        if ($commands instanceof \stdClass) {
+            $commands = (array)$commands;
+        }
+
+        if (!is_array($commands)) {
+            return [];
+        }
+
+        if (isset($commands['task']) && is_string($commands['task'])) {
+            return [$commands];
+        }
+
+        $normalized = [];
+        foreach ($commands as $command) {
+            if ($command instanceof \stdClass) {
+                $command = (array)$command;
+            }
+            if (is_array($command) && !empty($command)) {
+                $normalized[] = $command;
+            }
+        }
+
+        return array_values($normalized);
     }
 
     /**
