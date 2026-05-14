@@ -234,7 +234,7 @@ class agent_decision_service {
         // 5b. Generic readonly recovery:
         // If the model returned a dead-end clarification or readonly-style error,
         // attempt a task-agnostic
-        // trigger/schema-based readonly recovery BEFORE command routing so it can
+        // schema-based readonly recovery BEFORE command routing so it can
         // execute in-process and does not leak as task_call to the frontend contract.
         $usermessage = $this->get_last_user_message($threadid);
         $lookupintent = (
@@ -265,8 +265,7 @@ class agent_decision_service {
             )));
         }
 
-        $hasmutatingtriggerintent = $this->has_mutating_trigger_intent($result);
-        if (!$hasmutatingtriggerintent && $this->should_attempt_recovery($result, $hasobservationscontext)) {
+        if ($this->should_attempt_recovery($result, $hasobservationscontext)) {
             $hadcommandsbefore = !empty((array)($result['commands'] ?? []));
             $hadresultsbefore = !empty((array)($result['results'] ?? []));
             $result = $this->recoverysvc->promote(
@@ -560,38 +559,6 @@ class agent_decision_service {
         }
 
         return true;
-    }
-
-    /**
-     * Detect whether current used_triggers indicate a mutating task intent.
-     *
-     * @param array $result
-     * @return bool
-     */
-    private function has_mutating_trigger_intent(array $result): bool {
-        $usedtriggers = (array)($result['used_triggers'] ?? []);
-        if (empty($usedtriggers)) {
-            return false;
-        }
-
-        $triggertotask = $this->registry->get_trigger_id_to_task_name_map();
-        foreach ($usedtriggers as $triggerid) {
-            $triggerid = trim((string)$triggerid);
-            if ($triggerid === '' || !isset($triggertotask[$triggerid])) {
-                continue;
-            }
-
-            $taskname = trim((string)$triggertotask[$triggerid]);
-            if ($taskname === '') {
-                continue;
-            }
-
-            if (!$this->registry->is_read_only_task($taskname)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -1979,11 +1946,10 @@ class agent_decision_service {
      * Promote a dead-end clarification into a readonly task call using generic recovery.
      *
      * Recovery strategy:
-     *  1) Map used_triggers -> task names via registry trigger map.
-     *  2) Keep only registered read-only tasks.
-     *  3) Build task input schema-driven from user message/context.
-     *  4) If no trigger-mapped candidate exists, attempt generic lookup recovery for
-     *     read-only tasks that expose a "query" property.
+     * Keep only registered read-only tasks.
+     * Build task input schema-driven from user message/context.
+     * If no candidate exists, attempt generic lookup recovery for
+     * read-only tasks that expose a "query" property.
      *
      * @param array $result
      * @param string $usermessage
@@ -2011,19 +1977,6 @@ class agent_decision_service {
         $usedtriggers = (array)($result['used_triggers'] ?? []);
         $nextstepintent = trim((string)($result['next_step_intent'] ?? ''));
         $candidatetasks = [];
-        $triggertotask = $this->registry->get_trigger_id_to_task_name_map();
-
-        foreach ($usedtriggers as $triggerid) {
-            $triggerid = trim((string)$triggerid);
-            if ($triggerid === '' || !isset($triggertotask[$triggerid])) {
-                continue;
-            }
-            $taskname = trim((string)$triggertotask[$triggerid]);
-            if ($taskname === '' || !$this->registry->is_read_only_task($taskname)) {
-                continue;
-            }
-            $candidatetasks[$taskname] = true;
-        }
 
         // Direct booking.explain_docs_topic recovery when appropriate.
         // This runs even without explicit core.is_lookup_request trigger to catch cases where

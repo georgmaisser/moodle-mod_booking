@@ -403,42 +403,9 @@ class task_registry {
      * @return array<int,array<string,mixed>>
      */
     public function get_message_triggers(): array {
-        $triggers = [];
-        $seenids = [];
-
-        foreach ($this->tasks as $task) {
-            if (!$task instanceof task_trigger_provider_interface) {
-                continue;
-            }
-
-            $tasktriggers = $task->get_message_triggers();
-            foreach ($tasktriggers as $trigger) {
-                if (!is_array($trigger)) {
-                    continue;
-                }
-
-                $id = trim((string)($trigger['id'] ?? ''));
-                if ($id === '' || isset($seenids[$id])) {
-                    continue;
-                }
-
-                $description = trim((string)($trigger['description'] ?? ''));
-                if ($description === '') {
-                    continue;
-                }
-
-                $seenids[$id] = true;
-                $triggers[] = [
-                    'id' => $id,
-                    'description' => $description,
-                    'examples' => isset($trigger['examples']) && is_array($trigger['examples'])
-                        ? array_values($trigger['examples'])
-                        : [],
-                ];
-            }
-        }
-
-        return $triggers;
+        // Breaking cleanup: task semantics are routed by task catalog only.
+        // Task-contributed message triggers are intentionally disabled.
+        return [];
     }
 
     /**
@@ -447,26 +414,9 @@ class task_registry {
      * @return array<string,string>  e.g. ['booking.explain_docs_topic_feature_help' => 'booking.explain_docs_topic']
      */
     public function get_trigger_id_to_task_name_map(): array {
-        $map = [];
-        foreach ($this->tasks as $task) {
-            if (!$task instanceof task_trigger_provider_interface) {
-                continue;
-            }
-            $taskname = $task->get_name();
-            foreach ($task->get_message_triggers() as $trigger) {
-                $id = trim((string)($trigger['id'] ?? ''));
-                if ($id !== '') {
-                    $map[$id] = $taskname;
-                    if (strpos($id, '.') !== false) {
-                        $shortid = substr($id, strrpos($id, '.') + 1);
-                        if ($shortid !== '' && !isset($map[$shortid])) {
-                            $map[$shortid] = $taskname;
-                        }
-                    }
-                }
-            }
-        }
-        return $map;
+        // Breaking cleanup: trigger-to-task routing is disabled.
+        // Routing decisions must use the task catalog and command payload only.
+        return [];
     }
 
     /**

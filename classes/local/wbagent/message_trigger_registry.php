@@ -91,7 +91,7 @@ class message_trigger_registry {
      * @return array<int,array<string,mixed>>
      */
     public function get_available_triggers(): array {
-        $all = array_merge(self::CORE_TRIGGERS, $this->taskregistry->get_message_triggers());
+        $all = self::CORE_TRIGGERS;
         $byid = [];
 
         foreach ($all as $trigger) {

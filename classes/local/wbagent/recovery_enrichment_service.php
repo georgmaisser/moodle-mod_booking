@@ -84,19 +84,6 @@ class recovery_enrichment_service {
         $usedtriggers = (array)($result['used_triggers'] ?? []);
         $nextstepintent = trim((string)($result['next_step_intent'] ?? ''));
         $candidatetasks = [];
-        $triggertotask = $this->registry->get_trigger_id_to_task_name_map();
-
-        foreach ($usedtriggers as $triggerid) {
-            $triggerid = trim((string)$triggerid);
-            if ($triggerid === '' || !isset($triggertotask[$triggerid])) {
-                continue;
-            }
-            $taskname = trim((string)$triggertotask[$triggerid]);
-            if ($taskname === '' || !$this->registry->is_read_only_task($taskname)) {
-                continue;
-            }
-            $candidatetasks[$taskname] = true;
-        }
 
         if (empty($candidatetasks) && $lookslookuprequest($usermessage, $result)) {
             $taskname = 'booking.explain_docs_topic';

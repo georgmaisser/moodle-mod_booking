@@ -252,7 +252,7 @@ class prompt_policy_builder {
             . "\nTRIGGER CONSISTENCY:\n"
             . "- CRITICAL: Never include 'core.is_lookup_request' in used_triggers. This trigger is ALWAYS managed server-side.\n"
             . "- Add core.is_confirmation_message only for explicit confirmation intent.\n"
-            . "- Add other booking.* triggers when the user message explicitly references those concepts.\n"
+            . "- Use used_triggers only for flow/state signals; do not encode task semantics there.\n"
             . "- Keep used_triggers as supporting structured evidence, never as decoration.";
     }
 
