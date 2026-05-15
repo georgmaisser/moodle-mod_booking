@@ -1135,19 +1135,6 @@ class agent_runtime {
             return false;
         }
 
-        // Do not retry mutating preflight clarifications. A blind retry can
-        // drift into unrelated readonly recovery paths (e.g. docs), while the
-        // correct behavior is to ask the user for the missing clarification.
-        foreach ($attemptedtasks as $taskname) {
-            $taskname = trim((string)$taskname);
-            if ($taskname === '') {
-                continue;
-            }
-            if (!$this->registry->is_read_only_task($taskname)) {
-                return false;
-            }
-        }
-
         // Never retry loop-control/system conditions.
         foreach ($issuecodes as $code) {
             if (str_starts_with((string)$code, 'LOOP_')) {
@@ -1155,8 +1142,12 @@ class agent_runtime {
             }
         }
 
-        // When there is no prior tool observation yet, one retry can let the planner
-        // leverage the synthesized error observation for a corrected command.
+        // Preflight happens strictly before any execute() call. That makes one
+        // silent retry generically safe for all task types: the planner gets a
+        // synthetic observation describing the failed preflight and can either
+        // repair the command or return a better clarification. We still require
+        // that no prior tool observation exists so the retry stays scoped to the
+        // current failed planning step and cannot re-run already successful tasks.
         return empty($state->get_observations());
     }
 
@@ -1169,6 +1160,15 @@ class agent_runtime {
      */
     private function build_preflight_retry_observation(array $result, int $step): string {
         $parts = [];
+        $attemptedtasks = array_values(array_filter(array_map('trim', (array)($result['attempted_tasks'] ?? []))));
+
+        $parts[] = 'Preflight failed before any task execution. Repair the command input and retry the same task.';
+
+        if (count($attemptedtasks) === 1) {
+            $parts[] = 'Keep task=' . $attemptedtasks[0] . ' unless the latest user message explicitly changes the intent.';
+        } else if (!empty($attemptedtasks)) {
+            $parts[] = 'Keep the same attempted task set unless the latest user message explicitly changes the intent.';
+        }
 
         $message = trim((string)($result['message'] ?? ''));
         if ($message !== '') {
@@ -1185,16 +1185,39 @@ class agent_runtime {
             $parts[] = 'issue_codes=' . implode(',', array_slice($issuecodes, 0, 12));
         }
 
-        $attemptedtasks = array_values(array_filter(array_map('trim', (array)($result['attempted_tasks'] ?? []))));
         if (!empty($attemptedtasks)) {
             $parts[] = 'attempted_tasks=' . implode(',', array_slice($attemptedtasks, 0, 4));
         }
 
         if (empty($parts)) {
-            return 'Step ' . $step . ': Preflight clarification without details.';
+            return 'RETRY_HINT: Step ' . $step . ': Preflight clarification without details.';
         }
 
-        return 'Step ' . $step . ': Preflight clarification. ' . implode(' ', $parts);
+        return 'RETRY_HINT: Step ' . $step . ': Preflight clarification. ' . implode(' ', $parts);
+    }
+
+    /**
+     * Detect whether observations only contain framework-authored retry hints.
+     *
+     * @param array $observations
+     * @return bool
+     */
+    private function observations_are_framework_retry_hints(array $observations): bool {
+        $seen = false;
+
+        foreach ($observations as $observation) {
+            $text = trim((string)$observation);
+            if ($text === '') {
+                continue;
+            }
+
+            $seen = true;
+            if (!str_starts_with($text, 'RETRY_HINT:')) {
+                return false;
+            }
+        }
+
+        return $seen;
     }
 
     /**
@@ -1521,7 +1544,7 @@ class agent_runtime {
 
         // Plan: initial step uses tool_call_parse; follow-up steps with observations
         // switch to simple_retrieval so prompt/catalog are significantly smaller.
-        $plannersteptype = !empty($observations)
+        $plannersteptype = (!empty($observations) && !$this->observations_are_framework_retry_hints($observations))
             ? orchestrator::STEP_TYPE_SIMPLE_RETRIEVAL
             : orchestrator::STEP_TYPE_TOOL_CALL_PARSE;
 
@@ -1867,14 +1890,14 @@ class agent_runtime {
             // First attempt: inject recovery observation and retry.
             $this->store->set_thread_metadata_value($threadid, $retrykey, true);
 
-            $msg = 'SYSTEM: Malformed response. Return one valid JSON object only, without markdown fences.';
+            $msg = 'RETRY_HINT: SYSTEM: Malformed response. Return one valid JSON object only, without markdown fences.';
             $retryobservations = array_merge((array)$observations, [$msg]);
             $retryresult = $this->call_orchestrator_step(
                 $threadid,
                 $cmid,
                 $userid,
                 $retryobservations,
-                !empty($observations)
+                (!empty($retryobservations) && !$this->observations_are_framework_retry_hints($retryobservations))
                     ? orchestrator::STEP_TYPE_SIMPLE_RETRIEVAL
                     : orchestrator::STEP_TYPE_TOOL_CALL_PARSE
             );

@@ -152,11 +152,14 @@ class orchestrator {
         );
         $adaptivecatalog = $adaptivecatalogresult['active_tasks'];
 
+        $haseffectiveobservations = !empty($observations)
+            && !$this->observations_are_framework_retry_hints($observations);
+
         $systemprompt = $this->build_system_prompt(
             $cmid,
             $normalizedsteptype,
             $actionclass,
-            !empty($observations),
+            $haseffectiveobservations,
             $adaptivecatalog
         );
         $runtimecontext = $this->build_runtime_context_block($cmid);
@@ -626,6 +629,30 @@ PROMPT;
             'timezone: ' . $timezonename,
             'now_iso: ' . $nowiso,
         ]);
+    }
+
+    /**
+     * Detect whether observations only contain framework-authored retry hints.
+     *
+     * @param array $observations
+     * @return bool
+     */
+    private function observations_are_framework_retry_hints(array $observations): bool {
+        $seen = false;
+
+        foreach ($observations as $observation) {
+            $text = trim((string)$observation);
+            if ($text === '') {
+                continue;
+            }
+
+            $seen = true;
+            if (!str_starts_with($text, 'RETRY_HINT:')) {
+                return false;
+            }
+        }
+
+        return $seen;
     }
 
     /**

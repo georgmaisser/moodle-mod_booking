@@ -120,16 +120,117 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      * Checks that the required 'text' (title) field is present.
      *
      * @param  array $input
-     * @return array{valid:bool,errors:array<int,string>}
+     * @return array{valid:bool,errors:array<int,string>,observation_full?:string}
      */
     public function check_structure(array $input): array {
-        if (empty($input['text'])) {
-            return [
+        $text = trim((string)($input['text'] ?? ''));
+        $optionname = trim((string)($input['optionname'] ?? ''));
+        $title = trim((string)($input['title'] ?? ''));
+        $missingtitle = ($text === '' && $optionname === '' && $title === '');
+        $unknownprops = $this->get_unknown_input_property_names($input);
+
+        if ($missingtitle) {
+            $errors = [get_string('agent_booking_create_option_missing_title', 'mod_booking')];
+            if (!empty($unknownprops)) {
+                $errors[] = 'Unknown create_option properties: ' . implode(', ', $unknownprops)
+                    . '. Use "text" for option name and "maxanswers" for participant limit.';
+            }
+
+            $result = [
                 'valid'  => false,
-                'errors' => [get_string('agent_booking_create_option_missing_title', 'mod_booking')],
+                'errors' => $errors,
+            ];
+            if (!empty($unknownprops)) {
+                $result['observation_full'] = $this->build_unknown_property_observation($unknownprops, $input);
+            }
+            return $result;
+        }
+
+        if (
+            !empty($unknownprops)
+            && (array_key_exists('title', $input) || array_key_exists('optionname', $input))
+            && !array_key_exists('text', $input)
+        ) {
+            return [
+                'valid' => false,
+                'errors' => [
+                    'Unknown create_option properties: ' . implode(', ', $unknownprops)
+                        . '. Use "text" instead of "title"/"optionname".',
+                ],
+                'observation_full' => $this->build_unknown_property_observation($unknownprops, $input),
             ];
         }
+
         return ['valid' => true, 'errors' => []];
+    }
+
+    /**
+     * Return unknown input keys that are not part of the create_option schema.
+     *
+     * @param array $input
+     * @return array<int,string>
+     */
+    private function get_unknown_input_property_names(array $input): array {
+        $supported = array_flip($this->get_supported_property_names());
+        $unknown = [];
+
+        foreach (array_keys($input) as $key) {
+            if (!is_string($key) || $key === '') {
+                continue;
+            }
+            if (!isset($supported[$key])) {
+                $unknown[] = $key;
+            }
+        }
+
+        return array_values(array_unique($unknown));
+    }
+
+    /**
+     * Return the full create_option schema property names.
+     *
+     * @return array<int,string>
+     */
+    private function get_supported_property_names(): array {
+        $schema = $this->get_schema();
+        $properties = array_keys((array)($schema['properties'] ?? []));
+        $properties = array_values(array_filter(array_map('strval', $properties)));
+        sort($properties);
+        return $properties;
+    }
+
+    /**
+     * Build long-form observation text for schema-mismatch retries.
+     *
+     * @param array<int,string> $unknownprops
+     * @param array $input
+     * @return string
+     */
+    private function build_unknown_property_observation(array $unknownprops, array $input): string {
+        $supported = $this->get_supported_property_names();
+        $hints = [];
+
+        if (array_key_exists('title', $input)) {
+            $hints[] = 'title -> text';
+        }
+        if (array_key_exists('optionname', $input)) {
+            $hints[] = 'optionname -> text';
+        }
+        if (array_key_exists('capacity', $input)) {
+            $hints[] = 'capacity -> maxanswers';
+        }
+
+        $message = 'Create option schema mismatch. Unknown properties: '
+            . implode(', ', $unknownprops)
+            . '. Supported properties: '
+            . implode(', ', $supported)
+            . '.';
+
+        if (!empty($hints)) {
+            $message .= ' Suggested mapping: ' . implode('; ', $hints) . '.';
+        }
+
+        return $message;
     }
 
     /**

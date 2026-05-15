@@ -131,11 +131,15 @@ class executor implements agent_executor {
             $structural = $task->check_structure($input);
             if (!($structural['valid'] ?? true)) {
                 $detail = implode('; ', (array)($structural['errors'] ?? []));
-                $results[] = [
+                $entry = [
                     'status' => 'error',
                     'detail' => get_string('agent_executor_structural_failure', 'mod_booking', $detail),
                     'resultid' => null,
                 ];
+                if (!empty($structural['observation_full']) && is_string($structural['observation_full'])) {
+                    $entry['observation_full'] = trim($structural['observation_full']);
+                }
+                $results[] = $entry;
                 continue;
             }
 
