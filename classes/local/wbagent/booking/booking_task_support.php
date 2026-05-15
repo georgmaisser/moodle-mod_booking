@@ -59,6 +59,22 @@ class booking_task_support {
     private ?array $taskinstancescache = null;
 
     /**
+     * Resolve a localized string with optional fixed language.
+     *
+     * @param string $key
+     * @param string $component
+     * @param string $lang
+     * @return string
+     */
+    private static function resolve_string(string $key, string $component, string $lang = ''): string {
+        if ($lang === '') {
+            return get_string($key, $component);
+        }
+
+        return get_string_manager()->get_string($key, $component, null, $lang);
+    }
+
+    /**
      * Return the task names this provider handles.
      *
      * @return string[]
@@ -1439,9 +1455,10 @@ class booking_task_support {
      * Return a localized label for a schema property.
      *
      * @param string $propertyname
+     * @param string $lang
      * @return string
      */
-    private static function get_localized_property_label(string $propertyname): string {
+    private static function get_localized_property_label(string $propertyname, string $lang = ''): string {
         $propertyname = trim($propertyname);
         if ($propertyname === '') {
             return '';
@@ -1485,7 +1502,7 @@ class booking_task_support {
 
         if (isset($exactmap[$propertyname])) {
             [$key, $component] = $exactmap[$propertyname];
-            return get_string($key, $component);
+            return self::resolve_string($key, $component, $lang);
         }
 
         $prefixmap = [
@@ -1506,9 +1523,13 @@ class booking_task_support {
                 continue;
             }
 
-            $base = get_string($stringkey, str_starts_with($stringkey, 'ai_') ? 'mod_booking' : 'booking');
+            $base = self::resolve_string(
+                $stringkey,
+                str_starts_with($stringkey, 'ai_') ? 'mod_booking' : 'booking',
+                $lang
+            );
             $suffix = substr($propertyname, strlen($prefix));
-            $suffixlabel = self::get_localized_property_suffix_label($suffix);
+            $suffixlabel = self::get_localized_property_suffix_label($suffix, $lang);
             return $suffixlabel === '' ? $base : $base . ' - ' . $suffixlabel;
         }
 
@@ -1526,12 +1547,27 @@ class booking_task_support {
     }
 
     /**
+     * Public wrapper for localized property labels in a fixed language.
+     *
+     * @param string $propertyname
+     * @param string $lang
+     * @return string
+     */
+    public static function get_localized_property_label_for_output_in_language(
+        string $propertyname,
+        string $lang = 'en'
+    ): string {
+        return self::get_localized_property_label($propertyname, $lang);
+    }
+
+    /**
      * Return a localized label for a property suffix.
      *
      * @param string $suffix
+     * @param string $lang
      * @return string
      */
-    private static function get_localized_property_suffix_label(string $suffix): string {
+    private static function get_localized_property_suffix_label(string $suffix, string $lang = ''): string {
         $normalized = ltrim($suffix, '_');
         if ($normalized === '') {
             return '';
@@ -1560,7 +1596,7 @@ class booking_task_support {
         ];
 
         if (isset($map[$normalized])) {
-            return get_string($map[$normalized], 'mod_booking');
+            return self::resolve_string($map[$normalized], 'mod_booking', $lang);
         }
 
         return $normalized;

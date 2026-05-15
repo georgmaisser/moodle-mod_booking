@@ -115,6 +115,138 @@ class create_option_task extends booking_task_base implements task_trigger_provi
     }
 
     /**
+     * Normalize common LLM aliases to the canonical create_option schema.
+     *
+     * @param array $input
+     * @param array<string,string> $appliedaliases Canonical key => alias key actually used.
+     * @return array
+     */
+    private static function normalize_create_option_input(array $input, array &$appliedaliases = []): array {
+        $aliasgroups = [
+            'text' => ['title', 'name', 'optionname', 'option_title'],
+            'maxanswers' => ['limit', 'spots', 'capacity', 'maxparticipants', 'max_participants'],
+            'coursestarttime' => ['starttime', 'start', 'from'],
+            'courseendtime' => ['endtime', 'end', 'to'],
+        ];
+
+        foreach ($aliasgroups as $canonical => $aliases) {
+            if (!self::is_placeholder_value($input[$canonical] ?? null)) {
+                continue;
+            }
+
+            foreach ($aliases as $alias) {
+                if (!array_key_exists($alias, $input) || self::is_placeholder_value($input[$alias])) {
+                    continue;
+                }
+
+                $input[$canonical] = $input[$alias];
+                $appliedaliases[$canonical] = $alias;
+                break;
+            }
+        }
+
+        foreach ($aliasgroups as $aliases) {
+            foreach ($aliases as $alias) {
+                if (array_key_exists($alias, $input)) {
+                    unset($input[$alias]);
+                }
+            }
+        }
+
+        return $input;
+    }
+
+    /**
+     * Build a compact retry message explaining canonical create-option keys.
+     *
+     * @param array<string,string> $appliedaliases Canonical key => alias key actually used.
+     * @param array<int,string> $unknownprops
+     * @param array<int,string> $missingprops
+     * @return string
+     */
+    private function build_create_option_retry_message(
+        array $appliedaliases,
+        array $unknownprops = [],
+        array $missingprops = [],
+        bool $includeenlabelkeymap = false
+    ): string {
+        $parts = ['Retry booking.create_option once with corrected canonical keys.'];
+
+        $labelkeymap = $includeenlabelkeymap ? $this->build_supported_property_reference(false, true) : '';
+        if ($includeenlabelkeymap && $labelkeymap !== '') {
+            $parts[] = 'EN label -> key map: ' . $labelkeymap . '.';
+        }
+
+        if (!empty($appliedaliases)) {
+            $mapped = [];
+            foreach ($appliedaliases as $canonical => $alias) {
+                $mapped[] = $alias . ' -> ' . $canonical;
+            }
+            $parts[] = 'Applied alias mapping: ' . implode(', ', $mapped) . '.';
+        }
+
+        if (!empty($missingprops)) {
+            $parts[] = 'Still missing required fields: ' . implode(', ', $missingprops) . '.';
+        }
+
+        if (!empty($unknownprops)) {
+            $parts[] = 'Remove unknown keys: ' . implode(', ', $unknownprops) . '.';
+        }
+
+        $parts[] = 'Resend the same task once with corrected input.';
+
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Build a key reference from schema + localized labels.
+     *
+     * @param bool $withdescriptions
+     * @param bool $labelstokey
+     * @return string
+     */
+    private function build_supported_property_reference(
+        bool $withdescriptions = true,
+        bool $labelstokey = false
+    ): string {
+        $schema = $this->get_schema();
+        $properties = (array)($schema['properties'] ?? []);
+        if (empty($properties)) {
+            return '';
+        }
+
+        $entries = [];
+        foreach ($properties as $key => $definition) {
+            if (!is_string($key) || $key === '') {
+                continue;
+            }
+
+            $label = trim((string)booking_task_support::get_localized_property_label_for_output_in_language($key, 'en'));
+            $description = trim((string)($definition['description'] ?? ''));
+
+            if ($labelstokey) {
+                $entry = ($label !== '' ? $label : $key) . ' -> ' . $key;
+            } else {
+                $entry = $key;
+                if ($label !== '' && $label !== $key) {
+                    $entry .= ' (' . $label . ')';
+                }
+                if ($withdescriptions && $description !== '') {
+                    $entry .= ': ' . $description;
+                }
+            }
+
+            $entries[] = $entry;
+        }
+
+        if (empty($entries)) {
+            return '';
+        }
+
+        return implode($withdescriptions ? ' | ' : ', ', $entries);
+    }
+
+    /**
      * Structural validation — pure, no DB access.
      *
      * Checks that the required 'text' (title) field is present.
@@ -123,41 +255,34 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      * @return array{valid:bool,errors:array<int,string>,observation_full?:string}
      */
     public function check_structure(array $input): array {
+        $rawinput = $input;
+        $appliedaliases = [];
+        $input = self::normalize_create_option_input($input, $appliedaliases);
+
         $text = trim((string)($input['text'] ?? ''));
-        $optionname = trim((string)($input['optionname'] ?? ''));
-        $title = trim((string)($input['title'] ?? ''));
-        $missingtitle = ($text === '' && $optionname === '' && $title === '');
+        $missingtitle = ($text === '');
         $unknownprops = $this->get_unknown_input_property_names($input);
+        $retrymessage = $this->build_create_option_retry_message(
+            $appliedaliases,
+            $unknownprops,
+            $missingtitle ? ['text'] : []
+        );
 
         if ($missingtitle) {
-            $errors = [get_string('agent_booking_create_option_missing_title', 'mod_booking')];
-            if (!empty($unknownprops)) {
-                $errors[] = 'Unknown create_option properties: ' . implode(', ', $unknownprops)
-                    . '. Use "text" for option name and "maxanswers" for participant limit.';
-            }
-
-            $result = [
+            $observation = $this->build_unknown_property_observation($unknownprops, $rawinput, ['text']);
+            return [
                 'valid'  => false,
-                'errors' => $errors,
+                'errors' => [get_string('agent_booking_create_option_missing_title', 'mod_booking'), $retrymessage],
+                'observation_full' => $observation,
             ];
-            if (!empty($unknownprops)) {
-                $result['observation_full'] = $this->build_unknown_property_observation($unknownprops, $input);
-            }
-            return $result;
         }
 
-        if (
-            !empty($unknownprops)
-            && (array_key_exists('title', $input) || array_key_exists('optionname', $input))
-            && !array_key_exists('text', $input)
-        ) {
+        if (!empty($unknownprops)) {
+            $observation = $this->build_unknown_property_observation($unknownprops, $rawinput);
             return [
                 'valid' => false,
-                'errors' => [
-                    'Unknown create_option properties: ' . implode(', ', $unknownprops)
-                        . '. Use "text" instead of "title"/"optionname".',
-                ],
-                'observation_full' => $this->build_unknown_property_observation($unknownprops, $input),
+                'errors' => [$observation],
+                'observation_full' => $observation,
             ];
         }
 
@@ -204,33 +329,52 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      *
      * @param array<int,string> $unknownprops
      * @param array $input
+     * @param array<int,string> $missingprops
      * @return string
      */
-    private function build_unknown_property_observation(array $unknownprops, array $input): string {
-        $supported = $this->get_supported_property_names();
-        $hints = [];
+    private function build_unknown_property_observation(
+        array $unknownprops,
+        array $input,
+        array $missingprops = []
+    ): string {
+        $unknowntext = empty($unknownprops) ? '(none)' : implode(', ', $unknownprops);
+        $message = 'Create option schema mismatch. Unknown properties: ' . $unknowntext . '.';
 
-        if (array_key_exists('title', $input)) {
-            $hints[] = 'title -> text';
-        }
-        if (array_key_exists('optionname', $input)) {
-            $hints[] = 'optionname -> text';
-        }
-        if (array_key_exists('capacity', $input)) {
-            $hints[] = 'capacity -> maxanswers';
+        $appliedaliases = [];
+        $normalized = self::normalize_create_option_input($input, $appliedaliases);
+        unset($normalized);
+
+        return trim(implode(' ', array_filter([
+            $message,
+            $this->build_create_option_retry_message($appliedaliases, $unknownprops, $missingprops, true),
+        ])));
+    }
+
+    /**
+     * Build a concise preflight hint for missing/confirmable fields.
+     *
+     * @param array<int,string> $missingrequired
+     * @param array<int,string> $confirmablewithoutfields
+     * @return string
+     */
+    private function build_missing_fields_preflight_hint(
+        array $missingrequired,
+        array $confirmablewithoutfields = []
+    ): string {
+        $parts = ['Preflight: booking.create_option needs additional input.'];
+
+        if (!empty($missingrequired)) {
+            $parts[] = 'Missing required fields: ' . implode(', ', array_values(array_unique($missingrequired))) . '.';
         }
 
-        $message = 'Create option schema mismatch. Unknown properties: '
-            . implode(', ', $unknownprops)
-            . '. Supported properties: '
-            . implode(', ', $supported)
-            . '.';
-
-        if (!empty($hints)) {
-            $message .= ' Suggested mapping: ' . implode('; ', $hints) . '.';
+        if (!empty($confirmablewithoutfields)) {
+            $parts[] = 'Can continue without these if user confirms: '
+                . implode(', ', array_values(array_unique($confirmablewithoutfields))) . '.';
         }
 
-        return $message;
+        $parts[] = 'Either provide the missing fields or confirm to proceed without the confirmable ones.';
+
+        return implode(' ', $parts);
     }
 
     /**
@@ -248,13 +392,18 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         $lang = $this->get_output_language($input);
         $issues = [];
         $errors = [];
+        $appliedaliases = [];
+        $input = self::normalize_create_option_input($input, $appliedaliases);
 
         // Title is required (structural, but re-check for safety).
         if (empty($input['text'])) {
+            $retrymessage = $this->build_create_option_retry_message($appliedaliases, [], ['text']);
             $issues[] = [
                 'code'           => 'MISSING_TITLE',
                 'severity'       => 'needs_clarification',
-                'message'        => $this->localized_string('agent_booking_create_option_missing_title', null, $lang),
+                'message'        => $retrymessage !== ''
+                    ? $retrymessage
+                    : $this->localized_string('agent_booking_create_option_missing_title', null, $lang),
                 'user_question'  => $this->localized_string('agent_booking_create_option_which_title_question', null, $lang),
                 'remedy_options' => ['ASK_TITLE'],
             ];
@@ -321,33 +470,48 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         // Type-specific required field validation.
         $errors = array_merge($errors, self::validate_type_specific_required_fields($input, $resolvedtype, $typeoverrides));
 
+        if (!empty($errors)) {
+            $missingrequired = [];
+            $confirmablewithoutfields = [];
+
+            if ($resolvedtype === 'normal') {
+                if (!self::has_any_key($input, ['teacherquery', 'teacheremail'])) {
+                    $missingrequired[] = 'teacherquery or teacheremail';
+                }
+                if (!self::has_any_key($input, ['maxanswers'])) {
+                    $missingrequired[] = 'maxanswers';
+                }
+                if (!self::has_any_key($input, ['optiondates', 'coursestarttime'])) {
+                    $missingrequired[] = 'coursestarttime (or optiondates)';
+                }
+                if (!self::has_any_key($input, ['duration', 'courseendtime', 'optiondates'])) {
+                    $missingrequired[] = 'courseendtime/duration (or optiondates)';
+                }
+                if ($missinglocationconfirm) {
+                    $confirmablewithoutfields[] = 'location or address';
+                }
+            }
+
+            $hint = $this->build_missing_fields_preflight_hint($missingrequired, $confirmablewithoutfields);
+
+            $issues[] = [
+                'code'           => 'MISSING_REQUIRED_FIELDS',
+                'severity'       => 'needs_clarification',
+                'message'        => $hint,
+                'user_question'  => $hint,
+                'remedy_options' => ['PROVIDE_FIELDS', 'CONFIRM_CREATE_WITHOUT_LOCATION'],
+            ];
+            return task_preflight_result::invalid($issues);
+        }
+
         if ($missinglocationconfirm) {
             $issues[] = [
                 'code'           => 'MISSING_LOCATION_CONFIRM_REQUIRED',
                 'severity'       => 'needs_confirmation',
-                'message'        => $this->localized_string('agent_booking_create_confirm_without_location', null, $lang),
-                'user_question'  => $this->localized_string('agent_booking_create_confirm_without_location', null, $lang),
+                'message'        => $this->build_missing_fields_preflight_hint([], ['location or address']),
+                'user_question'  => $this->build_missing_fields_preflight_hint([], ['location or address']),
                 'remedy_options' => ['CONFIRM_CREATE_WITHOUT_LOCATION', 'PROVIDE_LOCATION'],
             ];
-        }
-
-        if (!empty($errors)) {
-            $issues[] = [
-                'code'           => 'MISSING_REQUIRED_FIELDS',
-                'severity'       => 'needs_clarification',
-                'message'        => $this->localized_string('agent_booking_create_missing_required_fields', null, $lang),
-                'user_question'  => $this->localized_string('agent_booking_create_missing_required_fields', null, $lang),
-                'remedy_options' => ['PROVIDE_FIELDS', 'CONFIRM_EMPTY_DEFAULTS'],
-            ];
-            // Surface individual errors as separate issues so caller can display them.
-            foreach ($errors as $err) {
-                $issues[] = [
-                    'code'     => 'VALIDATION_ERROR',
-                    'severity' => 'needs_clarification',
-                    'message'  => $err,
-                ];
-            }
-            return task_preflight_result::invalid($issues);
         }
 
         // Slot-booking sanity (soft issues only).
@@ -829,6 +993,20 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      */
     private static function is_placeholder_value($value): bool {
         return $value === 0 || $value === '0' || $value === '' || $value === null || (is_array($value) && empty($value));
+    }
+
+    /**
+     * Whether a normalized field has a non-empty meaningful value.
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    private function is_non_empty_value(mixed $value): bool {
+        if (self::is_placeholder_value($value)) {
+            return false;
+        }
+
+        return trim((string)$value) !== '';
     }
 
     /**

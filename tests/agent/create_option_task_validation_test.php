@@ -113,4 +113,50 @@ final class create_option_task_validation_test extends booking_advanced_testcase
         $this->assertFalse($result['valid']);
         $this->assertNotEmpty($result['errors']);
     }
+
+    /**
+     * Common aliases should be accepted and normalized to canonical create_option keys.
+     */
+    public function test_aliases_are_normalized_for_create_option(): void {
+        global $USER;
+
+        $task = new create_option_task();
+
+        $result = $task->validate([
+            'title' => 'Aliased Option Title',
+            'limit' => 25,
+            'starttime' => '2036-06-04T12:00:00',
+            'endtime' => '2036-06-04T14:00:00',
+            'teacheremail' => (string)$USER->email,
+            'location' => 'Room 1',
+        ], $this->cmid);
+
+        $this->assertTrue($result['valid'], implode(' | ', $result['errors'] ?? []));
+        $this->assertEmpty($result['errors']);
+    }
+
+    /**
+     * Structural validation should return a clear retry hint for bad keys.
+     */
+    public function test_missing_title_returns_retry_guidance(): void {
+        $task = new create_option_task();
+
+        $result = $task->check_structure([
+            'foo' => 'bar',
+            'limit' => 7,
+            'starttime' => '2045-11-01T09:00:00',
+            'endtime' => '2045-11-01T11:00:00',
+        ]);
+
+        $this->assertFalse($result['valid']);
+        $this->assertArrayHasKey('observation_full', $result);
+        $observation = (string)$result['observation_full'];
+        $this->assertStringContainsString(
+            'Retry booking.create_option once with corrected canonical keys.',
+            $observation
+        );
+        $this->assertStringContainsString('EN label -> key map:', $observation);
+        $this->assertStringContainsString('Applied alias mapping: limit -> maxanswers', $observation);
+        $this->assertStringContainsString('Remove unknown keys: foo', $observation);
+    }
 }
