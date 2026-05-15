@@ -255,6 +255,9 @@ class agent_runtime {
             $this->store->set_thread_metadata_value($threadid, '_loop_resume', null);
         } else {
             $state = agent_state::make($limit);
+            // New user turn: reset planner-result cache so stale payloads from a
+            // previous turn cannot leak into the next [PLANNER_RESULT] block.
+            $this->store->set_thread_metadata_value($threadid, 'last_planner_result_json', null);
             // Clean up an expired entry if present.
             if (is_array($resumedata)) {
                 $this->store->set_thread_metadata_value($threadid, '_loop_resume', null);
@@ -1558,10 +1561,16 @@ class agent_runtime {
             $plannersteptype
         );
 
-        // Persist full planner response so the next model turn receives it verbatim
-        // as [PLANNER_RESULT] context for repair-oriented retries.
+        // Persist planner response only for the initial planner call of this turn
+        // (no observations). Retry/repair steps must not overwrite it, otherwise
+        // [PLANNER_RESULT] can bloat with preflight clarification payloads.
         $plannerresultjson = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if (is_string($plannerresultjson) && $plannerresultjson !== '') {
+        if (
+            $plannersteptype === orchestrator::STEP_TYPE_TOOL_CALL_PARSE
+            && empty($observations)
+            && is_string($plannerresultjson)
+            && $plannerresultjson !== ''
+        ) {
             $this->store->set_thread_metadata_value($threadid, 'last_planner_result_json', $plannerresultjson);
         }
 

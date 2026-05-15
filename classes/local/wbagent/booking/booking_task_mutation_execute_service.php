@@ -861,15 +861,8 @@ class booking_task_mutation_execute_service {
             }
         }
 
-        if ($taskname === create_option_task::TASK_NAME) {
-            $isnormal = $resolvedoptiontype === null || $resolvedoptiontype === MOD_BOOKING_OPTIONTYPE_DEFAULT;
-            if ($isnormal) {
-                $parsedoptiondates = booking_task_support::extract_optiondates($normalizedinput);
-                if (empty($parsedoptiondates)) {
-                    $errors[] = get_string('agent_validation_optiondates_invalid', 'mod_booking');
-                }
-            }
-        }
+        // For create_option, only title is required at preflight level.
+        // Optional fields (teacher/location/schedule/capacity) can be omitted.
 
         if ($taskname === update_option_task::TASK_NAME && empty($normalizedinput['optionid'])) {
             $optionquery = (string)($normalizedinput['optionquery'] ?? '');

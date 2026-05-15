@@ -286,6 +286,12 @@ $string['agent_booking_diagnose_intro_status'] =
     'Ihr aktueller Status ist {$a}.';
 $string['agent_booking_diagnose_other_user_permission_denied'] =
     'Sie duerfen keine Buchungsdiagnose fuer andere Nutzer:innen ausfuehren.';
+$string['agent_booking_diagnose_reason_banned_username'] =
+    'Ihr Benutzername steht auf der Sperrliste dieser Buchungsinstanz.';
+$string['agent_booking_diagnose_reason_banned_username_concrete'] =
+    'Konkrete Einstellung: booking.banusernames enthaelt diesen Benutzernamen. Admin-Aktion: Den Benutzernamen aus dem Feld "Gesperrte Benutzernamen" in den Instanzeinstellungen entfernen.';
+$string['agent_booking_diagnose_reason_banned_username_other'] =
+    'Der Benutzername der ausgewaehlten Person steht auf der Sperrliste dieser Buchungsinstanz.';
 $string['agent_booking_diagnose_reason_cannot_book_already_booked'] =
     'Sie sind bereits gebucht, daher ist eine weitere normale Buchung nicht verfuegbar.';
 $string['agent_booking_diagnose_reason_cannot_book_already_booked_other'] =
@@ -298,6 +304,16 @@ $string['agent_booking_diagnose_reason_cannot_book_waitinglist_available'] =
     'Die regulaeren Plaetze sind voll, aber auf der Warteliste sind noch Plaetze frei.';
 $string['agent_booking_diagnose_reason_cannot_book_waitinglist_full'] =
     'Die Warteliste ist ebenfalls voll.';
+$string['agent_booking_diagnose_reason_instance_disablebooking'] =
+    'Das Buchen ist fuer diese gesamte Buchungsinstanz aktuell deaktiviert.';
+$string['agent_booking_diagnose_reason_instance_disablebooking_concrete'] =
+    'Konkrete Einstellung: booking.json.disablebooking = 1. Admin-Aktion: In den Instanzeinstellungen "Buchen fuer diese Instanz deaktivieren" deaktivieren.';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded'] =
+    'Die maximale Anzahl an Buchungen pro Nutzer:in wurde erreicht ({$a} Buchungen erlaubt).';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded_concrete'] =
+    'Konkrete Einstellung: booking.maxperuser = {$a->max}. Aktive Buchungen dieser Person in dieser Instanz: {$a->current}. Admin-Aktion: Eine bestehende Buchung stornieren oder maxperuser in den Instanzeinstellungen erhoehen.';
+$string['agent_booking_diagnose_reason_maxperuser_exceeded_other'] =
+    'Die ausgewaehlte Person hat die maximale Anzahl an Buchungen pro Nutzer:in erreicht ({$a} Buchungen erlaubt).';
 $string['agent_booking_diagnose_reason_missing_email_booked'] =
     'Sie sind fuer diese Option gebucht; eine fehlende Buchung erklaert die fehlende E-Mail daher nicht.';
 $string['agent_booking_diagnose_reason_missing_email_booked_other'] =
@@ -318,40 +334,24 @@ $string['agent_booking_diagnose_reason_none'] =
     'Aus dem aktuellen Buchungsstatus konnte kein konkreter Blockierungsgrund abgeleitet werden.';
 $string['agent_booking_diagnose_reason_not_enrolled'] =
     'Sie sind nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt. Das ist ein wichtiges Signal, aber nicht immer allein ein Blockierungsgrund.';
-$string['agent_booking_diagnose_reason_not_enrolled_other'] =
-    'Die ausgewaehlte Person ist nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt. Das ist ein wichtiges Signal, aber nicht immer allein ein Blockierungsgrund.';
 $string['agent_booking_diagnose_reason_not_enrolled_concrete'] =
     'Konkreter Zustand: Benutzer (id={$a}) ist nicht im Kurs eingeschrieben. Admin-Aktion: Vor einer finalen Schlussfolgerung zunaechst Options-Bedingungen und Capability-Setup pruefen.';
-$string['agent_booking_diagnose_reason_not_enrolled_supplementary'] =
-    'Ergaenzender Hinweis: Eine fehlende Kurseinschreibung bedeutet nicht zwingend, dass eine Buchung unmoeglich ist.';
 $string['agent_booking_diagnose_reason_not_enrolled_context_concrete'] =
     'Kontextpruefung: capbookingchoose-Bedingung aktiv = {$a->choosecondition}; System-Capability mod/booking:choose = {$a->systemcap}. Wenn die Bedingung nicht aktiv ist oder Capability-Pruefungen die Buchung erlauben, blockiert fehlende Einschreibung allein nicht zwingend.';
-$string['agent_booking_diagnose_reason_option_invisible'] =
-    'Diese Buchungsoption ist auf unsichtbar gestellt und fuer normale Nutzer:innen nicht sichtbar.';
-$string['agent_booking_diagnose_reason_option_invisible_other'] =
-    'Die ausgewaehlte Buchungsoption ist auf unsichtbar gestellt und fuer normale Nutzer:innen nicht sichtbar.';
-$string['agent_booking_diagnose_reason_option_invisible_concrete'] =
-    'Konkrete Einstellung: booking_options.invisible = 1. Admin-Aktion: Die Option in den Buchungsoptionseinstellungen auf "sichtbar" stellen.';
+$string['agent_booking_diagnose_reason_not_enrolled_other'] =
+    'Die ausgewaehlte Person ist nicht in den Kurs eingeschrieben, der diese Buchungsaktivitaet enthaelt. Das ist ein wichtiges Signal, aber nicht immer allein ein Blockierungsgrund.';
+$string['agent_booking_diagnose_reason_not_enrolled_supplementary'] =
+    'Ergaenzender Hinweis: Eine fehlende Kurseinschreibung bedeutet nicht zwingend, dass eine Buchung unmoeglich ist.';
 $string['agent_booking_diagnose_reason_option_hidden_from_list'] =
     'Diese Buchungsoption ist aus der Buchungsliste ausgeblendet (invisible = 2), kann aber ueber einen direkten Link aufgerufen werden.';
 $string['agent_booking_diagnose_reason_option_hidden_from_list_concrete'] =
     'Konkrete Einstellung: booking_options.invisible = 2. Die Option ist per Direktlink weiterhin buchbar – die Buchung selbst wird dadurch nicht blockiert.';
-$string['agent_booking_diagnose_reason_instance_disablebooking'] =
-    'Das Buchen ist fuer diese gesamte Buchungsinstanz aktuell deaktiviert.';
-$string['agent_booking_diagnose_reason_instance_disablebooking_concrete'] =
-    'Konkrete Einstellung: booking.json.disablebooking = 1. Admin-Aktion: In den Instanzeinstellungen "Buchen fuer diese Instanz deaktivieren" deaktivieren.';
-$string['agent_booking_diagnose_reason_maxperuser_exceeded'] =
-    'Die maximale Anzahl an Buchungen pro Nutzer:in wurde erreicht ({$a} Buchungen erlaubt).';
-$string['agent_booking_diagnose_reason_maxperuser_exceeded_other'] =
-    'Die ausgewaehlte Person hat die maximale Anzahl an Buchungen pro Nutzer:in erreicht ({$a} Buchungen erlaubt).';
-$string['agent_booking_diagnose_reason_maxperuser_exceeded_concrete'] =
-    'Konkrete Einstellung: booking.maxperuser = {$a->max}. Aktive Buchungen dieser Person in dieser Instanz: {$a->current}. Admin-Aktion: Eine bestehende Buchung stornieren oder maxperuser in den Instanzeinstellungen erhoehen.';
-$string['agent_booking_diagnose_reason_banned_username'] =
-    'Ihr Benutzername steht auf der Sperrliste dieser Buchungsinstanz.';
-$string['agent_booking_diagnose_reason_banned_username_other'] =
-    'Der Benutzername der ausgewaehlten Person steht auf der Sperrliste dieser Buchungsinstanz.';
-$string['agent_booking_diagnose_reason_banned_username_concrete'] =
-    'Konkrete Einstellung: booking.banusernames enthaelt diesen Benutzernamen. Admin-Aktion: Den Benutzernamen aus dem Feld "Gesperrte Benutzernamen" in den Instanzeinstellungen entfernen.';
+$string['agent_booking_diagnose_reason_option_invisible'] =
+    'Diese Buchungsoption ist auf unsichtbar gestellt und fuer normale Nutzer:innen nicht sichtbar.';
+$string['agent_booking_diagnose_reason_option_invisible_concrete'] =
+    'Konkrete Einstellung: booking_options.invisible = 1. Admin-Aktion: Die Option in den Buchungsoptionseinstellungen auf "sichtbar" stellen.';
+$string['agent_booking_diagnose_reason_option_invisible_other'] =
+    'Die ausgewaehlte Buchungsoption ist auf unsichtbar gestellt und fuer normale Nutzer:innen nicht sichtbar.';
 $string['agent_booking_diagnose_reason_status_booked'] =
     'Sie haben fuer diese Option bereits eine bestaetigte Buchung.';
 $string['agent_booking_diagnose_reason_status_booked_other'] =
@@ -564,6 +564,8 @@ $string['ai_agent_loop_repeat_message'] = 'Ich habe {$a->steps} wiederholte Nach
 $string['ai_agent_malformed_taskcall_clarification'] =
     'Ich konnte den letzten Schritt nicht zuverlaessig verarbeiten. Bitte stellen Sie Ihre Frage noch einmal in einem kurzen Satz.';
 $string['ai_confirm_missing_teacher_user_create_option'] = 'Benutzer "{$a->userquery}" wurde nicht gefunden. Um diesen Auftrag auszufuehren, muss dieser Benutzer zusaetzlich erstellt werden. Soll ich Benutzer und Buchungsoption erstellen?';
+$string['ai_diagnose_recall_blocked_use_existing'] =
+    'Ich habe bereits relevante Diagnoseergebnisse und fasse diese direkt zusammen, statt dieselbe Prüfung erneut auszuführen.';
 $string['ai_docs_explain_ambiguity_candidates'] =
     'Ich habe mehrere passende Dokumentationsthemen gefunden. Bitte praezisieren Sie, welches Sie meinen: {$a}.';
 $string['ai_docs_explain_followup_query'] = 'Bitte erklaeren Sie dieses Dokumentationsthema: {$a}';
@@ -574,6 +576,10 @@ $string['ai_docs_explain_missing_doc_path'] =
     'Es wurde kein gueltiger Dokumentationspfad uebergeben. Bitte erneut mit doc_path oder doc_path_candidates aus dem docs_index versuchen.';
 $string['ai_docs_explain_no_match'] = 'Ich konnte kein passendes Dokumentationsthema fuer diese Frage finden.';
 $string['ai_docs_explain_required_question'] = 'Das Feld "question" ist fuer explain_docs_topic erforderlich.';
+$string['ai_fallback_confirmation_request'] = 'Bitte bestätigen Sie, ob ich so fortfahren soll.';
+$string['ai_fallback_error'] = 'Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.';
+$string['ai_fallback_summary'] = 'Ich fasse die verfügbaren Ergebnisse für Sie zusammen.';
+$string['ai_fallback_task_call'] = 'Ich bearbeite Ihre Anfrage jetzt.';
 $string['ai_followup_create_option_with_property_query'] = 'Bitte helfen Sie mir, eine Buchungsoption zu erstellen und dieses Feld zu verwenden: {$a}';
 $string['ai_followup_diagnose_option_query'] = 'Bitte analysieren Sie, warum diese Buchungsoption fuer Nutzende problematisch sein koennte: {$a}';
 $string['ai_followup_offer'] = 'Kann ich noch weiter helfen? Sie koennen mit einer dieser Optionen fortfahren.';
@@ -592,6 +598,7 @@ $string['ai_preview_no_matching_option'] =
 $string['ai_preview_not_supported_task'] =
     'Eine Zeilenvorschau ist nur fuer Befehle zum Erstellen/Aktualisieren von Optionen verfuegbar.';
 $string['ai_privacy_check_running'] = 'Datenschutzpruefung laeuft...';
+$string['ai_step_planning'] = 'Schritt 1: Planung...';
 $string['ai_privacy_precheck_summary'] = '{$a->count} Eintraege in der Anfrage anonymisiert ({$a->names} Namen, {$a->emails} E-Mails).';
 $string['ai_privacy_precheck_summary_none'] = 'Datenschutzpruefung abgeschlossen: keine personenbezogenen Eintraege gefunden.';
 $string['ai_privacy_response_note'] = 'Datenschutzhinweis: Personenbezogene Daten in dieser Antwort wurden fuer die Anzeige deanonymisiert.';
@@ -630,6 +637,8 @@ $string['ai_property_teacheremail'] = 'E-Mail der Lehrperson';
 $string['ai_property_teacherquery'] = 'Lehrperson';
 $string['ai_property_userprofilecustom'] = 'Bedingung benutzerdefiniertes Profilfeld';
 $string['ai_property_userprofilestandard'] = 'Bedingung Standard-Profilfeld';
+$string['ai_redundant_readonly_blocked'] =
+    'Diese Information wurde bereits recherchiert. Ich nutze die bisherigen Ergebnisse, um Ihre Frage zu beantworten.';
 $string['ai_repair_no_solution_message'] = 'Für diesen Ausführungsfehler konnte ich keinen sicheren automatischen Reparaturplan erstellen. Bitte präzisieren Sie die Angaben und versuchen Sie es erneut.';
 $string['ai_repair_proposal_message'] = 'Die vorherige Ausführung ist fehlgeschlagen, weil benötigte Daten nicht aufgelöst werden konnten. Ich habe einen aktualisierten Plan vorbereitet, der zuerst die fehlende Voraussetzung behebt und danach Ihre ursprüngliche Aktion erneut ausführt. Bitte prüfen und bestätigen Sie die aktualisierte Befehlsliste.';
 $string['ai_result_detail_action_executed'] = 'Die Aktion wurde ausgefuehrt.';
@@ -650,14 +659,6 @@ $string['ai_result_feedback_options_found'] = 'Ich habe {$a} passende Buchungsop
 $string['ai_result_feedback_options_none'] = 'Ich konnte keine passende Buchungsoption finden.';
 $string['ai_result_feedback_users_found'] = 'Ich habe {$a} passende Nutzer gefunden.';
 $string['ai_result_feedback_users_none'] = 'Ich konnte keine passenden Nutzer finden.';
-$string['ai_fallback_error'] = 'Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.';
-$string['ai_fallback_confirmation_request'] = 'Bitte bestätigen Sie, ob ich so fortfahren soll.';
-$string['ai_fallback_task_call'] = 'Ich bearbeite Ihre Anfrage jetzt.';
-$string['ai_fallback_summary'] = 'Ich fasse die verfügbaren Ergebnisse für Sie zusammen.';
-$string['ai_diagnose_recall_blocked_use_existing'] =
-    'Ich habe bereits relevante Diagnoseergebnisse und fasse diese direkt zusammen, statt dieselbe Prüfung erneut auszuführen.';
-$string['ai_redundant_readonly_blocked'] =
-    'Diese Information wurde bereits recherchiert. Ich nutze die bisherigen Ergebnisse, um Ihre Frage zu beantworten.';
 $string['ai_status_confirm_booking_bulk_update_options'] = 'Ich werde mehrere Buchungsoptionen auf einmal aktualisieren. Soll ich fortfahren?';
 $string['ai_status_confirm_booking_create_option'] = 'Ich werde eine neue Buchungsoption erstellen.';
 $string['ai_status_confirm_booking_search_options'] = 'Ich werde die Buchungsoptionen auflisten.';

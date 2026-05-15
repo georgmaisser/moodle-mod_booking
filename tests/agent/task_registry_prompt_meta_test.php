@@ -80,10 +80,21 @@ final class task_registry_prompt_meta_test extends booking_advanced_testcase {
         // Verify that the contract includes prompt-guided minimal input.
         $this->assertArrayHasKey('minimal_input', $createcontract);
         $this->assertArrayHasKey('anchors', $createcontract);
+        $this->assertArrayHasKey('example_input', $createcontract);
+        $this->assertArrayHasKey('message_triggers', $createcontract);
 
         // The minimal input should include fields from prompt_meta.
         $this->assertContains('text', $createcontract['minimal_input']);
-        $this->assertContains('optiontype', $createcontract['minimal_input']);
+        $this->assertNotContains('optiontype', $createcontract['minimal_input']);
+
+        // The example should expose the most common create keys.
+        $this->assertArrayHasKey('text', $createcontract['example_input']);
+        $this->assertArrayHasKey('maxanswers', $createcontract['example_input']);
+        $this->assertArrayHasKey('coursestarttime', $createcontract['example_input']);
+        $this->assertArrayHasKey('courseendtime', $createcontract['example_input']);
+
+        // The task-specific trigger hints should stay attached to the task catalog entry.
+        $this->assertNotEmpty($createcontract['message_triggers']);
 
         // The anchors should include what was declared in prompt_meta.
         $this->assertContains('option', $createcontract['anchors']);

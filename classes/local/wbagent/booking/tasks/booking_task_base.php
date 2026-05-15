@@ -46,7 +46,7 @@ abstract class booking_task_base extends base_task {
      */
     protected static array $prompt_meta_map = [
         'booking.create_option' => [
-            'input_fields_for_prompt' => ['text', 'optiontype', 'optiondates', 'maxanswers'],
+            'input_fields_for_prompt' => ['text'],
             'anchor_fields' => ['option'],
         ],
         'booking.create_user' => [

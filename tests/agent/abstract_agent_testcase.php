@@ -130,8 +130,8 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
       *   BOOKING_TEST_AI_MODEL
       *   BOOKING_TEST_AI_ENDPOINT
       *
-    * Endpoint values may be either a full chat-completions URL or a base URL.
-    * When only a base URL is given, "/chat/completions" is appended.
+      * Endpoint values may be either a full chat-completions URL or a base URL.
+      * When only a base URL is given, "/chat/completions" is appended.
       *
       * When all three are set the provider is created and enabled so that every
       * core_ai generate_text call inside the test actually hits the real API.

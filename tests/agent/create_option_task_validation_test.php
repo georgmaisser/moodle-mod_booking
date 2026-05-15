@@ -79,9 +79,9 @@ final class create_option_task_validation_test extends booking_advanced_testcase
     }
 
     /**
-     * Missing location without override should produce a confirmable issue.
+     * Missing location without override must not block preflight anymore.
      */
-    public function test_missing_location_without_override_returns_confirmable_issue(): void {
+    public function test_missing_location_without_override_is_valid(): void {
         global $USER;
 
         $task = new create_option_task();
@@ -95,23 +95,21 @@ final class create_option_task_validation_test extends booking_advanced_testcase
         ], $this->cmid);
 
         $this->assertTrue($result['valid']);
-        $issues = $result['issues'] ?? [];
-        $codes = array_values(array_filter(array_map(static fn(array $issue): string => (string)($issue['code'] ?? ''), $issues)));
-        $this->assertContains('MISSING_LOCATION_CONFIRM_REQUIRED', $codes);
+        $this->assertEmpty($result['errors']);
     }
 
     /**
-     * Missing schedule details must fail already in first validation.
+     * Title-only payload must pass validation.
      */
-    public function test_missing_schedule_fails_in_first_validation(): void {
+    public function test_title_only_payload_is_valid(): void {
         $task = new create_option_task();
 
         $result = $task->validate([
             'text' => 'Nur Titel',
         ], $this->cmid);
 
-        $this->assertFalse($result['valid']);
-        $this->assertNotEmpty($result['errors']);
+        $this->assertTrue($result['valid']);
+        $this->assertEmpty($result['errors']);
     }
 
     /**

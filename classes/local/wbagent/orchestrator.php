@@ -145,6 +145,7 @@ class orchestrator {
 
         // Compute adaptive task catalog: tiered (mandatory + recency for Step 2+, full for Step 1).
         $recenttaskhistory = $this->extract_recent_task_names_from_messages($messages);
+        $isfirstassistantturn = $this->is_first_assistant_turn($messages);
         $adaptivecatalogresult = adaptive_task_catalog_service::get_adaptive_catalog(
             $this->registry->get_all_prompt_contracts(),
             $recenttaskhistory,
@@ -152,7 +153,8 @@ class orchestrator {
         );
         $adaptivecatalog = $adaptivecatalogresult['active_tasks'];
 
-        $haseffectiveobservations = !empty($observations)
+        $hasanyobservations = !empty($observations);
+        $haseffectiveobservations = $hasanyobservations
             && !$this->observations_are_framework_retry_hints($observations);
         $lastplannerresult = trim((string)$this->store->get_thread_metadata_value($threadid, 'last_planner_result_json'));
 
@@ -161,9 +163,15 @@ class orchestrator {
             $normalizedsteptype,
             $actionclass,
             $haseffectiveobservations,
-            $adaptivecatalog
+            $adaptivecatalog,
+            $isfirstassistantturn
         );
-        $runtimecontext = $this->build_runtime_context_block($cmid);
+        $runtimecontext = $this->build_runtime_context_block(
+            $cmid,
+            $normalizedsteptype,
+            $isfirstassistantturn,
+            $hasanyobservations
+        );
         $prompt = $this->build_prompt(
             $systemprompt,
             $messages,
@@ -402,6 +410,7 @@ PROMPT;
      * @param  string $actionclass
      * @param  bool   $hasobservations
      * @param  array  $adaptivecatalog Optional adaptive task catalog (reduced by recency/tier). If null, uses full catalog.
+     * @param  bool   $isfirstassistantturn True when no assistant message exists yet in this thread.
      * @return string System prompt text.
      */
     private function build_system_prompt(
@@ -409,7 +418,8 @@ PROMPT;
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
         string $actionclass = generate_text::class,
         bool $hasobservations = false,
-        ?array $adaptivecatalog = null
+        ?array $adaptivecatalog = null,
+        bool $isfirstassistantturn = false
     ): string {
         $schemas = $this->registry->get_all_schemas();
         $taskcatalog = $adaptivecatalog ?? $this->registry->get_all_prompt_contracts();
@@ -469,7 +479,12 @@ PROMPT;
         // Append all NON-OPTIONAL policies from centralized policy builder.
         // This is the single source of truth for dynamic policy appends.
         $policybuilder = new prompt_policy_builder();
-        $prompt .= $policybuilder->build_all_policies($triggerjson, $steptype, $hasobservations);
+        $prompt .= $policybuilder->build_all_policies(
+            $triggerjson,
+            $steptype,
+            $hasobservations,
+            $isfirstassistantturn
+        );
 
         return $prompt;
     }
@@ -488,19 +503,109 @@ PROMPT;
                 continue;
             }
 
+            $taskname = (string)($entry['task'] ?? '');
+            if ($taskname === '') {
+                continue;
+            }
+
             $slimcatalog[] = [
-                'task' => (string)($entry['task'] ?? ''),
-                'description' => (string)($entry['description'] ?? ''),
+                'task' => $taskname,
                 'readonly' => (bool)($entry['readonly'] ?? false),
                 'intent' => (string)($entry['intent'] ?? ''),
-                'anchors' => (array)($entry['anchors'] ?? []),
                 'minimal_input' => (array)($entry['minimal_input'] ?? []),
-                'example_input' => (array)($entry['example_input'] ?? []),
-                'message_triggers' => (array)($entry['message_triggers'] ?? []),
+                'example_input' => $this->compact_catalog_example_input(
+                    (array)($entry['example_input'] ?? []),
+                    (array)($entry['minimal_input'] ?? [])
+                ),
+                'description' => $this->compact_catalog_description((string)($entry['description'] ?? '')),
+                'message_triggers' => $this->compact_catalog_message_triggers((array)($entry['message_triggers'] ?? [])),
             ];
         }
 
         return $slimcatalog;
+    }
+
+    /**
+     * Keep task descriptions compact for planner routing.
+     *
+     * @param string $description
+     * @return string
+     */
+    private function compact_catalog_description(string $description): string {
+        $normalized = trim(preg_replace('/\s+/', ' ', $description) ?? $description);
+        if ($normalized === '') {
+            return '';
+        }
+
+        // Routing needs intent hints, not long prose paragraphs.
+        return core_text::substr($normalized, 0, 180);
+    }
+
+    /**
+     * Keep example_input as a compact property-name list for routing hints.
+     *
+     * This preserves the field while avoiding token-heavy concrete sample payloads.
+     *
+     * @param array $exampleinput
+     * @param array $minimalinput
+     * @return array<int,string>
+     */
+    private function compact_catalog_example_input(array $exampleinput, array $minimalinput): array {
+        $keys = [];
+
+        foreach ($minimalinput as $key) {
+            $name = trim((string)$key);
+            if ($name !== '') {
+                $keys[] = $name;
+            }
+        }
+
+        foreach (array_keys($exampleinput) as $key) {
+            $name = trim((string)$key);
+            if ($name !== '') {
+                $keys[] = $name;
+            }
+        }
+
+        $keys = array_values(array_unique($keys));
+        if (empty($keys)) {
+            return [];
+        }
+
+        return array_slice($keys, 0, 6);
+    }
+
+    /**
+     * Drop verbose trigger examples and keep compact id + short description only.
+     *
+     * @param array $triggers
+     * @return array<int,array<string,string>>
+     */
+    private function compact_catalog_message_triggers(array $triggers): array {
+        $compact = [];
+
+        foreach ($triggers as $trigger) {
+            if (!is_array($trigger)) {
+                continue;
+            }
+
+            $id = trim((string)($trigger['id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+
+            $description = trim((string)($trigger['description'] ?? ''));
+            $description = trim(preg_replace('/\s+/', ' ', $description) ?? $description);
+
+            $row = ['id' => $id];
+            if ($description !== '') {
+                $row['description'] = core_text::substr($description, 0, 140);
+            }
+
+            $compact[] = $row;
+        }
+
+        return $compact;
     }
 
     /**
@@ -539,6 +644,22 @@ PROMPT;
             }
         }
         return $tasknames;
+    }
+
+    /**
+     * Determine whether this thread has already emitted an assistant message.
+     *
+     * @param array $messages
+     * @return bool
+     */
+    private function is_first_assistant_turn(array $messages): bool {
+        foreach ($messages as $message) {
+            if ((string)($message->role ?? '') === 'assistant') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -623,9 +744,17 @@ PROMPT;
      * prompt-prefix stability for upstream prompt caching.
      *
      * @param int $cmid
+     * @param string $steptype
+     * @param bool $isfirstassistantturn
+     * @param bool $hasobservations
      * @return string
      */
-    private function build_runtime_context_block(int $cmid): string {
+    private function build_runtime_context_block(
+        int $cmid,
+        string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
+        bool $isfirstassistantturn = false,
+        bool $hasobservations = false
+    ): string {
         $timezonename = (string)(get_config('core', 'timezone') ?? '');
         if ($timezonename === '' || $timezonename === '99') {
             $timezonename = date_default_timezone_get();
@@ -642,11 +771,25 @@ PROMPT;
         $bookingname = $cm ? format_string($cm->name) : 'this booking instance';
         $nowiso = (new \DateTime('now', $tz))->format(\DateTimeInterface::ATOM);
 
-        return implode("\n", [
+        $lines = [
             'booking_name: ' . $bookingname,
             'timezone: ' . $timezonename,
             'now_iso: ' . $nowiso,
-        ]);
+        ];
+
+        // Keep first-turn language enforcement in SYSTEM_RUNTIME so static SYSTEM
+        // prompt prefixes remain cache-friendly across requests.
+        if (
+            $this->normalize_step_type($steptype) === self::STEP_TYPE_TOOL_CALL_PARSE
+            && $isfirstassistantturn
+            && !$hasobservations
+        ) {
+            $lines[] = '';
+            $lines[] = 'NON-OPTIONAL LANGUAGE POLICY:';
+            $lines[] = "- Include valid ISO 639-1 value 'user_lang'.";
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

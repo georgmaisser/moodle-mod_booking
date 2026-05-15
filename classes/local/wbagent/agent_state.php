@@ -206,8 +206,10 @@ final class agent_state {
                 }
 
                 $normalized = self::normalize_command_input($input);
-                $encoded = json_encode($normalized,
-                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $encoded = json_encode(
+                    $normalized,
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                );
                 $signature = $taskname . '|' . (is_string($encoded) ? $encoded : '{}');
                 $signatures[] = $signature;
             }

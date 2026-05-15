@@ -31,7 +31,7 @@ use PHPUnit\Framework\TestCase;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class integration_agent_framework_test extends TestCase {
+final class integration_agent_framework_test extends TestCase {
     /**
      * Test that task_registry discovers tasks from the booking plugin provider.
      */

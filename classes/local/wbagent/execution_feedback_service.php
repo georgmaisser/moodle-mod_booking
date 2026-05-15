@@ -27,7 +27,9 @@ declare(strict_types=1);
 namespace mod_booking\local\wbagent;
 
 use core\di;
+use core_ai\aiactions\explain_text;
 use core_ai\aiactions\generate_text;
+use core_ai\aiactions\summarise_text;
 use core_ai\manager as ai_manager;
 use mod_booking\local\wbagent\result_payload_summarizer;
 use context_module;
@@ -515,7 +517,7 @@ class execution_feedback_service {
         $resultsjson = json_encode($results, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $lang = trim($outputlang) !== '' ? trim($outputlang) : 'de';
 
-        return "You are the final user-facing assistant message writer for Moodle Booking.\n"
+        $system = "You are the final user-facing assistant message writer for Moodle Booking.\n"
             . "The internal tasks have already been executed successfully or with structured result data.\n"
             . "Return exactly one JSON object and nothing else.\n\n"
             . "JSON contract:\n"
@@ -523,14 +525,10 @@ class execution_feedback_service {
             . "- message: final user-facing answer text.\n"
             . "- used_triggers: array (use [] if unknown).\n"
             . "- next_step_intent: one short sentence in user language.\n"
-            . "- lang: ISO 639-1 language code.\n"
-            . "- user_lang: ISO 639-1 language code.\n"
             . "- commands: must be [].\n\n"
             . "Rules:\n"
-            . "- Keep response language aligned with latest user message.\n"
-            . "- Prefer this language code when uncertain: " . $lang . ".\n"
             . "- Do not mention task names, command numbers, run ids, or raw JSON.\n"
-            . "- CRITICAL: message must be PLAIN TEXT ONLY. NO HTML TAGS. NO <p>, <div>, <br>, <span>, or any markup.\n"
+            . "- CRITICAL: message should be nicely formatted with HTML, but keep it simple.\n"
             . "- CRITICAL: Do not use markdown formatting (no bold, italic, code blocks, lists).\n"
             . "- message is UTF-8 plain text, period.\n"
             . "- If there are zero matches, say that clearly.\n"
@@ -538,13 +536,24 @@ class execution_feedback_service {
             . "- If booking options are included, use their real option ids from the structured results.\n"
             . "- Never renumber options as 1, 2, 3, ... unless those are the actual option ids.\n"
             . "- If ANON_USER tokens appear, keep them unchanged.\n"
-            . "- Never invent details not present in the results.\n\n"
-            . "Latest user message:\n"
-            . ($latestusermessage !== '' ? $latestusermessage : '(none)') . "\n\n"
-            . "Executed commands:\n"
-            . ($commandsjson !== false ? $commandsjson : '[]') . "\n\n"
-            . "Structured results:\n"
-            . ($resultsjson !== false ? $resultsjson : '[]');
+            . "- If there is a link in the Observation, use it unchanged in the right place in the message.\n"
+            . "- Never invent details not present in the results.";
+
+        $runtime = "preferred_user_lang: " . $lang . "\n"
+            . "NON-OPTIONAL LANGUAGE POLICY:\n"
+            . "- Use ISO 639-1 value from preferred_user_lang for both lang and user_lang when uncertain.\n"
+            . "- Keep the entire message field in that same language.";
+
+        $parts = [
+            "[SYSTEM]\n" . $system,
+            "[SYSTEM_RUNTIME]\n" . $runtime,
+            "[USER]\n" . ($latestusermessage !== '' ? $latestusermessage : '(none)'),
+            "[OBSERVATION 1]\nExecuted commands:\n" . ($commandsjson !== false ? $commandsjson : '[]'),
+            "[OBSERVATION 2]\nStructured results:\n" . ($resultsjson !== false ? $resultsjson : '[]'),
+            '[ASSISTANT]',
+        ];
+
+        return implode("\n\n", $parts);
     }
 
     /**
@@ -676,7 +685,7 @@ class execution_feedback_service {
     /**
      * Build compact debug source telemetry aligned with orchestrator format.
      *
-     * Example: orc|st=tcp|ac=sum|rt=oa|fb=0|pv=oai|hm=1|ob=0|ex=0
+     * Example: orc|st=tcp|ac=gen|rt=oa|fb=0|pv=oai|hm=1|ob=0|ex=0
      *
      * @param ai_manager $manager
      * @param int $historycount
@@ -693,10 +702,16 @@ class execution_feedback_service {
         $provider = $this->resolve_primary_provider_for_action($manager, $actionclass);
         $providershort = $this->short_provider_for_debug($provider);
         $route = ($providershort === 'oai') ? 'oa' : 'df';
+        $actionmap = [
+            generate_text::class => 'gen',
+            summarise_text::class => 'sum',
+            explain_text::class => 'exp',
+        ];
+        $action = $actionmap[$actionclass] ?? 'oth';
 
         $source = 'orc'
             . '|st=tcp'
-            . '|ac=sum'
+            . '|ac=' . $action
             . '|rt=' . $route
             . '|fb=0'
             . '|pv=' . $providershort
@@ -900,7 +915,11 @@ class execution_feedback_service {
 
             // Pass through verbatim observation content so the LLM loop receives
             // the full list without truncation from compact_text.
-            if (isset($result['observation_full']) && is_string($result['observation_full']) && trim($result['observation_full']) !== '') {
+            if (
+                isset($result['observation_full'])
+                && is_string($result['observation_full'])
+                && trim($result['observation_full']) !== ''
+            ) {
                 $entry['observation_full'] = trim($result['observation_full']);
             }
 

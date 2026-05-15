@@ -93,17 +93,19 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
         $_POST['sesskey'] = sesskey();
         $response = ai_send_message::execute((int)$this->booking->cmid, (string)$case['prompt']);
 
-        $this->assertNotSame('error', (string)($response['response_type'] ?? ''));
+        $this->assertSame((string)$case['expected_response_type'], (string)($response['response_type'] ?? ''));
         $this->assertGreaterThan(0, (int)($response['threadid'] ?? 0));
-        $this->assert_generate_text_logged_for_thread((int)$response['threadid']);
 
         $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => (int)$response['threadid']], 'id ASC');
-        $this->assertNotEmpty($entries);
+        $this->assertGreaterThanOrEqual((int)$case['min_debug_rows'], count($entries));
+        $this->assertSame((int)$case['expected_loop_depth'], count($entries));
         $sources = array_map(static fn($entry): string => (string)($entry->source ?? ''), $entries);
-        $this->assertNotEmpty(
-            array_filter($sources, static fn(string $source): bool => strpos($source, 'ac=') !== false),
-            'Expected at least one booking_ai_llm_debug entry with an action-code source.'
-        );
+        foreach ((array)$case['expected_debug_source_patterns'] as $pattern) {
+            $this->assertNotEmpty(
+                array_filter($sources, static fn(string $source): bool => strpos($source, (string)$pattern) !== false),
+                'Missing expected debug source pattern: ' . (string)$pattern
+            );
+        }
 
         $firstentry = reset($entries);
         $this->assertNotEmpty((string)($firstentry->requesttext ?? ''));
@@ -112,6 +114,11 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
         $commands = $this->decode_json_array((string)($response['commands'] ?? '[]'));
         $results = $this->decode_json_array((string)($response['resultsjson'] ?? '[]'));
         $observedtasks = $this->collect_observed_tasks($commands, $results);
+
+        foreach ((array)$case['expected_tasks'] as $taskname) {
+            $this->assertContains((string)$taskname, $observedtasks);
+        }
+        $this->assertGreaterThanOrEqual((int)$case['expected_task_transitions'], count($observedtasks));
 
         switch ($scenario) {
             case 'create_option_confirmation':
@@ -166,22 +173,36 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
                 break;
 
             case 'diagnose_other_user_cannot_book':
-                $this->assertContains(
-                    (string)($response['response_type'] ?? ''),
-                    ['sufficient', 'clarification', 'execution_result'],
-                    'Diagnose scenario should complete with a non-error response.'
-                );
-                $this->assertContains('booking.diagnose_booking_issue', $observedtasks);
-                $this->assertNotEmpty($results, 'Diagnose scenario should surface execution results.');
+                $this->assertSame('sufficient', (string)($response['response_type'] ?? ''), 'Diagnose must complete as sufficient.');
+                $this->assertContains('booking.diagnose_booking_issue', $observedtasks, 'Diagnose task must be executed.');
+                $this->assertNotEmpty($results, 'Diagnose scenario must surface execution results.');
+                $this->assertGreaterThanOrEqual(1, count($results), 'At least one result entry expected.');
 
                 $normalized = $response;
                 $normalized['results'] = $results;
                 $taskresult = $this->extract_task_result($normalized, 'booking.diagnose_booking_issue');
-                $this->assertNotNull($taskresult);
-                $this->assertSame('executed', (string)($taskresult['status'] ?? ''));
-                $this->assertSame((int)$case['blockeduser']->id, (int)($taskresult['diagnosis']['userid'] ?? 0));
-                $this->assertSame((int)$case['option']->id, (int)($taskresult['diagnosis']['optionid'] ?? 0));
-                $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []));
+                $this->assertNotNull($taskresult, 'Diagnose booking issue result must exist.');
+                $this->assertSame('executed', (string)($taskresult['status'] ?? ''), 'Task must be executed.');
+
+                // Verify diagnosis structure
+                $this->assertIsArray((array)($taskresult['diagnosis'] ?? []), 'Diagnosis must be array.');
+                $this->assertSame((int)$case['blockeduser']->id, (int)($taskresult['diagnosis']['userid'] ?? 0), 'Must diagnose correct user.');
+                $this->assertSame((int)$case['option']->id, (int)($taskresult['diagnosis']['optionid'] ?? 0), 'Must diagnose correct option.');
+
+                // Verify reasons are present and meaningful
+                $reasons = (array)($taskresult['diagnosis']['reasons'] ?? []);
+                $this->assertGreaterThanOrEqual((int)($case['expected_min_reasons'] ?? 1), count($reasons), 'At least one reason must be provided.');
+                $this->assertSame($reasons[0], "The selected booking option is set to invisible and is not visible to regular users.");
+
+                // Verify response message mentions the user or issue
+                $message = (string)($response['message'] ?? '');
+                $this->assertNotEmpty($message, 'Response message must not be empty.');
+                $this->assertTrue(
+                    str_contains($message, (string)$case['blockeduser']->firstname)
+                    || str_contains($message, 'buchen')
+                    || str_contains($message, 'book'),
+                    'Message should reference user or booking issue.'
+                );
                 break;
 
             case 'list_all_booking_options':
@@ -362,9 +383,6 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
         foreach ($prompts as $prompt) {
             $_POST['sesskey'] = sesskey();
             $response = ai_send_message::execute((int)$this->booking->cmid, $prompt);
-            if ((int)($response['threadid'] ?? 0) > 0) {
-                $this->assert_generate_text_logged_for_thread((int)$response['threadid']);
-            }
             $commands = $this->decode_json_array((string)($response['commands'] ?? '[]'));
             $command = $this->find_command($commands, 'booking.create_option');
 

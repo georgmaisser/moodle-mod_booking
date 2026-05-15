@@ -276,18 +276,18 @@ class diagnose_cancellation_issue_task extends booking_task_base implements task
         $canuserscancel = ((int)($bookingsettings->cancancelbook ?? 0) === 1);
 
         $reasoncontext = [
-            'optiondisablecancel'   => $optiondisablecancel,    // disablecancel set on the option itself
-            'instancedisablecancel' => $instancedisablecancel,  // disablecancel set on the booking instance
-            'optioncanceluntil'     => $optioncanceluntil,       // explicit canceluntil timestamp on the option
-            'effectivecanceluntil'  => $effectivecanceluntil,    // computed effective deadline (may differ from above)
-            'coolingoffactive'      => $coolingoffactive,        // whether the global cooling-off period still applies
-            'coolingoffseconds'     => $coolingoffseconds,       // cooling-off duration in seconds
-            'canuserscancel'        => $canuserscancel,          // instance-level cancancelbook toggle
+            'optiondisablecancel'   => $optiondisablecancel, // disablecancel set on the option itself
+            'instancedisablecancel' => $instancedisablecancel, // disablecancel set on the booking instance
+            'optioncanceluntil'     => $optioncanceluntil, // explicit canceluntil timestamp on the option
+            'effectivecanceluntil'  => $effectivecanceluntil, // computed effective deadline (may differ from above)
+            'coolingoffactive'      => $coolingoffactive, // whether the global cooling-off period still applies
+            'coolingoffseconds'     => $coolingoffseconds, // cooling-off duration in seconds
+            'canuserscancel'        => $canuserscancel, // instance-level cancancelbook toggle
             'waitforconfirmation'   => !empty($settings->waitforconfirmation), // waitinglist confirmation flow
             'hasprice'              => !empty($settings->jsonobject->useprice), // option has a price
             'shoppingcartexists'    => class_exists('local_shopping_cart\\shopping_cart'), // plugin present
-            'isenrolled'            => $isenrolled,               // whether user is enrolled in the course
-            'invisiblevalue'        => $invisiblevalue,            // 0=visible, 1=hidden, 2=not in list
+            'isenrolled'            => $isenrolled, // whether user is enrolled in the course
+            'invisiblevalue'        => $invisiblevalue, // 0=visible, 1=hidden, 2=not in list
             'courseid'              => (int)$cm->course,
         ];
 

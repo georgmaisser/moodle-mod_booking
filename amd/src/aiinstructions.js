@@ -33,10 +33,13 @@ let currentCmid = 0;
 let debugModeEnabled = false;
 let privacyCheckRunningLabel = 'Privacy check running...';
 let privacyAnswerNoteLabel = 'Privacy note: personal data in this response was de-anonymized for display.';
+let stepPlanningLabel = 'Step 1: Planning...';
 let defaultThinkingLabel = '';
 let forceNewThreadOnFirstMessage = true;
 let trialTokenInvalidMessageLabel = '';
 let bodyHandlersBound = false;
+/** @type {HTMLElement|null} */
+let activePlanBubble = null;
 
 /** Step-progress polling: interval handle, last-seen message id, active step bubble elements. */
 let stepPollInterval = null;
@@ -481,11 +484,12 @@ const renderFollowUpSuggestionsHtml = (results = []) => {
  * @param {string} role      'user' | 'assistant'
  * @param {string} content   Message text.
  * @param {Object|null} meta Compact debug metadata.
+ * @returns {HTMLElement|null}
  */
 const appendMessage = (role, content, meta = null) => {
     const list = document.getElementById('booking-ai-messages');
     if (!list) {
-        return;
+        return null;
     }
     const div = document.createElement('div');
     div.classList.add('booking-ai-msg', role);
@@ -496,6 +500,7 @@ const appendMessage = (role, content, meta = null) => {
         + `${renderMessageDebugMeta(meta)}${renderMessageDebugJson(meta)}`;
     list.appendChild(div);
     list.scrollTop = list.scrollHeight;
+    return div;
 };
 
 /**
@@ -543,11 +548,12 @@ const appendAssistantPrivacyNote = (response, source = 'ai_send_message') => {
  * @param {string} role      'user' | 'assistant'
  * @param {string} html      Trusted HTML.
  * @param {Object|null} meta Compact debug metadata.
+ * @returns {HTMLElement|null}
  */
 const appendMessageHtml = (role, html, meta = null) => {
     const list = document.getElementById('booking-ai-messages');
     if (!list) {
-        return;
+        return null;
     }
     const div = document.createElement('div');
     div.classList.add('booking-ai-msg', role);
@@ -555,6 +561,7 @@ const appendMessageHtml = (role, html, meta = null) => {
         + `${renderMessageDebugMeta(meta)}${renderMessageDebugJson(meta)}`;
     list.appendChild(div);
     list.scrollTop = list.scrollHeight;
+    return div;
 };
 
 /**
@@ -1322,7 +1329,7 @@ const showConfirmPanel = (message, commands) => {
  * @returns {Promise<void>}
  */
 const renderOptionPreviewsInline = (cmid, optionIds) => {
-    const uniqueIds = [...new Set((optionIds || []).map((id) => Number(id || 0)).filter((id) => id > 0))].slice(0, 10);
+    const uniqueIds = [...new Set((optionIds || []).map((id) => Number(id || 0)).filter((id) => id > 0))].slice(0, 100);
 
     if (uniqueIds.length === 0) {
         return Promise.resolve();
@@ -1408,6 +1415,19 @@ const hideConfirmPanel = () => {
     if (panel) {
         panel.classList.add('d-none');
     }
+};
+
+/**
+ * Remove the assistant bubble that announced the command plan once execution finishes.
+ */
+const clearActivePlanBubble = () => {
+    if (!activePlanBubble) {
+        return;
+    }
+    if (activePlanBubble.parentNode) {
+        activePlanBubble.parentNode.removeChild(activePlanBubble);
+    }
+    activePlanBubble = null;
 };
 
 /**
@@ -1577,6 +1597,7 @@ const pollRunStatus = (runid, cmid) => {
                 } catch (e) {
                     // Keep empty results on parse errors.
                 }
+                clearActivePlanBubble();
                 appendAssistantPrivacyNote(resp, 'ai_poll_run_status');
                 showRunStatus(resp.status, resp.displaymessage || resp.message || resp.status, results);
 
@@ -1875,6 +1896,7 @@ const sendMessage = (message) => {
 
         // Start polling for intermediate step updates while the LLM is processing.
         startStepPolling(currentThreadId, currentCmid);
+        appendStepBubble(stepPlanningLabel, 0);
 
         return Ajax.call([{
         methodname: 'mod_booking_ai_send_message',
@@ -2079,7 +2101,7 @@ const sendMessage = (message) => {
                 const errors = parseJsonList(resp.errorsjson);
                 const issueCodes = parseJsonList(resp.issuecodesjson);
                 appendAssistantPrivacyNote(resp, 'ai_send_message');
-                appendMessage('assistant', resp.displaymessage || resp.message, {
+                const planBubble = appendMessage('assistant', resp.displaymessage || resp.message, {
                     response_type: resp.response_type || '',
                     threadid: Number(resp.threadid || currentThreadId || 0),
                     runid: Number(resp.runid || 0),
@@ -2093,6 +2115,7 @@ const sendMessage = (message) => {
                     time: (new Date()).toISOString(),
                 });
                 if (cmds.length > 0) {
+                    activePlanBubble = planBubble;
                     if (shouldAutoExecuteReadOnly(cmds)) {
                         pendingCommands = cmds;
                         confirmRun();
@@ -2161,6 +2184,7 @@ const confirmRun = () => {
         if (resp.success) {
             pollRunStatus(resp.runid, currentCmid);
         } else {
+            clearActivePlanBubble();
             showRunStatus('failed', resp.message);
         }
         return resp;
@@ -2601,6 +2625,7 @@ export const init = (config = null) => {
                 || 'Privacy note: personal data in this response was de-anonymized for display.'
             ),
             trial_token_invalid_message: String(wrapper.dataset.aiTrialTokenInvalidMessage || ''),
+            step_planning_label: String(wrapper.dataset.stepPlanningLabel || ''),
         };
     }
 
@@ -2610,6 +2635,7 @@ export const init = (config = null) => {
     privacyCheckRunningLabel = String(runtimeConfig.privacy_check_running || privacyCheckRunningLabel);
     privacyAnswerNoteLabel = String(runtimeConfig.privacy_answer_note || privacyAnswerNoteLabel);
     trialTokenInvalidMessageLabel = String(runtimeConfig.trial_token_invalid_message || '');
+    stepPlanningLabel = String(runtimeConfig.step_planning_label || stepPlanningLabel);
 
     const thinking = document.getElementById('booking-ai-thinking');
     if (thinking) {

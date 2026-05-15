@@ -46,12 +46,14 @@ class prompt_policy_builder {
      *
      * @param string $triggerjson    JSON string of available triggers.
      * @param string $steptype       Orchestrator step type (from orchestrator.php constants).
+     * @param bool $isfirstassistantturn True when no assistant output exists yet in this thread.
      * @return string
      */
     public static function build_all_policies(
         string $triggerjson,
         string $steptype = 'tool_call_parse',
-        bool $hasobservations = false
+        bool $hasobservations = false,
+        bool $isfirstassistantturn = false
     ): string {
         $policies = [];
         $normalizedsteptype = trim(\core_text::strtolower($steptype));
@@ -59,26 +61,23 @@ class prompt_policy_builder {
         // 1. RESPONSE CONTRACT POLICY (universal, always appended).
         $policies[] = self::build_response_contract_policy($normalizedsteptype);
 
-        // 2. LANGUAGE POLICY (universal, always appended).
-        $policies[] = self::build_language_policy($normalizedsteptype);
-
-        // 3. TRIGGER POLICY (compact only; task catalog now carries task-specific examples and hints).
+        // 2. TRIGGER POLICY (compact only; task catalog now carries task-specific examples and hints).
         $policies[] = self::build_trigger_policy_compact();
         if ($normalizedsteptype === 'tool_call_parse') {
             $policies[] = self::build_routing_determinism_policy();
         }
 
-        // 4. STEP INTENT POLICY (skip for final synthesis — synthesis does not step).
+        // 3. STEP INTENT POLICY (skip for final synthesis — synthesis does not step).
         if ($normalizedsteptype !== 'final_synthesis') {
             $policies[] = self::build_step_intent_policy($normalizedsteptype);
         }
 
-        // 5. DOCS ANSWER POLICY (only for reasoning steps with observations, not final synthesis).
+        // 4. DOCS ANSWER POLICY (only for reasoning steps with observations, not final synthesis).
         if ($normalizedsteptype === 'simple_retrieval' || $normalizedsteptype === 'final_reasoning') {
             $policies[] = self::build_docs_answer_policy();
         }
 
-        // 6. SUFFICIENCY POLICY (different for each step type).
+        // 5. SUFFICIENCY POLICY (different for each step type).
         // - For tool_call_parse: only if hasobservations (planner should stop if already has results).
         // - For simple_retrieval/final_reasoning: always (guidance on when observations suffice).
         // - For final_synthesis: special synthesis-only policy (always write message).
@@ -130,26 +129,6 @@ class prompt_policy_builder {
             . "- Never serialize arrays as comma-separated strings.\n"
             . "- Omit optional input fields when you do not have a grounded value; "
             . "do not send empty placeholders such as doc_path=\"\".";
-    }
-
-    /**
-     * Build NON-OPTIONAL LANGUAGE POLICY.
-     *
-     * @return string
-     */
-    private static function build_language_policy(string $steptype): string {
-        if ($steptype !== 'tool_call_parse') {
-            return "NON-OPTIONAL LANGUAGE POLICY:\n"
-                . "- Use the same language as the latest user message for all user-facing text.\n"
-                . "- Return valid ISO 639-1 values in 'lang' and 'user_lang'.\n"
-                . "- Keep next_step_intent language-aligned with message and lang.";
-        }
-
-        return "NON-OPTIONAL LANGUAGE POLICY:\n"
-            . "- When a message field is present, use the same language as the latest user message for that field.\n"
-            . "- Do not switch language unless the user switches language.\n"
-            . "- Planner outputs may omit lang, user_lang, and next_step_intent; "
-            . "keep them only if needed for downstream compatibility.";
     }
 
     /**

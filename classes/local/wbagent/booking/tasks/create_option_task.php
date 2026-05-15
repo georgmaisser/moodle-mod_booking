@@ -453,66 +453,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             $resolvedtype = 'normal';
         }
 
-        // Missing-location soft confirmation: handle before type validation to suppress the location error.
-        $missinglocationconfirm = (
-            $resolvedtype === 'normal'
-            && !in_array('location', $overrides, true)
-            && !in_array('address', $overrides, true)
-            && !self::has_any_key($input, ['location', 'address'])
-        );
-
-        // Pass synthetic overrides so validate_type_specific does not add the location error
-        // when we are converting it to a soft-confirmation issue below.
-        $typeoverrides = $missinglocationconfirm
-            ? array_merge($overrides, ['location', 'address'])
-            : $overrides;
-
-        // Type-specific required field validation.
-        $errors = array_merge($errors, self::validate_type_specific_required_fields($input, $resolvedtype, $typeoverrides));
-
-        if (!empty($errors)) {
-            $missingrequired = [];
-            $confirmablewithoutfields = [];
-
-            if ($resolvedtype === 'normal') {
-                if (!self::has_any_key($input, ['teacherquery', 'teacheremail'])) {
-                    $missingrequired[] = 'teacherquery or teacheremail';
-                }
-                if (!self::has_any_key($input, ['maxanswers'])) {
-                    $missingrequired[] = 'maxanswers';
-                }
-                if (!self::has_any_key($input, ['optiondates', 'coursestarttime'])) {
-                    $missingrequired[] = 'coursestarttime (or optiondates)';
-                }
-                if (!self::has_any_key($input, ['duration', 'courseendtime', 'optiondates'])) {
-                    $missingrequired[] = 'courseendtime/duration (or optiondates)';
-                }
-                if ($missinglocationconfirm) {
-                    $confirmablewithoutfields[] = 'location or address';
-                }
-            }
-
-            $hint = $this->build_missing_fields_preflight_hint($missingrequired, $confirmablewithoutfields);
-
-            $issues[] = [
-                'code'           => 'MISSING_REQUIRED_FIELDS',
-                'severity'       => 'needs_clarification',
-                'message'        => $hint,
-                'user_question'  => $hint,
-                'remedy_options' => ['PROVIDE_FIELDS', 'CONFIRM_CREATE_WITHOUT_LOCATION'],
-            ];
-            return task_preflight_result::invalid($issues);
-        }
-
-        if ($missinglocationconfirm) {
-            $issues[] = [
-                'code'           => 'MISSING_LOCATION_CONFIRM_REQUIRED',
-                'severity'       => 'needs_confirmation',
-                'message'        => $this->build_missing_fields_preflight_hint([], ['location or address']),
-                'user_question'  => $this->build_missing_fields_preflight_hint([], ['location or address']),
-                'remedy_options' => ['CONFIRM_CREATE_WITHOUT_LOCATION', 'PROVIDE_LOCATION'],
-            ];
-        }
+        // Intentionally no required-field preflight beyond title.
+        // Missing teacher/location/schedule/capacity must not block creation.
 
         // Slot-booking sanity (soft issues only).
         if ($resolvedtype === 'slotbooking') {

@@ -485,7 +485,7 @@ class task_registry {
      */
     private function build_minimal_input_fields(string $taskname, array $properties): array {
         $preferred = [
-            'booking.create_option' => ['text', 'optiontype', 'optiondates', 'maxanswers'],
+            'booking.create_option' => ['text'],
             'booking.create_user' => ['firstname', 'lastname', 'email'],
             'booking.update_option' => ['optionquery', 'optionid', 'text', 'optiondates'],
             'booking.bulk_update_options' => ['optionquery', 'optionids', 'changes'],
