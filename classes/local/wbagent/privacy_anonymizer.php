@@ -59,6 +59,8 @@ class privacy_anonymizer {
     private const SQL_TEXT_FIELDS = ['text', 'description', 'optionquery'];
     /** @var array<int,string> Fields that represent user references and should prefer shorter observed variants. */
     private const USER_REFERENCE_FIELDS = ['userquery', 'teacherquery', 'targetuserquery'];
+    /** @var array<int,string> Structured person fields that must be anonymized independently. */
+    private const PERSON_IDENTITY_FIELDS = ['firstname', 'lastname', 'email'];
 
     /** @var conversation_store */
     private conversation_store $store;
@@ -96,7 +98,7 @@ class privacy_anonymizer {
      * @return bool
      */
     public static function looks_like_anon_token(string $value): bool {
-        return (bool)preg_match('/\bANON_USER_\d+\b/', $value);
+        return (bool)preg_match('/\bANON_USER_\d+(?:_[a-z]+)?\b/', $value);
     }
 
     /**
@@ -231,7 +233,7 @@ class privacy_anonymizer {
 
         $replacedcount = 0;
         $displaymessage = preg_replace_callback(
-            '/\bANON_USER_\d+\b/',
+            '/\bANON_USER_\d+(?:_[a-z]+)?\b/',
             static function (array $m) use ($entries, &$replacedcount): string {
                 $token = (string)$m[0];
                 $entry = $entries[$token] ?? null;
@@ -298,7 +300,7 @@ class privacy_anonymizer {
      */
     private function deanonymize_recursive($value, array $entries, string $fieldkey) {
         if (is_string($value)) {
-            return preg_replace_callback('/\bANON_USER_\d+\b/', function (array $m) use ($entries, $fieldkey): string {
+            return preg_replace_callback('/\bANON_USER_\d+(?:_[a-z]+)?\b/', function (array $m) use ($entries, $fieldkey): string {
                 $token = $m[0];
                 $entry = $entries[$token] ?? null;
                 if (!is_array($entry)) {
@@ -327,17 +329,22 @@ class privacy_anonymizer {
      * @param array $tokenmap
      * @return mixed
      */
-    private function anonymize_value_recursive($value, array &$tokenmap) {
+    private function anonymize_value_recursive($value, array &$tokenmap, string $fieldkey = '') {
         if (is_string($value)) {
-            return $this->anonymize_string_for_llm($value, $tokenmap);
+            return $this->anonymize_string_for_llm($value, $tokenmap, $fieldkey);
         }
 
         if (!is_array($value)) {
             return $value;
         }
 
+        if ($this->array_contains_person_identity_fields($value)) {
+            $value = $this->anonymize_person_identity_field_group($value, $tokenmap);
+        }
+
         foreach ($value as $key => $item) {
-            $value[$key] = $this->anonymize_value_recursive($item, $tokenmap);
+            $childfield = is_string($key) ? $key : $fieldkey;
+            $value[$key] = $this->anonymize_value_recursive($item, $tokenmap, $childfield);
         }
 
         return $value;
@@ -350,15 +357,143 @@ class privacy_anonymizer {
      * @param array $tokenmap
      * @return string
      */
-    private function anonymize_string_for_llm(string $message, array &$tokenmap): string {
+    private function anonymize_string_for_llm(string $message, array &$tokenmap, string $fieldkey = ''): string {
         if ($message === '') {
             return $message;
         }
+
+        $normalizedfield = core_text::strtolower(trim($fieldkey));
+
+        if (in_array($normalizedfield, self::PERSON_IDENTITY_FIELDS, true)) {
+            $direct = $this->anonymize_person_field_value($normalizedfield, $message, $tokenmap);
+            if ($direct !== null) {
+                return $direct;
+            }
+        }
+
+        // Field-labeled summaries (firstname=..., lastname=..., email=...) must keep
+        // each identity field separate, otherwise one token can collapse all values.
+        [$message] = $this->anonymize_labeled_user_fields($message, $tokenmap);
 
         [$message] = $this->anonymize_emails($message, $tokenmap);
         [$message] = $this->anonymize_names($message, $tokenmap);
 
         return $message;
+    }
+
+    /**
+     * Anonymize labeled user fields in text while preserving field semantics.
+     *
+     * Example pattern: firstname=Max, lastname=Mustermann, email=max@example.com
+     *
+     * @param string $message
+     * @param array $tokenmap
+     * @return array{0:string,1:int}
+     */
+    private function anonymize_labeled_user_fields(string $message, array &$tokenmap): array {
+        $count = 0;
+        $sanitized = $message;
+
+        $sanitized = preg_replace_callback(
+            '/\b(firstname|lastname)\s*=\s*([^,|\.\n]+)/iu',
+            function (array $match) use (&$tokenmap, &$count): string {
+                $field = core_text::strtolower(trim((string)($match[1] ?? '')));
+                $rawvalue = trim((string)($match[2] ?? ''));
+                if ($rawvalue === '' || $rawvalue === '-' || self::looks_like_anon_token($rawvalue)) {
+                    return (string)$match[0];
+                }
+
+                $token = $this->anonymize_person_field_value($field, $rawvalue, $tokenmap);
+                if ($token === null) {
+                    return (string)$match[0];
+                }
+
+                $count++;
+                return $field . '=' . $token;
+            },
+            $sanitized
+        );
+
+        $sanitized = preg_replace_callback(
+            '/\b(email)\s*=\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/iu',
+            function (array $match) use (&$tokenmap, &$count): string {
+                $field = 'email';
+                $rawvalue = trim((string)($match[2] ?? ''));
+                if ($rawvalue === '' || self::looks_like_anon_token($rawvalue)) {
+                    return (string)$match[0];
+                }
+
+                $token = $this->anonymize_person_field_value($field, $rawvalue, $tokenmap);
+                if ($token === null) {
+                    return (string)$match[0];
+                }
+
+                $count++;
+                return $field . '=' . $token;
+            },
+            $sanitized
+        );
+
+        return [(string)$sanitized, $count];
+    }
+
+    /**
+     * Anonymize one identity field value with field-specific token semantics.
+     *
+     * @param string $field firstname|lastname|email
+     * @param string $value
+     * @param array $tokenmap
+     * @return string|null
+     */
+    private function anonymize_person_field_value(string $field, string $value, array &$tokenmap): ?string {
+        $normalizedfield = core_text::strtolower(trim($field));
+        $trimmedvalue = trim($value);
+        if ($trimmedvalue === '') {
+            return null;
+        }
+        if (self::looks_like_anon_token($trimmedvalue)) {
+            return $trimmedvalue;
+        }
+
+        if ($normalizedfield === 'email') {
+            $identity = $this->resolve_identity_from_email($trimmedvalue);
+            return $this->get_or_create_token(
+                $tokenmap,
+                (string)($identity['identitykey'] ?? ('email:' . core_text::strtolower($trimmedvalue))),
+                'email',
+                $trimmedvalue,
+                $trimmedvalue,
+                (array)($identity['variants'] ?? ['email' => $trimmedvalue])
+            );
+        }
+
+        if (!in_array($normalizedfield, ['firstname', 'lastname'], true)) {
+            return null;
+        }
+
+        $normalizedname = $this->normalize_name($trimmedvalue);
+        if ($normalizedname === '') {
+            return null;
+        }
+
+        $matchindex = $this->get_user_name_match_index();
+        $candidateuserids = [];
+        if ($normalizedfield === 'firstname') {
+            $candidateuserids = array_keys((array)(($matchindex['firstusers'] ?? [])[$normalizedname] ?? []));
+        } else {
+            $candidateuserids = array_keys((array)(($matchindex['lastusers'] ?? [])[$normalizedname] ?? []));
+        }
+
+        $identity = $this->resolve_identity_from_user_ids($candidateuserids, [$normalizedfield => $trimmedvalue]);
+
+        return $this->get_or_create_token(
+            $tokenmap,
+            (string)($identity['identitykey'] ?? ($normalizedfield . ':' . $normalizedname)),
+            $normalizedfield,
+            $trimmedvalue,
+            $trimmedvalue,
+            (array)($identity['variants'] ?? [$normalizedfield => $trimmedvalue])
+        );
     }
 
     /**
@@ -408,6 +543,7 @@ class privacy_anonymizer {
         $firstusers = is_array($matchindex['firstusers'] ?? null) ? (array)$matchindex['firstusers'] : [];
         $lastusers = is_array($matchindex['lastusers'] ?? null) ? (array)$matchindex['lastusers'] : [];
         $fullusers = is_array($matchindex['fullusers'] ?? null) ? (array)$matchindex['fullusers'] : [];
+        $emailspans = $this->find_email_spans($message);
 
         if (empty($nameindex)) {
             return [$message, 0];
@@ -432,6 +568,15 @@ class privacy_anonymizer {
 
             $firsttoken = (string)$words[$i][0];
             $lasttoken = (string)$words[$i + 1][0];
+            $firststart = (int)$words[$i][1];
+            $secondstart = (int)$words[$i + 1][1];
+            if (
+                $this->offset_overlaps_email_span($firststart, $emailspans)
+                || $this->offset_overlaps_email_span($secondstart, $emailspans)
+            ) {
+                continue;
+            }
+
             $firstnorm = $this->normalize_name($firsttoken);
             $lastnorm = $this->normalize_name($lasttoken);
             if (
@@ -442,8 +587,7 @@ class privacy_anonymizer {
                 continue;
             }
 
-            $firstend = (int)$words[$i][1] + strlen($firsttoken);
-            $secondstart = (int)$words[$i + 1][1];
+            $firstend = $firststart + strlen($firsttoken);
             $between = substr($message, $firstend, $secondstart - $firstend);
             if (!preg_match('/^\s+$/u', (string)$between)) {
                 continue;
@@ -492,6 +636,11 @@ class privacy_anonymizer {
             }
 
             $tokenvalue = (string)$entry[0];
+            $tokenstart = (int)$entry[1];
+            if ($this->offset_overlaps_email_span($tokenstart, $emailspans)) {
+                continue;
+            }
+
             $normalized = $this->normalize_name($tokenvalue);
             if ($normalized === '' || in_array($normalized, self::NAME_STOPWORDS, true)) {
                 continue;
@@ -542,6 +691,57 @@ class privacy_anonymizer {
         $sanitized .= substr($message, $cursor);
 
         return [$sanitized, $count];
+    }
+
+    /**
+     * Find byte-offset spans of email addresses in message text.
+     *
+     * @param string $message
+     * @return array<int,array{start:int,end:int}>
+     */
+    private function find_email_spans(string $message): array {
+        $spans = [];
+        $matches = [];
+        preg_match_all(
+            '/\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b/i',
+            $message,
+            $matches,
+            PREG_OFFSET_CAPTURE
+        );
+
+        foreach ((array)($matches[0] ?? []) as $match) {
+            if (!is_array($match) || count($match) < 2) {
+                continue;
+            }
+
+            $email = (string)$match[0];
+            $start = (int)$match[1];
+            $spans[] = [
+                'start' => $start,
+                'end' => $start + strlen($email),
+            ];
+        }
+
+        return $spans;
+    }
+
+    /**
+     * Return true when offset belongs to an email span.
+     *
+     * @param int $offset
+     * @param array<int,array{start:int,end:int}> $spans
+     * @return bool
+     */
+    private function offset_overlaps_email_span(int $offset, array $spans): bool {
+        foreach ($spans as $span) {
+            $start = (int)($span['start'] ?? 0);
+            $end = (int)($span['end'] ?? 0);
+            if ($offset >= $start && $offset < $end) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -757,12 +957,55 @@ class privacy_anonymizer {
             $entries = [];
         }
 
+        $scopedidentitykey = $identitykey;
+        $requiresfieldsuffixtoken = in_array($type, ['firstname', 'lastname', 'email', 'both'], true);
+        $basetoken = '';
+
+        if ($scopedidentitykey !== '') {
+            foreach ($entries as $token => $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+
+                if ((string)($entry['identitykey'] ?? '') !== $scopedidentitykey) {
+                    continue;
+                }
+
+                $basetoken = $this->extract_base_token_from_anon_token((string)$token);
+                if ($basetoken !== '') {
+                    break;
+                }
+            }
+        }
+
+        if ($requiresfieldsuffixtoken) {
+            if ($basetoken === '') {
+                $nextid = max(1, (int)($map['nextid'] ?? 1));
+                $basetoken = 'ANON_USER_' . $nextid;
+                $map['nextid'] = $nextid + 1;
+            }
+
+            $targettoken = $this->build_field_token_from_base($basetoken, $type);
+            if ($targettoken !== '') {
+                $targetentry = is_array($entries[$targettoken] ?? null) ? (array)$entries[$targettoken] : [];
+                $entries[$targettoken] = [
+                    'identitykey' => $scopedidentitykey,
+                    'type' => $type,
+                    'value' => $value,
+                    'original' => $original,
+                    'variants' => $this->merge_identity_variants((array)($targetentry['variants'] ?? []), $variants),
+                ];
+                $map['entries'] = $entries;
+                return $targettoken;
+            }
+        }
+
         foreach ($entries as $token => $entry) {
             if (!is_array($entry)) {
                 continue;
             }
 
-            if ((string)($entry['identitykey'] ?? '') === $identitykey && $identitykey !== '') {
+            if ((string)($entry['identitykey'] ?? '') === $scopedidentitykey && $scopedidentitykey !== '') {
                 $entry['type'] = $type;
                 $entry['value'] = $value;
                 $entry['original'] = $original;
@@ -785,7 +1028,7 @@ class privacy_anonymizer {
         $nextid = max(1, (int)($map['nextid'] ?? 1));
         $token = 'ANON_USER_' . $nextid;
         $entries[$token] = [
-            'identitykey' => $identitykey,
+            'identitykey' => $scopedidentitykey,
             'type' => $type,
             'value' => $value,
             'original' => $original,
@@ -795,6 +1038,56 @@ class privacy_anonymizer {
         $map['nextid'] = $nextid + 1;
 
         return $token;
+    }
+
+    /**
+     * Scope identity keys by field type to avoid cross-field token collisions.
+     *
+     * @param string $identitykey
+     * @param string $type
+     * @return string
+     */
+    private function scope_identity_key_for_type(string $identitykey, string $type): string {
+        if ($identitykey === '') {
+            return '';
+        }
+
+        return $identitykey;
+    }
+
+    /**
+     * Build a field-specific token from a base ANON token.
+     *
+     * @param string $basetoken
+     * @param string $type
+     * @return string
+     */
+    private function build_field_token_from_base(string $basetoken, string $type): string {
+        $normalizedtype = core_text::strtolower(trim($type));
+        if (!in_array($normalizedtype, ['firstname', 'lastname', 'email', 'both'], true)) {
+            return '';
+        }
+
+        $normalizedbase = $this->extract_base_token_from_anon_token($basetoken);
+        if ($normalizedbase === '') {
+            return '';
+        }
+
+        return $normalizedbase . '_' . $normalizedtype;
+    }
+
+    /**
+     * Extract the ANON_USER_<id> base token from any supported token variant.
+     *
+     * @param string $token
+     * @return string
+     */
+    private function extract_base_token_from_anon_token(string $token): string {
+        if (!preg_match('/^(ANON_USER_\d+)(?:_[a-z]+)?$/', $token, $match)) {
+            return '';
+        }
+
+        return (string)($match[1] ?? '');
     }
 
     /**
@@ -968,6 +1261,76 @@ class privacy_anonymizer {
         }
 
         return $basevariants;
+    }
+
+    /**
+     * Check if array has structured person identity keys.
+     *
+     * @param array $value
+     * @return bool
+     */
+    private function array_contains_person_identity_fields(array $value): bool {
+        foreach (self::PERSON_IDENTITY_FIELDS as $field) {
+            if (array_key_exists($field, $value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Anonymize firstname/lastname/email as one identity group when present in a structured row.
+     *
+     * @param array $value
+     * @param array $tokenmap
+     * @return array
+     */
+    private function anonymize_person_identity_field_group(array $value, array &$tokenmap): array {
+        $variants = [];
+        foreach (self::PERSON_IDENTITY_FIELDS as $field) {
+            if (!array_key_exists($field, $value) || !is_string($value[$field])) {
+                continue;
+            }
+
+            $raw = trim((string)$value[$field]);
+            if ($raw === '' || self::looks_like_anon_token($raw)) {
+                continue;
+            }
+
+            $variants[$field] = $raw;
+        }
+
+        if (empty($variants)) {
+            return $value;
+        }
+
+        $identitykey = '';
+        $userid = (int)($value['userid'] ?? $value['id'] ?? 0);
+        if ($userid > 0) {
+            $identitykey = 'user:' . $userid;
+        } else if (!empty($variants['email'])) {
+            $identity = $this->resolve_identity_from_email((string)$variants['email']);
+            $identitykey = (string)($identity['identitykey'] ?? '');
+        }
+
+        if ($identitykey === '') {
+            $seed = json_encode($variants);
+            $identitykey = 'literal:' . sha1((string)$seed);
+        }
+
+        foreach ($variants as $field => $raw) {
+            $value[$field] = $this->get_or_create_token(
+                $tokenmap,
+                $identitykey,
+                (string)$field,
+                (string)$raw,
+                (string)$raw,
+                $variants
+            );
+        }
+
+        return $value;
     }
 
     /**

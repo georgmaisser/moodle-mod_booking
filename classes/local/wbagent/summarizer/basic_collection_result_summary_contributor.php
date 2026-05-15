@@ -72,17 +72,30 @@ class basic_collection_result_summary_contributor implements result_summary_cont
 
         if ($category === 'users') {
             $count = count((array)$entry['users']);
-            $names = array_slice(
-                array_filter(array_map(
-                    static fn($u): string => trim((string)($u['fullname'] ?? $u['username'] ?? '')),
-                    (array)$entry['users']
-                )),
-                0,
-                5
-            );
             $summary = "Found {$count} user(s)";
-            if (!empty($names)) {
-                $summary .= ': ' . implode(', ', $names);
+            $rows = [];
+            foreach (array_slice((array)$entry['users'], 0, 3) as $user) {
+                if (!is_array($user)) {
+                    continue;
+                }
+
+                $userid = (int)($user['userid'] ?? $user['id'] ?? 0);
+                $firstname = trim((string)($user['firstname'] ?? ''));
+                $lastname = trim((string)($user['lastname'] ?? ''));
+                $email = trim((string)($user['email'] ?? ''));
+                $profile = $userid > 0
+                    ? (new \moodle_url('/user/profile.php', ['id' => $userid]))->out(false)
+                    : '';
+
+                $rows[] = 'firstname=' . ($firstname !== '' ? $firstname : '-')
+                    . ', lastname=' . ($lastname !== '' ? $lastname : '-')
+                    . ', email=' . ($email !== '' ? $email : '-')
+                    . ', id=' . ($userid > 0 ? (string)$userid : '-')
+                    . ', profile=' . ($profile !== '' ? $profile : '-');
+            }
+
+            if (!empty($rows)) {
+                $summary .= ': ' . implode(' | ', $rows);
             }
             return $summary . '.';
         }
