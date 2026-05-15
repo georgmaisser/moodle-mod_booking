@@ -62,12 +62,10 @@ class prompt_policy_builder {
         // 2. LANGUAGE POLICY (universal, always appended).
         $policies[] = self::build_language_policy($normalizedsteptype);
 
-        // 3. TRIGGER POLICY (full catalog only for initial routing).
+        // 3. TRIGGER POLICY (compact only; task catalog now carries task-specific examples and hints).
+        $policies[] = self::build_trigger_policy_compact();
         if ($normalizedsteptype === 'tool_call_parse') {
-            $policies[] = self::build_trigger_policy($triggerjson);
             $policies[] = self::build_routing_determinism_policy();
-        } else {
-            $policies[] = self::build_trigger_policy_compact();
         }
 
         // 4. STEP INTENT POLICY (skip for final synthesis — synthesis does not step).
@@ -161,19 +159,16 @@ class prompt_policy_builder {
      * @return string
      */
     private static function build_trigger_policy(string $triggerjson): string {
-        $triggerlist = self::render_trigger_catalog_for_prompt($triggerjson);
-
         return "NON-OPTIONAL TRIGGER POLICY:\n"
-            . "- Evaluate the latest user message against AVAILABLE MESSAGE TRIGGERS below.\n"
+            . "- Evaluate the latest user message against the task catalog and the current conversation state.\n"
             . "- Return a JSON array field 'used_triggers' with trigger ids that apply to the latest user message.\n"
             . "- Do NOT invent trigger ids. Use only ids from the catalog.\n"
             . "- If none apply, return 'used_triggers': [].\n"
+            . "- Task catalog entries may include example_input and message_triggers for grounding.\n"
             . "- CRITICAL: NEVER include 'core.is_lookup_request' in used_triggers.\n"
             . "- 'core.is_lookup_request' is server-managed from task readonly properties.\n"
-            . "- All other valid triggers (e.g. core.is_confirmation_message) should be detected normally.\n"
-            . "\nAVAILABLE MESSAGE TRIGGERS:\n"
-            . $triggerlist
-            . "\n\nREQUIRED OUTPUT FIELD:\n"
+            . "- All other valid core triggers (e.g. core.is_confirmation_message) should be detected normally.\n"
+            . "\nREQUIRED OUTPUT FIELD:\n"
             . "- Every response MUST include used_triggers as a JSON array (field required, may be empty).";
     }
 
@@ -184,41 +179,9 @@ class prompt_policy_builder {
      */
     private static function build_trigger_policy_compact(): string {
         return "NON-OPTIONAL TRIGGER POLICY:\n"
-            . "- Keep using only valid trigger ids from the catalog in the current context.\n"
+            . "- Keep used_triggers empty unless a core flow trigger is clearly grounded.\n"
+            . "- Task catalog entries may include example_input and message_triggers for grounding.\n"
             . "- Return used_triggers as a JSON array (empty array if none apply).";
-    }
-
-    /**
-     * Render trigger catalog for planner prompts with compact empty-example entries.
-     *
-     * @param string $triggerjson
-     * @return string
-     */
-    private static function render_trigger_catalog_for_prompt(string $triggerjson): string {
-        $decoded = json_decode($triggerjson, true);
-        if (!is_array($decoded)) {
-            return $triggerjson;
-        }
-
-        $lines = [];
-        foreach ($decoded as $trigger) {
-            if (!is_array($trigger)) {
-                continue;
-            }
-
-            $examples = (array)($trigger['examples'] ?? []);
-            if (empty($examples)) {
-                $lines[] = json_encode([
-                    'id' => (string)($trigger['id'] ?? ''),
-                    'description' => (string)($trigger['description'] ?? ''),
-                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                continue;
-            }
-
-            $lines[] = json_encode($trigger, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        }
-
-        return "[\n" . implode(",\n", $lines) . "\n]";
     }
 
     /**

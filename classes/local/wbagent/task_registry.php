@@ -213,6 +213,17 @@ class task_registry {
             $anchorfields = $this->extract_anchor_fields($properties);
         }
 
+        $exampleinput = $this->build_example_input($taskname, $minimalinput, $properties);
+
+        $messagetriggers = [];
+        if (method_exists($task, 'get_message_triggers')) {
+            try {
+                $messagetriggers = array_values(array_filter((array)$task->get_message_triggers()));
+            } catch (\Throwable $e) {
+                $messagetriggers = [];
+            }
+        }
+
         return [
             'task' => $taskname,
             'description' => trim((string)($schema['description'] ?? '')),
@@ -220,7 +231,161 @@ class task_registry {
             'intent' => $this->detect_task_intent($taskname, $schema),
             'anchors' => $anchorfields,
             'minimal_input' => $minimalinput,
+            'example_input' => $exampleinput,
+            'message_triggers' => $messagetriggers,
         ];
+    }
+
+    /**
+     * Build one compact example input for prompt routing.
+     *
+     * @param string $taskname
+     * @param array<int,string> $minimalinput
+     * @param array $properties
+     * @return array<string,mixed>
+     */
+    private function build_example_input(string $taskname, array $minimalinput, array $properties): array {
+        $examples = [
+            'booking.create_option' => [
+                'text' => 'Geburtstag ANON_USER_1',
+                'maxanswers' => 30,
+                'coursestarttime' => '2026-12-12T20:00:00',
+                'courseendtime' => '2026-12-12T22:00:00',
+            ],
+            'booking.update_option' => [
+                'optionquery' => 'Geburtstag ANON_USER_1',
+                'text' => 'Geburtstag ANON_USER_1',
+            ],
+            'booking.search_options' => [
+                'query' => 'Geburtstag',
+            ],
+            'booking.search_courses' => [
+                'query' => 'Mathematik',
+            ],
+            'booking.search_users' => [
+                'query' => 'ANON_USER_1',
+            ],
+            'booking.diagnose_booking_issue' => [
+                'question' => 'Why can ANON_USER_1 not book Geburtstag ANON_USER_1?',
+                'optionquery' => 'Geburtstag ANON_USER_1',
+                'userquery' => 'ANON_USER_1',
+            ],
+            'booking.diagnose_cancellation_issue' => [
+                'question' => 'Why can I not cancel my booking?',
+                'optionquery' => 'Geburtstag ANON_USER_1',
+            ],
+            'booking.get_option_details' => [
+                'optionquery' => 'Geburtstag ANON_USER_1',
+            ],
+            'booking.book_users' => [
+                'optionquery' => 'Geburtstag ANON_USER_1',
+                'userquery' => 'ANON_USER_1',
+            ],
+            'booking.list_actions' => [
+                'scope' => 'booking',
+            ],
+            'booking.list_option_properties' => [
+                'scope' => 'booking.create_option',
+            ],
+            'booking.explain_docs_topic' => [
+                'question' => 'How do I create a booking option?',
+                'search_queries' => ['booking option create'],
+            ],
+        ];
+
+        if (isset($examples[$taskname])) {
+            return $examples[$taskname];
+        }
+
+        $example = [];
+        foreach ($minimalinput as $field) {
+            $example[$field] = $this->example_value_for_field($field, $taskname, $properties);
+        }
+
+        return $example;
+    }
+
+    /**
+     * Return a compact example value for a field.
+     *
+     * @param string $field
+     * @param string $taskname
+     * @param array $properties
+     * @return mixed
+     */
+    private function example_value_for_field(string $field, string $taskname, array $properties) {
+        switch ($field) {
+            case 'text':
+                return 'Geburtstag ANON_USER_1';
+            case 'title':
+                return 'Geburtstag ANON_USER_1';
+            case 'query':
+                return 'Geburtstag';
+            case 'question':
+                return 'How do I create a booking option?';
+            case 'scope':
+                return 'booking';
+            case 'name':
+                return 'Geburtstagskategorie';
+            case 'rulename':
+                return 'Birthday reminder';
+            case 'firstname':
+                return 'Anna';
+            case 'lastname':
+                return 'Example';
+            case 'email':
+                return 'anna@example.com';
+            case 'optionquery':
+                return 'Geburtstag ANON_USER_1';
+            case 'userquery':
+                return 'ANON_USER_1';
+            case 'optionid':
+                return 123;
+            case 'optionids':
+                return [123, 124];
+            case 'userids':
+                return [2];
+            case 'templatequery':
+                return 'booking confirmation';
+            case 'rulequery':
+                return 'confirmation reminder';
+            case 'active_only':
+                return true;
+            case 'isactive':
+                return true;
+            case 'optiontype':
+                return 'normal';
+            case 'maxanswers':
+                return 30;
+            case 'search_queries':
+                return ['booking option create'];
+            case 'doc_path_candidates':
+                return ['mod/booking/README.md'];
+            case 'line_start':
+                return 1;
+            case 'line_count':
+                return 20;
+            case 'includesessions':
+                return true;
+            case 'include_customfields':
+                return false;
+            case 'requested_fields':
+                return ['text', 'maxanswers'];
+            case 'customfield_keys':
+                return [];
+            case 'changes':
+                return ['text' => 'Updated title'];
+            default:
+                if (in_array($field, ['optiondates', 'prices', 'customformelements'], true)) {
+                    return [];
+                }
+
+                if (array_key_exists($field, $properties) && is_array($properties[$field] ?? null)) {
+                    return null;
+                }
+
+                return $field . '_example';
+        }
     }
 
     /**

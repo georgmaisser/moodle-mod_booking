@@ -154,6 +154,7 @@ class orchestrator {
 
         $haseffectiveobservations = !empty($observations)
             && !$this->observations_are_framework_retry_hints($observations);
+        $lastplannerresult = trim((string)$this->store->get_thread_metadata_value($threadid, 'last_planner_result_json'));
 
         $systemprompt = $this->build_system_prompt(
             $cmid,
@@ -163,7 +164,14 @@ class orchestrator {
             $adaptivecatalog
         );
         $runtimecontext = $this->build_runtime_context_block($cmid);
-        $prompt = $this->build_prompt($systemprompt, $messages, $observations, $normalizedsteptype, $runtimecontext);
+        $prompt = $this->build_prompt(
+            $systemprompt,
+            $messages,
+            $observations,
+            $normalizedsteptype,
+            $runtimecontext,
+            $lastplannerresult
+        );
         $historycount = count(array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype)));
         $observationcount = count($observations);
         $primaryprovider = $this->resolve_primary_provider_for_action($manager, $actionclass);
@@ -485,6 +493,10 @@ PROMPT;
                 'description' => (string)($entry['description'] ?? ''),
                 'readonly' => (bool)($entry['readonly'] ?? false),
                 'intent' => (string)($entry['intent'] ?? ''),
+                'anchors' => (array)($entry['anchors'] ?? []),
+                'minimal_input' => (array)($entry['minimal_input'] ?? []),
+                'example_input' => (array)($entry['example_input'] ?? []),
+                'message_triggers' => (array)($entry['message_triggers'] ?? []),
             ];
         }
 
@@ -541,6 +553,7 @@ PROMPT;
      * @param  \stdClass[] $messages
      * @param  string[]    $observations  Structured observation strings (may be empty).
      * @param  string      $runtimecontext Dynamic per-request context appended after static system prompt.
+     * @param  string      $plannerresultjson Full previous planner JSON response from thread metadata.
      * @return string
      */
     private function build_prompt(
@@ -548,7 +561,8 @@ PROMPT;
         array $messages,
         array $observations = [],
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
-        string $runtimecontext = ''
+        string $runtimecontext = '',
+        string $plannerresultjson = ''
     ): string {
         $normalizedsteptype = $this->normalize_step_type($steptype);
         $trimmedmessages = array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype));
@@ -574,6 +588,10 @@ PROMPT;
 
         if ($runtimecontext !== '') {
             $parts[] = "[SYSTEM_RUNTIME]\n{$runtimecontext}";
+        }
+
+        if ($plannerresultjson !== '') {
+            $parts[] = "[PLANNER_RESULT]\n{$plannerresultjson}";
         }
 
         foreach ($trimmedmessages as $msg) {

@@ -1558,6 +1558,13 @@ class agent_runtime {
             $plannersteptype
         );
 
+        // Persist full planner response so the next model turn receives it verbatim
+        // as [PLANNER_RESULT] context for repair-oriented retries.
+        $plannerresultjson = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (is_string($plannerresultjson) && $plannerresultjson !== '') {
+            $this->store->set_thread_metadata_value($threadid, 'last_planner_result_json', $plannerresultjson);
+        }
+
         $outputlang = $this->resolve_output_language($threadid, $result);
         $this->store->set_thread_metadata_value($threadid, 'last_output_lang', $outputlang);
 
