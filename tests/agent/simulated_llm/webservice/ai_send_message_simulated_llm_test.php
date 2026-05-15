@@ -99,7 +99,14 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         $helpers = [
             'create_option' => fn(string $title, array $overrides = []) => $this->create_option($title, $overrides),
             'create_user' => fn(array $user) => $this->getDataGenerator()->create_user($user),
+            'create_course' => fn(array $course) => $this->getDataGenerator()->create_course($course),
             'enrol_user' => fn(int $userid) => $this->getDataGenerator()->enrol_user($userid, $this->course->id, 'student'),
+            'teacher_id' => fn(): int => (int)$this->teacher->id,
+            'enrol_user_in_course' => fn(int $userid, int $courseid) => $this->getDataGenerator()->enrol_user(
+                $userid,
+                $courseid,
+                'student'
+            ),
             'exec_command' => fn(string $task, array $input) => $this->exec_command($task, $input),
         ];
         $case = ai_send_message_mock_scenarios::build_case($scenario, $helpers);
@@ -193,19 +200,55 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
                 break;
 
             case 'diagnose_other_user_cannot_book':
-                $this->assertIsArray($results);
-                $this->assertNotEmpty($results);
+                $this->assertSame(
+                    'sufficient',
+                    (string)($response['response_type'] ?? ''),
+                    'Diagnose must complete as sufficient.'
+                );
+                $this->assertNotEmpty($results, 'Diagnose scenario must surface execution results.');
+                $this->assertGreaterThanOrEqual(1, count($results), 'At least one result entry expected.');
 
                 $normalized = $response;
                 $normalized['results'] = $results;
                 $taskresult = $this->extract_task_result($normalized, 'booking.diagnose_booking_issue');
-                $this->assertNotNull($taskresult);
-                $this->assertSame('executed', (string)($taskresult['status'] ?? ''));
-                $this->assertSame((int)$case['blockeduser']->id, (int)($taskresult['diagnosis']['userid'] ?? 0));
-                $this->assertSame((int)$case['option']->id, (int)($taskresult['diagnosis']['optionid'] ?? 0));
-                $this->assertNotEmpty((array)($taskresult['diagnosis']['reasons'] ?? []));
-                break;
+                $this->assertNotNull($taskresult, 'Diagnose booking issue result must exist.');
+                $this->assertSame('executed', (string)($taskresult['status'] ?? ''), 'Task must be executed.');
 
+                // Verify diagnosis structure.
+                $this->assertIsArray((array)($taskresult['diagnosis'] ?? []), 'Diagnosis must be array.');
+                $this->assertSame(
+                    (int)$case['blockeduser']->id,
+                    (int)($taskresult['diagnosis']['userid'] ?? 0),
+                    'Must diagnose correct user.'
+                );
+                $this->assertSame(
+                    (int)$case['option']->id,
+                    (int)($taskresult['diagnosis']['optionid'] ?? 0),
+                    'Must diagnose correct option.'
+                );
+
+                // Verify reasons are present and meaningful.
+                $reasons = (array)($taskresult['diagnosis']['reasons'] ?? []);
+                $this->assertGreaterThanOrEqual(
+                    (int)($case['expected_min_reasons'] ?? 1),
+                    count($reasons),
+                    'At least one reason must be provided.'
+                );
+                $this->assertSame(
+                    $reasons[0],
+                    'The selected booking option is set to invisible and is not visible to regular users.'
+                );
+
+                // Verify response message mentions the user or issue.
+                $message = (string)($response['message'] ?? '');
+                $this->assertNotEmpty($message, 'Response message must not be empty.');
+                $this->assertTrue(
+                    str_contains($message, (string)$case['blockeduser']->firstname)
+                    || str_contains($message, 'buchen')
+                    || str_contains($message, 'book'),
+                    'Message should reference user or booking issue.'
+                );
+                break;
             case 'list_all_booking_options':
                 $this->assertIsArray($results);
                 $this->assertNotEmpty($results);
@@ -221,7 +264,6 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
                 $this->assertStringContainsString((string)$case['option1']->text, $resulttext);
                 $this->assertStringContainsString((string)$case['option2']->text, $resulttext);
                 break;
-
             case 'search_matching_booking_options':
                 $this->assertIsArray($results);
                 $this->assertNotEmpty($results);
@@ -237,6 +279,139 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
                 $this->assertStringContainsString((string)$case['prefix'], $resulttext);
                 $this->assertStringContainsString((string)$case['option1']->text, $resulttext);
                 $this->assertStringContainsString((string)$case['option2']->text, $resulttext);
+                break;
+
+            case 'get_option_details_for_specific_option':
+                $this->assertIsArray($results);
+                $this->assertNotEmpty($results, 'Option details scenario must return results.');
+
+                $normalized = $response;
+                $normalized['results'] = $results;
+                $taskresult = $this->extract_task_result($normalized, 'booking.get_option_details');
+                $this->assertNotNull($taskresult, 'get_option_details task result must exist.');
+                $this->assertSame('executed', (string)($taskresult['status'] ?? ''), 'Task must be executed.');
+
+                $optiondetails = (array)($taskresult['optiondetails'] ?? []);
+                $this->assertNotEmpty($optiondetails, 'Option details must not be empty.');
+                $firstdetail = (array)($optiondetails[0] ?? []);
+                $this->assertSame((int)$case['option']->id, (int)($firstdetail['optionid'] ?? 0), 'Must resolve exact option id.');
+                $this->assertSame((string)$case['title'], (string)($firstdetail['title'] ?? ''), 'Must return exact option title.');
+
+                $standard = (array)($firstdetail['standard_fields'] ?? []);
+                $this->assertArrayHasKey('title', $standard, 'title must be included in standard fields.');
+                $this->assertSame((string)$case['title'], (string)($standard['title'] ?? ''), 'standard_fields.title must match.');
+                $this->assertArrayHasKey('teachers', $standard, 'teachers must be included in standard fields.');
+                $this->assertArrayHasKey('sessions', $standard, 'sessions must be included in standard fields.');
+                break;
+
+            case 'search_users_by_unique_name':
+                $this->assertIsArray($results);
+                $this->assertNotEmpty($results, 'Search users scenario must return results.');
+
+                $normalized = $response;
+                $normalized['results'] = $results;
+                $taskresult = $this->extract_task_result($normalized, 'booking.search_users');
+                $this->assertNotNull($taskresult, 'search_users task result must exist.');
+                $this->assertSame('executed', (string)($taskresult['status'] ?? ''), 'Task must be executed.');
+
+                $users = (array)($taskresult['users'] ?? []);
+                $this->assertGreaterThanOrEqual(2, count($users), 'At least two users must be returned.');
+                $jsonusers = json_encode($users, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $this->assertIsString($jsonusers);
+                $this->assertStringContainsString(
+                    (string)$case['token'],
+                    $jsonusers,
+                    'Returned users must include the unique token.'
+                );
+                $this->assertStringContainsString(
+                    (string)$case['user1']->firstname,
+                    $jsonusers,
+                    'First target user must be present.'
+                );
+                $this->assertStringContainsString(
+                    (string)$case['user2']->firstname,
+                    $jsonusers,
+                    'Second target user must be present.'
+                );
+                break;
+
+            case 'get_current_user_profile':
+                $this->assertIsArray($results);
+                $this->assertNotEmpty($results, 'Get-current-user scenario must return results.');
+
+                $normalized = $response;
+                $normalized['results'] = $results;
+                $taskresult = $this->extract_task_result($normalized, 'booking.get_current_user');
+                $this->assertNotNull($taskresult, 'get_current_user task result must exist.');
+                $this->assertSame('executed', (string)($taskresult['status'] ?? ''), 'Task must be executed.');
+
+                $this->assertSame(
+                    (int)$this->teacher->id,
+                    (int)($taskresult['userid'] ?? 0),
+                    'Resolved userid must match current teacher.'
+                );
+                $this->assertSame(
+                    (int)$this->teacher->id,
+                    (int)($taskresult['resultid'] ?? 0),
+                    'resultid must match current teacher.'
+                );
+
+                $preview = (array)($taskresult['previewdata'] ?? []);
+                $this->assertSame(
+                    (int)$this->teacher->id,
+                    (int)($preview['userid'] ?? 0),
+                    'previewdata.userid must match current teacher.'
+                );
+                $this->assertStringContainsString((string)$this->teacher->firstname, (string)($taskresult['fullname'] ?? ''));
+                break;
+
+            case 'list_agent_actions':
+                $this->assertIsArray($results);
+                $this->assertNotEmpty($results, 'List actions scenario must return results.');
+
+                $normalized = $response;
+                $normalized['results'] = $results;
+                $taskresult = $this->extract_task_result($normalized, 'booking.list_actions');
+                $this->assertNotNull($taskresult, 'list_actions task result must exist.');
+                $this->assertSame('executed', (string)($taskresult['status'] ?? ''), 'Task must be executed.');
+
+                $actions = (array)($taskresult['actions'] ?? []);
+                $this->assertNotEmpty($actions, 'Actions list must not be empty.');
+                $actiontasks = array_values(array_filter(array_map(
+                    static fn(array $action): string => (string)($action['task'] ?? ''),
+                    $actions
+                )));
+                $this->assertContains('booking.create_option', $actiontasks, 'Action list must include booking.create_option.');
+                $this->assertContains('booking.search_options', $actiontasks, 'Action list must include booking.search_options.');
+                $this->assertContains('booking.list_actions', $actiontasks, 'Action list must include booking.list_actions.');
+                break;
+
+            case 'list_option_properties_for_create_scope':
+                $this->assertIsArray($results);
+                $this->assertNotEmpty($results, 'List option properties scenario must return results.');
+
+                $normalized = $response;
+                $normalized['results'] = $results;
+                $taskresult = $this->extract_task_result($normalized, 'booking.list_option_properties');
+                $this->assertNotNull($taskresult, 'list_option_properties task result must exist.');
+                $this->assertSame('executed', (string)($taskresult['status'] ?? ''), 'Task must be executed.');
+
+                $properties = (array)($taskresult['properties'] ?? []);
+                $this->assertNotEmpty($properties, 'Properties list must not be empty.');
+
+                $names = [];
+                foreach ($properties as $property) {
+                    $this->assertIsArray($property, 'Each property row must be structured.');
+                    $this->assertNotEmpty((string)($property['name'] ?? ''), 'Property name must be set.');
+                    $this->assertTrue(
+                        (bool)($property['increate'] ?? false),
+                        'Create scope must return create-supported properties only.'
+                    );
+                    $names[] = (string)$property['name'];
+                }
+
+                $this->assertContains('text', $names, 'Create scope must include property "text".');
+                $this->assertContains('maxanswers', $names, 'Create scope must include property "maxanswers".');
                 break;
         }
     }

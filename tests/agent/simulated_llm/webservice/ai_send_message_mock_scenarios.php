@@ -41,6 +41,11 @@ final class ai_send_message_mock_scenarios {
             'diagnose another user booking issue' => ['diagnose_other_user_cannot_book'],
             'list booking options' => ['list_all_booking_options'],
             'search booking options' => ['search_matching_booking_options'],
+            'get option details' => ['get_option_details_for_specific_option'],
+            'search users by unique token' => ['search_users_by_unique_name'],
+            'get current user profile' => ['get_current_user_profile'],
+            'list agent actions' => ['list_agent_actions'],
+            'list option properties' => ['list_option_properties_for_create_scope'],
         ];
     }
 
@@ -89,7 +94,7 @@ final class ai_send_message_mock_scenarios {
                     'min_debug_rows' => 1,
                     'expected_loop_depth' => 1,
                     'expected_task_transitions' => 1,
-                    'expected_debug_source_patterns' => ['ac='],
+                    'expected_debug_source_patterns' => ['ac=sum'],
                 ];
 
             case 'create_rule_confirmation':
@@ -117,7 +122,7 @@ final class ai_send_message_mock_scenarios {
                     'min_debug_rows' => 1,
                     'expected_loop_depth' => 1,
                     'expected_task_transitions' => 1,
-                    'expected_debug_source_patterns' => ['ac='],
+                    'expected_debug_source_patterns' => ['ac=gen'],
                 ];
 
             case 'diagnose_other_user_cannot_book':
@@ -157,7 +162,6 @@ final class ai_send_message_mock_scenarios {
                                         'question' => 'Warum kann Nutzer A bei Buchungsoption B nicht buchen?',
                                         'optionquery' => $optiontitle,
                                         'userquery' => fullname($blockeduser),
-                                        'issue' => 'cannot_book',
                                     ],
                                 ]],
                             ],
@@ -175,10 +179,11 @@ final class ai_send_message_mock_scenarios {
                     'blockeduser' => $blockeduser,
                     'expected_response_type' => 'sufficient',
                     'expected_tasks' => ['booking.diagnose_booking_issue'],
-                    'min_debug_rows' => 2,
-                    'expected_loop_depth' => 2,
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 3,
                     'expected_task_transitions' => 1,
-                    'expected_debug_source_patterns' => ['ac='],
+                    'expected_debug_source_patterns' => ['ac=sum', 'ac=gen'],
+                    'expected_min_reasons' => 1,
                 ];
 
             case 'list_all_booking_options':
@@ -215,10 +220,10 @@ final class ai_send_message_mock_scenarios {
                     'option2' => $option2,
                     'expected_response_type' => 'sufficient',
                     'expected_tasks' => ['booking.search_options'],
-                    'min_debug_rows' => 2,
-                    'expected_loop_depth' => 2,
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 3,
                     'expected_task_transitions' => 1,
-                    'expected_debug_source_patterns' => ['ac='],
+                    'expected_debug_source_patterns' => ['ac=sum', 'ac=gen'],
                 ];
 
             case 'search_matching_booking_options':
@@ -256,10 +261,205 @@ final class ai_send_message_mock_scenarios {
                     'option2' => $option2,
                     'expected_response_type' => 'sufficient',
                     'expected_tasks' => ['booking.search_options'],
-                    'min_debug_rows' => 2,
-                    'expected_loop_depth' => 2,
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 3,
                     'expected_task_transitions' => 1,
                     'expected_debug_source_patterns' => ['ac='],
+                ];
+
+            case 'get_option_details_for_specific_option':
+                $title = 'Webservice Detail Option ' . uniqid('', true);
+                $option = $helpers['create_option']($title, []);
+
+                return [
+                    'prompt' => 'Kannst du mir die Details zur Buchungsoption "' . $title
+                        . '" zeigen? Vor allem Trainer und Termine.',
+                    'routes' => [[
+                        'prompt_contains' => ['Details zur Buchungsoption'],
+                        'responses' => [
+                            [
+                                'response_type' => 'task_call',
+                                'commands' => [[
+                                    'task' => 'booking.get_option_details',
+                                    'version' => 1,
+                                    'input' => [
+                                        'optionquery' => $title,
+                                        'requested_fields' => ['title', 'teachers', 'sessions'],
+                                        'includesessions' => true,
+                                    ],
+                                ]],
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                                'message' => 'Hier sind die Detailinformationen zur angefragten Buchungsoption.',
+                                'user_lang' => 'de',
+                            ],
+                        ],
+                    ]],
+                    'title' => $title,
+                    'option' => $option,
+                    'expected_response_type' => 'sufficient',
+                    'expected_tasks' => ['booking.get_option_details'],
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 3,
+                    'expected_task_transitions' => 1,
+                    'expected_debug_source_patterns' => ['ac=sum', 'ac=gen'],
+                ];
+
+            case 'search_users_by_unique_name':
+                $token = 'WebserviceUser' . uniqid();
+                $user1 = $helpers['create_user']([
+                    'firstname' => $token . 'Anna',
+                    'lastname' => 'Agent',
+                    'email' => 'user.a.' . uniqid('', true) . '@example.com',
+                ]);
+                $helpers['enrol_user']((int)$user1->id);
+
+                $user2 = $helpers['create_user']([
+                    'firstname' => $token . 'Ben',
+                    'lastname' => 'Agent',
+                    'email' => 'user.b.' . uniqid('', true) . '@example.com',
+                ]);
+                $helpers['enrol_user']((int)$user2->id);
+
+                return [
+                    'prompt' => 'Bitte such mal alle Nutzer, die "' . $token . '" im Namen haben.',
+                    'routes' => [[
+                        'prompt_contains' => ['Nutzer, die'],
+                        'responses' => [
+                            [
+                                'response_type' => 'task_call',
+                                'commands' => [[
+                                    'task' => 'booking.search_users',
+                                    'version' => 1,
+                                    'input' => [
+                                        'query' => $token,
+                                        'limit' => 10,
+                                    ],
+                                ]],
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                                'message' => 'Ich habe die passenden Nutzer gefunden.',
+                                'user_lang' => 'de',
+                            ],
+                        ],
+                    ]],
+                    'token' => $token,
+                    'user1' => $user1,
+                    'user2' => $user2,
+                    'expected_response_type' => 'sufficient',
+                    'expected_tasks' => ['booking.search_users'],
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 3,
+                    'expected_task_transitions' => 1,
+                    'expected_debug_source_patterns' => ['ac=sum', 'ac=gen'],
+                ];
+
+            case 'get_current_user_profile':
+                return [
+                    'prompt' => 'Wer bin ich hier gerade in diesem Kurs? Zeig mir bitte mein Profil kurz an.',
+                    'routes' => [[
+                        'prompt_contains' => ['Wer bin ich hier gerade'],
+                        'responses' => [
+                            [
+                                'response_type' => 'task_call',
+                                'commands' => [[
+                                    'task' => 'booking.get_current_user',
+                                    'version' => 1,
+                                    'input' => [],
+                                ]],
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                                'message' => 'Ich habe dein aktuelles Profil geladen.',
+                                'user_lang' => 'de',
+                            ],
+                        ],
+                    ]],
+                    'expected_response_type' => 'sufficient',
+                    'expected_tasks' => ['booking.get_current_user'],
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 3,
+                    'expected_task_transitions' => 1,
+                    'expected_debug_source_patterns' => ['ac=sum', 'ac=gen'],
+                ];
+
+            case 'list_agent_actions':
+                return [
+                    'prompt' => 'Welche Aktionen kannst du als Booking-Assistent gerade ausfuehren?',
+                    'routes' => [[
+                        'prompt_contains' => ['Welche Aktionen kannst du als Booking-Assistent'],
+                        'responses' => [
+                            [
+                                'response_type' => 'task_call',
+                                'commands' => [[
+                                    'task' => 'booking.list_actions',
+                                    'version' => 1,
+                                    'input' => [
+                                        'scope' => 'all',
+                                    ],
+                                ]],
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                                'message' => 'Ich habe dir die verfuegbaren Aktionen aufgelistet.',
+                                'user_lang' => 'de',
+                            ],
+                        ],
+                    ]],
+                    'expected_response_type' => 'sufficient',
+                    'expected_tasks' => ['booking.list_actions'],
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 3,
+                    'expected_task_transitions' => 1,
+                    'expected_debug_source_patterns' => ['ac=sum', 'ac=gen'],
+                ];
+
+            case 'list_option_properties_for_create_scope':
+                return [
+                    'prompt' => 'Welche Felder kann ich setzen, wenn ich eine neue Buchungsoption anlege?',
+                    'routes' => [[
+                        'prompt_contains' => ['Welche Felder kann ich setzen'],
+                        'responses' => [
+                            [
+                                'response_type' => 'task_call',
+                                'commands' => [[
+                                    'task' => 'booking.list_option_properties',
+                                    'version' => 1,
+                                    'input' => [
+                                        'scope' => 'create',
+                                    ],
+                                ]],
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                                'message' => 'Ich habe die Felder fuer das Anlegen einer Option zusammengestellt.',
+                                'user_lang' => 'de',
+                            ],
+                        ],
+                    ]],
+                    'expected_response_type' => 'sufficient',
+                    'expected_tasks' => ['booking.list_option_properties'],
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 3,
+                    'expected_task_transitions' => 1,
+                    'expected_debug_source_patterns' => ['ac=sum', 'ac=gen'],
                 ];
 
             default:
