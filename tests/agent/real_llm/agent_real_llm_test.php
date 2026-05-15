@@ -123,7 +123,7 @@ final class agent_real_llm_test extends booking_advanced_testcase {
                 generate_text::class => [
                     'enabled' => true,
                     'settings' => [
-                        'model' => 'wunderbyte-trial',
+                        'model' => 'wunderbyte-privat',
                         'endpoint' => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -131,7 +131,7 @@ final class agent_real_llm_test extends booking_advanced_testcase {
                 summarise_text::class => [
                     'enabled' => true,
                     'settings' => [
-                        'model' => 'wunderbyte-trial-mini',
+                        'model' => 'wunderbyte-privat-mini',
                         'endpoint' => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -139,7 +139,7 @@ final class agent_real_llm_test extends booking_advanced_testcase {
                 explain_text::class => [
                     'enabled' => true,
                     'settings' => [
-                        'model' => 'wunderbyte-trial-mini',
+                        'model' => 'wunderbyte-privat-mini',
                         'endpoint' => $endpoint,
                         'systeminstruction' => '',
                     ],
