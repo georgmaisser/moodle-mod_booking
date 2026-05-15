@@ -123,9 +123,23 @@ final class agent_decision_service_test extends booking_advanced_testcase {
      * Users list produces a correct observation string.
      */
     public function test_observation_summarizer_users(): void {
-        $results = [['users' => [['userid' => 1], ['userid' => 2]]]];
+        $results = [[
+            'users' => [
+                [
+                    'userid' => 3,
+                    'firstname' => 'Max',
+                    'lastname' => 'Mustermann',
+                    'email' => 'max@example.com',
+                ],
+            ],
+        ]];
         $obs = result_payload_summarizer::for_observation($results, 2);
-        $this->assertStringContainsString('2 user(s)', $obs);
+        $this->assertStringContainsString('1 user(s)', $obs);
+        $this->assertStringContainsString('firstname=Max', $obs);
+        $this->assertStringContainsString('lastname=Mustermann', $obs);
+        $this->assertStringContainsString('email=max@example.com', $obs);
+        $this->assertStringContainsString('id=3', $obs);
+        $this->assertStringContainsString('/user/profile.php?id=3', $obs);
     }
 
     /**

@@ -97,6 +97,113 @@ final class agent_privacy_mode_test extends abstract_agent_testcase {
     }
 
     /**
+     * Regression: firstname, lastname and email must not collapse to the same token/value.
+     */
+    public function test_privacy_identity_fields_are_kept_separate(): void {
+        $this->setUser($this->teacher);
+        set_config('aiprivacymode', 'soft', 'booking');
+
+        $store = new conversation_store();
+        $thread = $store->get_or_create_thread((int)$this->teacher->id, (int)$this->booking->cmid, (int)$this->booking->id);
+        $anonymizer = new privacy_anonymizer($store);
+
+        $payload = [
+            'users' => [[
+                'firstname' => 'Teachy',
+                'lastname' => 'Trainer',
+                'email' => 'teachy.trainer@example.com',
+                'userid' => 1005,
+            ]],
+        ];
+
+        $sanitized = $anonymizer->anonymize_value_for_llm((int)$thread->id, $payload);
+        $this->assertIsArray($sanitized);
+
+        $user = (array)($sanitized['users'][0] ?? []);
+        $firsttoken = (string)($user['firstname'] ?? '');
+        $lasttoken = (string)($user['lastname'] ?? '');
+        $emailtoken = (string)($user['email'] ?? '');
+
+        $this->assertStringStartsWith('ANON_USER_', $firsttoken);
+        $this->assertStringStartsWith('ANON_USER_', $lasttoken);
+        $this->assertStringStartsWith('ANON_USER_', $emailtoken);
+        $this->assertMatchesRegularExpression('/^ANON_USER_\d+_firstname$/', $firsttoken);
+        $this->assertMatchesRegularExpression('/^ANON_USER_\d+_lastname$/', $lasttoken);
+        $this->assertMatchesRegularExpression('/^ANON_USER_\d+_email$/', $emailtoken);
+        $this->assertNotSame($firsttoken, $lasttoken, 'Firstname and lastname must use different tokens.');
+        $this->assertNotSame($firsttoken, $emailtoken, 'Firstname and email must use different tokens.');
+        $this->assertNotSame($lasttoken, $emailtoken, 'Lastname and email must use different tokens.');
+
+        $extractbase = static function (string $token): string {
+            return (string)preg_replace('/_(firstname|lastname|email)$/', '', $token);
+        };
+        $firstbase = $extractbase($firsttoken);
+        $lastbase = $extractbase($lasttoken);
+        $emailbase = $extractbase($emailtoken);
+        $this->assertSame($firstbase, $lastbase, 'Firstname and lastname must share the same person base token.');
+        $this->assertSame($firstbase, $emailbase, 'Firstname and email must share the same person base token.');
+
+        $maskedmessage = 'Gefundener Benutzer: - Vorname: ' . $firsttoken
+            . ' - Nachname: ' . $lasttoken
+            . ' - E-Mail: ' . $emailtoken
+            . ' - Benutzer-ID: 1005 - Profil: /user/profile.php?id=1005';
+        $display = $anonymizer->deanonymize_message_for_display((int)$thread->id, $maskedmessage);
+        $rendered = (string)($display['message'] ?? '');
+
+        $this->assertStringContainsString('Vorname: Teachy', $rendered);
+        $this->assertStringContainsString('Nachname: Trainer', $rendered);
+        $this->assertStringContainsString('E-Mail: teachy.trainer@example.com', $rendered);
+    }
+
+    /**
+     * Regression: name anonymization must not touch the local part of email addresses.
+     */
+    public function test_privacy_soft_mode_does_not_mask_names_inside_email_local_part(): void {
+        $this->setUser($this->teacher);
+        set_config('aiprivacymode', 'soft', 'booking');
+
+        // Ensure these names exist in the name index.
+        $this->getDataGenerator()->create_user([
+            'firstname' => 'Billy',
+            'lastname' => 'Teachy',
+            'email' => 'billy.' . uniqid('', true) . '@example.com',
+        ]);
+        \cache_helper::purge_by_definition('mod_booking', 'aiprivacynames');
+
+        $store = new conversation_store();
+        $anonymizer = new privacy_anonymizer($store);
+
+        $input = 'Kontakt: billy.teachy@example.com';
+        $result = $anonymizer->precheck_user_message(0, $input);
+        $sanitized = (string)($result['sanitizedmessage'] ?? '');
+
+        $this->assertSame($input, $sanitized, 'Email local-part must remain untouched in soft mode.');
+        $this->assertStringNotContainsString('ANON_USER_', $sanitized);
+    }
+
+    /**
+     * Regression: labeled email values must be anonymized as full value, never partially.
+     */
+    public function test_privacy_labeled_email_does_not_create_hybrid_token_domain(): void {
+        $this->setUser($this->teacher);
+        set_config('aiprivacymode', 'soft', 'booking');
+
+        $store = new conversation_store();
+        $thread = $store->get_or_create_thread((int)$this->teacher->id, (int)$this->booking->cmid, (int)$this->booking->id);
+        $anonymizer = new privacy_anonymizer($store);
+
+        $payload = 'firstname=Billy, lastname=Teachy, email=billy.teachy@example.com, id=1005.';
+        $sanitized = (string)$anonymizer->anonymize_value_for_llm((int)$thread->id, $payload);
+
+        $this->assertMatchesRegularExpression('/email=ANON_USER_\d+_email\b/', $sanitized);
+        $this->assertDoesNotMatchRegularExpression('/ANON_USER_\d+_email\.[A-Z0-9._%+\-]+@/i', $sanitized);
+
+        $display = $anonymizer->deanonymize_message_for_display((int)$thread->id, $sanitized);
+        $rendered = (string)($display['message'] ?? '');
+        $this->assertStringContainsString('email=billy.teachy@example.com', $rendered);
+    }
+
+    /**
      * Test: Task registry contains all core tasks
      */
     public function test_task_registry_contains_core_tasks(): void {
