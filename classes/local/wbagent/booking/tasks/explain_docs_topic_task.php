@@ -573,6 +573,7 @@ class explain_docs_topic_task extends booking_task_base implements task_trigger_
             'status'       => 'executed',
             'detail'       => $usermessage,
             'usermessage'  => $usermessage,
+            'observation_full' => $this->build_full_observation_from_docs([$structureddoc]),
             'resultid'     => null,
             'docs'         => [$structureddoc],
             'selected_doc_path' => $path,
@@ -589,6 +590,56 @@ class explain_docs_topic_task extends booking_task_base implements task_trigger_
                 ], $debuglines)
             ),
         ];
+    }
+
+    /**
+     * Build a full observation block from structured docs payload.
+     *
+     * This intentionally keeps the full chunk text so orchestrator observation
+     * prompts can include complete documentation context via observation_full.
+     *
+     * @param array<int,array<string,mixed>> $docs
+     * @return string
+     */
+    private function build_full_observation_from_docs(array $docs): string {
+        $blocks = [];
+
+        foreach ($docs as $doc) {
+            if (!is_array($doc)) {
+                continue;
+            }
+
+            $title = trim((string)($doc['title'] ?? ''));
+            $body = trim((string)($doc['chunk_content'] ?? $doc['full_content'] ?? $doc['excerpt'] ?? ''));
+            $url = trim((string)($doc['url'] ?? ''));
+            $hasmore = !empty($doc['has_more']);
+            $nextline = (int)($doc['next_line_start'] ?? 0);
+
+            if ($body === '' && $url === '') {
+                continue;
+            }
+
+            $block = '';
+            if ($title !== '') {
+                $block .= "## {$title}\n";
+            }
+            if ($body !== '') {
+                $block .= $body;
+            }
+            if ($hasmore && $nextline > 0) {
+                $block .= ($block !== '' ? "\n\n" : '') . 'Continue from line ' . $nextline . ' if needed.';
+            }
+            if ($url !== '') {
+                $block .= ($block !== '' ? "\n\n" : '') . 'Link: ' . $url;
+            }
+
+            $block = trim($block);
+            if ($block !== '') {
+                $blocks[] = $block;
+            }
+        }
+
+        return trim(implode("\n\n", $blocks));
     }
 
     /**
