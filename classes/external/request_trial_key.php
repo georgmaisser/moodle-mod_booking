@@ -42,7 +42,9 @@ use context_module;
 use context_system;
 use core\di;
 use core\http_client;
+use core_ai\aiactions\explain_text;
 use core_ai\aiactions\generate_text;
+use core_ai\aiactions\summarise_text;
 use core_ai\manager as ai_manager;
 use external_api;
 use external_function_parameters;
@@ -157,7 +159,7 @@ class request_trial_key extends external_api {
         }
 
         $apikey = (string) $data['apikey'];
-        $model  = (string) ($data['model'] ?? 'wunderbyte-trial');
+        $model  = (string) ($data['model'] ?? 'wunderbyte-privat');
 
         // ----------------------------------------------------------------
         // 4. Find or create the "Wunderbyte" core_ai provider instance.
@@ -184,6 +186,22 @@ class request_trial_key extends external_api {
                 'settings' => [
                     'endpoint'          => self::PROVIDER_BASE_URL . '/chat/completions',
                     'model'             => $model,
+                    'systeminstruction' => '',
+                ],
+            ],
+            summarise_text::class => [
+                'enabled'  => true,
+                'settings' => [
+                    'endpoint'          => self::PROVIDER_BASE_URL . '/chat/completions',
+                    'model'             => 'wunderbyte-privat-mini',
+                    'systeminstruction' => '',
+                ],
+            ],
+            explain_text::class => [
+                'enabled'  => true,
+                'settings' => [
+                    'endpoint'          => self::PROVIDER_BASE_URL . '/chat/completions',
+                    'model'             => 'wunderbyte-privat-mini',
                     'systeminstruction' => '',
                 ],
             ],

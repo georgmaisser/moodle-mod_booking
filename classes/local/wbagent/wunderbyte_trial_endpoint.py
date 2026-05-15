@@ -46,7 +46,7 @@ TRIAL_BUDGET_USD: float = float(os.environ.get("TRIAL_BUDGET_USD", "2.0"))
 TRIAL_DAYS: int = int(os.environ.get("TRIAL_DAYS", "14"))
 
 # LiteLLM model alias that trial keys are allowed to use.
-TRIAL_MODEL_ALIAS: str = os.environ.get("TRIAL_MODEL_ALIAS", "wunderbyte-trial")
+TRIAL_MODEL_ALIAS: str = os.environ.get("TRIAL_MODEL_ALIAS", "wunderbyte-privat")
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ async def _find_existing_key(site_id: str) -> str | None:
             resp = await client.get(
                 f"{LITELLM_BASE_URL}/key/list",
                 headers=await _litellm_headers(),
-                params={"key_alias": f"wunderbyte-trial-{site_id}"},
+                params={"key_alias": f"wunderbyte-privat-{site_id}"},
             )
             resp.raise_for_status()
             keys = resp.json().get("keys", [])
@@ -133,7 +133,7 @@ async def _create_trial_key(site_id: str, wwwroot: str) -> str:
     expires_at = (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).isoformat()
 
     payload = {
-        "key_alias": f"wunderbyte-trial-{site_id}",
+        "key_alias": f"wunderbyte-privat-{site_id}",
         "models": [TRIAL_MODEL_ALIAS],
         "max_budget": TRIAL_BUDGET_USD,
         "budget_duration": f"{TRIAL_DAYS}d",
