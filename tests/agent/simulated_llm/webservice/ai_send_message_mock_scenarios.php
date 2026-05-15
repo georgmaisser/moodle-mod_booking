@@ -37,6 +37,8 @@ final class ai_send_message_mock_scenarios {
     public static function provider_rows(): array {
         return [
             'create booking option confirmation' => ['create_option_confirmation'],
+            'explain booking rules docs' => ['explain_booking_rules_docs'],
+            'ask about automatic booking confirmations' => ['create_rule_clarification'],
             'create booking rule confirmation' => ['create_rule_confirmation'],
             'diagnose another user booking issue' => ['diagnose_other_user_cannot_book'],
             'list booking options' => ['list_all_booking_options'],
@@ -99,19 +101,24 @@ final class ai_send_message_mock_scenarios {
 
             case 'create_rule_confirmation':
                 return [
-                    'prompt' => 'Explique-moi comment envoyer automatiquement des confirmations de reservation.',
+                    'prompt' => 'Create a booking rule from the booking confirmation template '
+                        . 'named Automatic booking confirmation. No follow-up questions.',
                     'routes' => [[
-                        'prompt_contains' => ['Explique-moi comment envoyer automatiquement des confirmations de reservation'],
+                        'prompt_contains' => [
+                            'Create a booking rule from the booking confirmation template',
+                            'booking confirmation',
+                        ],
                         'responses' => [[
                             'response_type' => 'confirmation_request',
-                            'message' => 'Veuillez confirmer la création d’une règle de confirmation de réservation.',
+                            'message' => 'Bitte bestaetige die Erstellung einer automatischen Buchungsbestaetigung.',
                             'commands' => [[
                                 'task' => 'booking.create_rule_from_template',
                                 'version' => 1,
                                 'input' => [
-                                    'templatequery' => 'booking confirmation',
-                                    'question' => 'Explique-moi comment envoyer automatiquement des confirmations de reservation.',
-                                    'rulename' => 'Confirmation automatique',
+                                    'templatequery' => 'Automatic booking confirmation',
+                                    'question' => 'Create a booking rule from the booking confirmation template '
+                                        . 'named Automatic booking confirmation. No follow-up questions.',
+                                    'rulename' => 'Automatische Buchungsbestaetigung',
                                     'isactive' => true,
                                 ],
                             ]],
@@ -120,9 +127,84 @@ final class ai_send_message_mock_scenarios {
                     'expected_response_type' => 'confirmation_request',
                     'expected_tasks' => ['booking.create_rule_from_template'],
                     'min_debug_rows' => 1,
-                    'expected_loop_depth' => 1,
+                    'expected_loop_depth_min' => 1,
                     'expected_task_transitions' => 1,
-                    'expected_debug_source_patterns' => ['ac=gen'],
+                    'expected_debug_source_patterns' => ['ac=sum'],
+                ];
+
+            case 'create_rule_clarification':
+                return [
+                    'prompt' => 'I want to send automatic booking confirmations here.',
+                    'routes' => [[
+                        'prompt_contains' => ['I want to send automatic booking confirmations here'],
+                        'responses' => [[
+                            'response_type' => 'confirmation_request',
+                            'message' => 'Should I create one for you?',
+                            'commands' => [[
+                                'task' => 'booking.create_rule_from_template',
+                                'version' => 1,
+                                'input' => [
+                                    'templatequery' => 'Automatic booking confirmation',
+                                    'question' => 'I want to send automatic booking confirmations here.',
+                                    'rulename' => 'Automatic booking confirmations',
+                                    'isactive' => true,
+                                ],
+                            ]],
+                            'user_lang' => 'en',
+                        ]],
+                    ]],
+                    'expected_response_type' => 'confirmation_request',
+                    'expected_response_types' => ['clarification', 'confirmation_request', 'confirm_pending'],
+                    'expected_tasks' => ['booking.create_rule_from_template'],
+                    'min_debug_rows' => 1,
+                    'expected_loop_depth_min' => 1,
+                    'expected_task_transitions' => 1,
+                    'expected_debug_source_patterns' => ['ac=sum'],
+                ];
+
+            case 'explain_booking_rules_docs':
+                return [
+                    'prompt' => 'Show me the Booking rules chapter in the documentation '
+                        . 'for automatic booking confirmations.',
+                    'routes' => [[
+                        'prompt_contains' => [
+                            'Show me the Booking rules chapter in the documentation',
+                            'automatic booking confirmations',
+                        ],
+                        'responses' => [
+                            [
+                                'response_type' => 'task_call',
+                                'commands' => [[
+                                    'task' => 'booking.explain_docs_topic',
+                                    'version' => 1,
+                                    'input' => [
+                                        'question' => 'Show me the Booking rules chapter in the documentation '
+                                            . 'for automatic booking confirmations.',
+                                    ],
+                                ]],
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                                'message' => 'Ich habe den Abschnitt zu Booking rules gefunden.',
+                                'user_lang' => 'de',
+                            ],
+                            [
+                                'response_type' => 'sufficient',
+                                'message' => 'Die Booking-rules-Dokumentation ist jetzt bereitgestellt.',
+                                'user_lang' => 'de',
+                            ],
+                        ],
+                    ]],
+                    'expected_response_type' => 'sufficient',
+                    'expected_tasks' => ['booking.explain_docs_topic'],
+                    'min_debug_rows' => 3,
+                    'expected_loop_depth' => 4,
+                    'expected_task_transitions' => 1,
+                    'expected_debug_source_patterns' => ['ac=sum', 'ac=gen'],
+                    'expected_docs_prefix' => 'booking_rules/',
                 ];
 
             case 'diagnose_other_user_cannot_book':

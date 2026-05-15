@@ -115,13 +115,18 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         $_POST['sesskey'] = sesskey();
         $response = ai_send_message::execute((int)$this->booking->cmid, (string)$case['prompt']);
 
-        $this->assertSame((string)$case['expected_response_type'], (string)($response['response_type'] ?? ''));
+        $expectedresponses = array_map(static fn($value): string => (string)$value, (array)($case['expected_response_types'] ?? [$case['expected_response_type']]));
+        $this->assertContains((string)($response['response_type'] ?? ''), $expectedresponses);
 
         $this->assertGreaterThan(0, (int)($response['threadid'] ?? 0));
 
         $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => (int)$response['threadid']], 'id ASC');
         $this->assertGreaterThanOrEqual((int)$case['min_debug_rows'], count($entries));
-        $this->assertGreaterThanOrEqual((int)$case['expected_loop_depth'], count($entries));
+        if (isset($case['expected_loop_depth_min'])) {
+            $this->assertGreaterThanOrEqual((int)$case['expected_loop_depth_min'], count($entries));
+        } else {
+            $this->assertSame((int)$case['expected_loop_depth'], count($entries));
+        }
         $sources = array_map(static fn($entry): string => (string)($entry->source ?? ''), $entries);
         foreach ((array)$case['expected_debug_source_patterns'] as $pattern) {
             $this->assertNotEmpty(
@@ -195,8 +200,45 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
             case 'create_rule_confirmation':
                 $this->assertIsArray($commands);
                 $this->assertCount(1, $commands);
+                $this->assertSame('confirmation_request', (string)($response['response_type'] ?? ''));
                 $this->assertSame('booking.create_rule_from_template', (string)($commands[0]['task'] ?? ''));
-                $this->assertSame('booking confirmation', (string)($commands[0]['input']['templatequery'] ?? ''));
+                    $this->assertSame('Automatic booking confirmation', (string)($commands[0]['input']['templatequery'] ?? ''));
+                $this->assertSame(
+                    'Create a booking rule from the booking confirmation template '
+                    . 'named Automatic booking confirmation. No follow-up questions.',
+                    (string)($commands[0]['input']['question'] ?? '')
+                );
+                break;
+
+            case 'create_rule_clarification':
+                $message = (string)($response['message'] ?? '');
+                $this->assertNotSame('', trim($message));
+                $this->assertSame('confirmation_request', (string)($response['response_type'] ?? ''));
+                $this->assertCount(1, $commands);
+                $this->assertSame('booking.create_rule_from_template', (string)($commands[0]['task'] ?? ''));
+                break;
+
+            case 'explain_booking_rules_docs':
+                $this->assertSame('sufficient', (string)($response['response_type'] ?? ''));
+                $this->assertContains('booking.explain_docs_topic', $foundtasks);
+                $this->assertNotEmpty($results, 'Docs explanation must surface execution results.');
+
+                $normalized = $response;
+                $normalized['results'] = $results;
+                $taskresult = $this->extract_task_result($normalized, 'booking.explain_docs_topic');
+                $this->assertNotNull($taskresult, 'Docs explanation task result must exist.');
+                $this->assertSame('executed', (string)($taskresult['status'] ?? ''));
+
+                $docs = (array)($taskresult['docs'] ?? []);
+                $this->assertNotEmpty($docs, 'Docs explanation must return matched docs.');
+                $firstdoc = (array)($docs[0] ?? []);
+                $this->assertStringStartsWith(
+                    (string)($case['expected_docs_prefix'] ?? ''),
+                    (string)($firstdoc['path'] ?? '')
+                );
+                $combined = (string)($response['message'] ?? '') . ' '
+                    . json_encode($results, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $this->assertStringContainsString('Booking rules', $combined);
                 break;
 
             case 'diagnose_other_user_cannot_book':
