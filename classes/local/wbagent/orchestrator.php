@@ -731,8 +731,34 @@ PROMPT;
 
         $parts = $this->append_planner_traces_and_observations($parts, $plannertracehistory, $observations);
 
+        $localoutputcontract = $this->build_local_output_contract_block($normalizedsteptype);
+        if ($localoutputcontract !== '') {
+            $parts[] = "[OUTPUT_CONTRACT]\n{$localoutputcontract}";
+        }
+
         $parts[] = '[ASSISTANT]';
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * Build a local output contract reminder close to the assistant output slot.
+     *
+     * @param string $steptype
+     * @return string
+     */
+    private function build_local_output_contract_block(string $steptype): string {
+        $normalized = $this->normalize_step_type($steptype);
+        if ($normalized === self::STEP_TYPE_FINAL_SYNTHESIS) {
+            return '';
+        }
+
+        return implode("\n", [
+            'Return exactly one valid JSON object and nothing else.',
+            'Do not output markdown, code fences, prose, or bullet lists outside JSON.',
+            'Allowed response_type: task_call, confirmation_request, confirm_pending, clarification, sufficient, error.',
+            'For task_call/confirmation_request: commands must be a non-empty array.',
+            'For clarification/confirm_pending/sufficient/error: commands must be [].',
+        ]);
     }
 
     /**

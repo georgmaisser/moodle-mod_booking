@@ -1916,7 +1916,14 @@ class agent_runtime {
             // First attempt: inject recovery observation and retry.
             $this->store->set_thread_metadata_value($threadid, $retrykey, true);
 
-            $msg = 'RETRY_HINT: SYSTEM: Malformed response. Return one valid JSON object only, without markdown fences.';
+            $msg = "RETRY_HINT: CONTRACT_REPAIR_REQUIRED\n"
+                . "OUTPUT_CONTRACT: Return exactly one valid JSON object only.\n"
+                . "OUTPUT_CONTRACT: Do not output markdown or code fences.\n"
+                . "OUTPUT_CONTRACT: Allowed response_type values are "
+                . "task_call, confirmation_request, confirm_pending, clarification, sufficient, error.\n"
+                . "OUTPUT_CONTRACT: For clarification/confirm_pending/sufficient/error set commands=[].\n"
+                . "OUTPUT_CONTRACT: For task_call/confirmation_request set commands as non-empty array.\n"
+                . "FALLBACK_IF_UNSURE: Use response_type=clarification with commands=[] and a short message.";
             $retryobservations = array_merge((array)$observations, [$msg]);
             $retryresult = $this->call_orchestrator_step(
                 $threadid,
