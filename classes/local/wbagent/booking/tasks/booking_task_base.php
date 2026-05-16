@@ -50,31 +50,23 @@ abstract class booking_task_base extends base_task {
             'anchor_fields' => ['option'],
         ],
         'booking.create_user' => [
-            'input_fields_for_prompt' => ['firstname', 'lastname', 'email'],
+            'input_fields_for_prompt' => ['userquery'],
             'anchor_fields' => ['user'],
         ],
         'booking.update_option' => [
-            'input_fields_for_prompt' => ['optionquery', 'optionid', 'text', 'optiondates'],
+            'input_fields_for_prompt' => [],
             'anchor_fields' => ['option'],
         ],
         'booking.bulk_update_options' => [
-            'input_fields_for_prompt' => ['optionquery', 'optionids', 'changes'],
+            'input_fields_for_prompt' => [],
             'anchor_fields' => ['option'],
         ],
         'booking.search_options' => [
-            'input_fields_for_prompt' => ['query'],
+            'input_fields_for_prompt' => [],
             'anchor_fields' => [],
         ],
         'booking.get_option_details' => [
-            'input_fields_for_prompt' => [
-                'optionquery',
-                'optionid',
-                'optionids',
-                'includesessions',
-                'requested_fields',
-                'include_customfields',
-                'customfield_keys',
-            ],
+            'input_fields_for_prompt' => [],
             'anchor_fields' => ['option'],
         ],
         'booking.search_users' => [
@@ -90,11 +82,11 @@ abstract class booking_task_base extends base_task {
             'anchor_fields' => [],
         ],
         'booking.list_option_properties' => [
-            'input_fields_for_prompt' => ['scope'],
+            'input_fields_for_prompt' => [],
             'anchor_fields' => [],
         ],
         'booking.list_actions' => [
-            'input_fields_for_prompt' => ['scope'],
+            'input_fields_for_prompt' => [],
             'anchor_fields' => [],
         ],
         'booking.get_current_user' => [
@@ -102,25 +94,19 @@ abstract class booking_task_base extends base_task {
             'anchor_fields' => [],
         ],
         'booking.explain_docs_topic' => [
-            'input_fields_for_prompt' => [
-                'question',
-                'search_queries',
-                'topic_hint',
-                'retrieval_goal',
-                'doc_path_candidates',
-            ],
+            'input_fields_for_prompt' => ['question'],
             'anchor_fields' => [],
         ],
         'booking.diagnose_booking_issue' => [
-            'input_fields_for_prompt' => ['question', 'optionquery', 'optionid', 'userquery'],
+            'input_fields_for_prompt' => [],
             'anchor_fields' => ['option', 'user'],
         ],
         'booking.diagnose_cancellation_issue' => [
-            'input_fields_for_prompt' => ['question', 'optionquery', 'optionid', 'userquery'],
+            'input_fields_for_prompt' => [],
             'anchor_fields' => ['option', 'user'],
         ],
         'booking.book_users' => [
-            'input_fields_for_prompt' => ['optionquery', 'optionid', 'userquery', 'userids'],
+            'input_fields_for_prompt' => ['bookusersquery'],
             'anchor_fields' => ['option', 'user'],
         ],
     ];

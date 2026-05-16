@@ -19,6 +19,7 @@ namespace mod_booking\local\wbagent\tests;
 use mod_booking\local\wbagent\interfaces\issue_code_provider_interface;
 use mod_booking\local\wbagent\interfaces\task_provider_interface;
 use mod_booking\local\wbagent\task_registry;
+use mod_booking\local\wbagent\task_registry_factory;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -36,7 +37,7 @@ final class integration_agent_framework_test extends TestCase {
      * Test that task_registry discovers tasks from the booking plugin provider.
      */
     public function test_task_registry_discovers_booking_tasks(): void {
-        $registry = task_registry::instance();
+        $registry = task_registry_factory::get_default();
         $tasks = $registry->get_tasks();
 
         // Verify that tasks are discovered.
@@ -105,7 +106,7 @@ final class integration_agent_framework_test extends TestCase {
      * Test that task schema includes prompt_meta when available.
      */
     public function test_task_schema_includes_prompt_meta(): void {
-        $registry = task_registry::instance();
+        $registry = task_registry_factory::get_default();
 
         // Get tasks and verify at least one has prompt_meta.
         $tasks = $registry->get_tasks();
@@ -130,8 +131,8 @@ final class integration_agent_framework_test extends TestCase {
      * Test that task registry uses prompt_meta when building prompt contract.
      */
     public function test_task_registry_prioritizes_prompt_meta(): void {
-        $registry = task_registry::instance();
-        $contract = $registry->build_prompt_contract();
+        $registry = task_registry_factory::get_default();
+        $contract = ['tasks' => $registry->get_all_prompt_contracts()];
 
         // Verify contract includes task catalog.
         $this->assertIsArray($contract, 'Prompt contract should be array');
@@ -142,6 +143,61 @@ final class integration_agent_framework_test extends TestCase {
             $this->assertIsArray($taskinfo, 'Task info should be array');
             $this->assertArrayHasKey('task', $taskinfo, 'Should have task name');
         }
+    }
+
+    /**
+     * Test that prompt contracts separate required inputs from routing examples.
+     */
+    public function test_prompt_contracts_use_required_minimals_and_explicit_examples(): void {
+        $registry = task_registry_factory::get_default();
+        $contracts = $registry->get_all_prompt_contracts();
+
+        $bytask = [];
+        foreach ($contracts as $taskinfo) {
+            $this->assertArrayHasKey('example_input', $taskinfo, 'Every task should expose example_input');
+            $this->assertIsArray($taskinfo['example_input'], 'example_input should always be an array');
+            $bytask[(string)$taskinfo['task']] = $taskinfo;
+        }
+
+        $this->assertSame([], $bytask['booking.search_options']['minimal_input']);
+        $this->assertSame(['query'], array_keys($bytask['booking.search_options']['example_input']));
+
+        $this->assertSame(['bookusersquery'], $bytask['booking.book_users']['minimal_input']);
+        $this->assertSame(['optionquery', 'bookusersquery'], array_keys($bytask['booking.book_users']['example_input']));
+
+        $this->assertSame(['question'], $bytask['booking.explain_docs_topic']['minimal_input']);
+        $this->assertSame(['question', 'search_queries'], array_keys($bytask['booking.explain_docs_topic']['example_input']));
+
+        $this->assertSame([], $bytask['booking.get_current_user']['minimal_input']);
+        $this->assertSame([], $bytask['booking.get_current_user']['example_input']);
+
+        $this->assertSame(['query'], $bytask['entities.search']['minimal_input']);
+        $this->assertSame(['query'], array_keys($bytask['entities.search']['example_input']));
+    }
+
+    /**
+     * Test that slim planner catalog never recreates example_input from minimal_input.
+     */
+    public function test_slim_catalog_keeps_examples_separate_from_minimals(): void {
+        $registry = task_registry_factory::get_default();
+        $orchestratorreflection = new \ReflectionClass(\mod_booking\local\wbagent\orchestrator::class);
+        $orchestrator = $orchestratorreflection->newInstanceWithoutConstructor();
+        $method = $orchestratorreflection->getMethod('slim_prompt_catalog_for_planner');
+        $method->setAccessible(true);
+
+        $slimcatalog = $method->invoke($orchestrator, $registry->get_all_prompt_contracts());
+        $bytask = [];
+        foreach ($slimcatalog as $taskinfo) {
+            $bytask[(string)$taskinfo['task']] = $taskinfo;
+        }
+
+        $this->assertSame([], $bytask['booking.search_options']['minimal_input']);
+        $this->assertSame(['query'], $bytask['booking.search_options']['example_input']);
+
+        $this->assertSame(['query'], $bytask['booking.search_users']['minimal_input']);
+        $this->assertArrayNotHasKey('example_input', $bytask['booking.search_users']);
+
+        $this->assertSame(['action', 'changes'], $bytask['booking.configure_booking_instance']['example_input']);
     }
 
     /**
@@ -232,7 +288,7 @@ final class integration_agent_framework_test extends TestCase {
      */
     public function test_multi_provider_discovery(): void {
         // This test validates the discovery and registration mechanism.
-        $registry = task_registry::instance();
+        $registry = task_registry_factory::get_default();
 
         // Verify booking tasks are registered.
         $tasks = $registry->get_tasks();
@@ -275,7 +331,7 @@ final class integration_agent_framework_test extends TestCase {
      * Test task schema validation includes all required fields.
      */
     public function test_task_schema_required_fields(): void {
-        $registry = task_registry::instance();
+        $registry = task_registry_factory::get_default();
         $tasks = $registry->get_tasks();
 
         foreach ($tasks as $task) {

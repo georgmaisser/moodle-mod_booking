@@ -213,7 +213,7 @@ class task_registry {
             $anchorfields = $this->extract_anchor_fields($properties);
         }
 
-        $exampleinput = $this->build_example_input($taskname, $minimalinput, $properties);
+        $exampleinput = $this->build_example_input($taskname);
 
         $messagetriggers = [];
         if (method_exists($task, 'get_message_triggers')) {
@@ -240,21 +240,51 @@ class task_registry {
      * Build one compact example input for prompt routing.
      *
      * @param string $taskname
-     * @param array<int,string> $minimalinput
-     * @param array $properties
      * @return array<string,mixed>
      */
-    private function build_example_input(string $taskname, array $minimalinput, array $properties): array {
+    private function build_example_input(string $taskname): array {
         $examples = [
+            'booking.add_price_category' => [
+                'identifier' => 'student',
+                'name' => 'Student',
+            ],
+            'booking.analyze_rules' => [
+                'query' => 'booking confirmation',
+                'active_only' => true,
+            ],
+            'booking.book_users' => [
+                'optionquery' => 'Geburtstag ANON_USER_1',
+                'bookusersquery' => 'ANON_USER_1',
+            ],
+            'booking.bulk_update_options' => [
+                'optionquery' => 'Geburtstag',
+                'changes' => [['field' => 'text', 'value' => 'Updated title']],
+            ],
+            'booking.configure_booking_instance' => [
+                'action' => 'update',
+                'changes' => [['field' => 'limitanswers', 'value' => '1']],
+            ],
             'booking.create_option' => [
                 'text' => 'Geburtstag ANON_USER_1',
                 'maxanswers' => 30,
                 'coursestarttime' => '2026-12-12T20:00:00',
                 'courseendtime' => '2026-12-12T22:00:00',
             ],
+            'booking.create_rule_from_template' => [
+                'templatequery' => 'booking confirmation',
+                'rulename' => 'Birthday reminder',
+            ],
+            'booking.create_user' => [
+                'userquery' => 'Anna Example',
+            ],
+            'booking.get_current_user' => [],
             'booking.update_option' => [
                 'optionquery' => 'Geburtstag ANON_USER_1',
                 'text' => 'Geburtstag ANON_USER_1',
+            ],
+            'booking.update_rule_from_template' => [
+                'rulequery' => 'Birthday reminder',
+                'rulename' => 'Updated reminder',
             ],
             'booking.search_options' => [
                 'query' => 'Geburtstag',
@@ -277,10 +307,6 @@ class task_registry {
             'booking.get_option_details' => [
                 'optionquery' => 'Geburtstag ANON_USER_1',
             ],
-            'booking.book_users' => [
-                'optionquery' => 'Geburtstag ANON_USER_1',
-                'userquery' => 'ANON_USER_1',
-            ],
             'booking.list_actions' => [
                 'scope' => 'booking',
             ],
@@ -291,101 +317,25 @@ class task_registry {
                 'question' => 'How do I create a booking option?',
                 'search_queries' => ['booking option create'],
             ],
+            'entities.create_entity' => [
+                'name' => 'Sportplatz Nord',
+                'shortname' => 'Sportplatz-N',
+            ],
+            'entities.list_all_entities' => [
+                'limit' => 50,
+            ],
+            'entities.search' => [
+                'query' => 'Sportplatz',
+            ],
+            'shopping_cart.get_items' => [
+                'userid' => 0,
+            ],
+            'shopping_cart.get_totals' => [
+                'userid' => 0,
+            ],
         ];
 
-        if (isset($examples[$taskname])) {
-            return $examples[$taskname];
-        }
-
-        $example = [];
-        foreach ($minimalinput as $field) {
-            $example[$field] = $this->example_value_for_field($field, $taskname, $properties);
-        }
-
-        return $example;
-    }
-
-    /**
-     * Return a compact example value for a field.
-     *
-     * @param string $field
-     * @param string $taskname
-     * @param array $properties
-     * @return mixed
-     */
-    private function example_value_for_field(string $field, string $taskname, array $properties) {
-        switch ($field) {
-            case 'text':
-                return 'Geburtstag ANON_USER_1';
-            case 'title':
-                return 'Geburtstag ANON_USER_1';
-            case 'query':
-                return 'Geburtstag';
-            case 'question':
-                return 'How do I create a booking option?';
-            case 'scope':
-                return 'booking';
-            case 'name':
-                return 'Geburtstagskategorie';
-            case 'rulename':
-                return 'Birthday reminder';
-            case 'firstname':
-                return 'Anna';
-            case 'lastname':
-                return 'Example';
-            case 'email':
-                return 'anna@example.com';
-            case 'optionquery':
-                return 'Geburtstag ANON_USER_1';
-            case 'userquery':
-                return 'ANON_USER_1';
-            case 'optionid':
-                return 123;
-            case 'optionids':
-                return [123, 124];
-            case 'userids':
-                return [2];
-            case 'templatequery':
-                return 'booking confirmation';
-            case 'rulequery':
-                return 'confirmation reminder';
-            case 'active_only':
-                return true;
-            case 'isactive':
-                return true;
-            case 'optiontype':
-                return 'normal';
-            case 'maxanswers':
-                return 30;
-            case 'search_queries':
-                return ['booking option create'];
-            case 'doc_path_candidates':
-                return ['mod/booking/README.md'];
-            case 'line_start':
-                return 1;
-            case 'line_count':
-                return 20;
-            case 'includesessions':
-                return true;
-            case 'include_customfields':
-                return false;
-            case 'requested_fields':
-                return ['text', 'maxanswers'];
-            case 'customfield_keys':
-                return [];
-            case 'changes':
-                return ['text' => 'Updated title'];
-            default:
-                if (in_array($field, ['optiondates', 'prices', 'customformelements'], true)) {
-                    return [];
-                }
-
-                if (array_key_exists($field, $properties) && is_array($properties[$field] ?? null)) {
-                    return null;
-                }
-
-                return $field . '_example';
-        }
+        return $examples[$taskname] ?? [];
     }
 
     /**
@@ -407,69 +357,7 @@ class task_registry {
             }
         }
 
-        if (!empty($fields)) {
-            return array_values(array_unique($fields));
-        }
-
-        // Fallback heuristics for legacy schemas without required flags.
-        $lower = strtolower($taskname);
-        $preferred = [];
-
-        if (str_contains($lower, '.search_') && isset($properties['query'])) {
-            $preferred[] = 'query';
-        }
-        if (str_contains($lower, '.list_') && isset($properties['scope'])) {
-            $preferred[] = 'scope';
-        }
-        if (str_contains($lower, '.diagnose_') && isset($properties['question'])) {
-            $preferred[] = 'question';
-        }
-        if (str_contains($lower, '.create_rule_from_template')) {
-            foreach (['templatequery', 'rulename', 'isactive'] as $key) {
-                if (isset($properties[$key])) {
-                    $preferred[] = $key;
-                }
-            }
-        }
-        if (str_contains($lower, '.create_') && isset($properties['text'])) {
-            $preferred[] = 'text';
-        }
-        if (str_contains($lower, '.update_')) {
-            foreach (['optionquery', 'optionid', 'text'] as $key) {
-                if (isset($properties[$key])) {
-                    $preferred[] = $key;
-                }
-            }
-        }
-
-        if (!empty($preferred)) {
-            return array_values(array_unique($preferred));
-        }
-
-        // Last resort: include first few known-safe fields.
-        $fallbackorder = [
-            'question',
-            'query',
-            'scope',
-            'text',
-            'name',
-            'optionquery',
-            'optionid',
-            'userquery',
-            'templatequery',
-            'rulename',
-        ];
-        foreach ($fallbackorder as $candidate) {
-            if (isset($properties[$candidate])) {
-                $fields[] = $candidate;
-            }
-        }
-
-        if (!empty($fields)) {
-            return array_values(array_unique($fields));
-        }
-
-        return array_slice(array_values(array_filter(array_map('strval', array_keys($properties)))), 0, 3);
+        return array_values(array_unique($fields));
     }
 
     /**

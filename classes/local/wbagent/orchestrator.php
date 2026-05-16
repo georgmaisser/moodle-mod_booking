@@ -157,6 +157,11 @@ class orchestrator {
         $haseffectiveobservations = $hasanyobservations
             && !$this->observations_are_framework_retry_hints($observations);
         $lastplannerresult = trim((string)$this->store->get_thread_metadata_value($threadid, 'last_planner_result_json'));
+        $shouldincludetaskcatalog = ($normalizedsteptype === self::STEP_TYPE_TOOL_CALL_PARSE) && !$hasanyobservations;
+        $runtimecatalog = [];
+        if ($shouldincludetaskcatalog) {
+            $runtimecatalog = $this->slim_prompt_catalog_for_planner($adaptivecatalog);
+        }
 
         $systemprompt = $this->build_system_prompt(
             $cmid,
@@ -164,13 +169,15 @@ class orchestrator {
             $actionclass,
             $haseffectiveobservations,
             $adaptivecatalog,
-            $isfirstassistantturn
+            $isfirstassistantturn,
+            $shouldincludetaskcatalog
         );
         $runtimecontext = $this->build_runtime_context_block(
             $cmid,
             $normalizedsteptype,
             $isfirstassistantturn,
-            $hasanyobservations
+            $hasanyobservations,
+            $runtimecatalog
         );
         $prompt = $this->build_prompt(
             $systemprompt,
@@ -411,6 +418,7 @@ PROMPT;
      * @param  bool   $hasobservations
      * @param  array  $adaptivecatalog Optional adaptive task catalog (reduced by recency/tier). If null, uses full catalog.
      * @param  bool   $isfirstassistantturn True when no assistant message exists yet in this thread.
+     * @param  bool   $includetaskcatalog If true, embed task catalog placeholder in SYSTEM block.
      * @return string System prompt text.
      */
     private function build_system_prompt(
@@ -419,7 +427,8 @@ PROMPT;
         string $actionclass = generate_text::class,
         bool $hasobservations = false,
         ?array $adaptivecatalog = null,
-        bool $isfirstassistantturn = false
+        bool $isfirstassistantturn = false,
+        bool $includetaskcatalog = false
     ): string {
         $schemas = $this->registry->get_all_schemas();
         $taskcatalog = $adaptivecatalog ?? $this->registry->get_all_prompt_contracts();
@@ -429,6 +438,7 @@ PROMPT;
         $tasklist = implode(', ', $this->registry->get_task_names());
         $fullschemajson = json_encode($schemas, JSON_UNESCAPED_UNICODE);
         $taskcatalogjson = json_encode($taskcatalog, JSON_UNESCAPED_UNICODE);
+        $systemtaskcatalogjson = $includetaskcatalog ? (string)$taskcatalogjson : '[]';
         $triggerregistry = new message_trigger_registry($this->registry);
         $triggerjson = json_encode($triggerregistry->get_available_triggers(), JSON_UNESCAPED_UNICODE);
 
@@ -471,8 +481,8 @@ PROMPT;
             '{{timezonename}}' => '[SYSTEM_RUNTIME.timezone]',
             '{{nowiso}}' => '[SYSTEM_RUNTIME.now_iso]',
             '{{tasklist}}' => $tasklist,
-            '{{schemajson}}' => (string)$taskcatalogjson,
-            '{{taskcatalogjson}}' => (string)$taskcatalogjson,
+            '{{schemajson}}' => $systemtaskcatalogjson,
+            '{{taskcatalogjson}}' => $systemtaskcatalogjson,
             '{{fullschemajson}}' => (string)$fullschemajson,
         ]);
 
@@ -513,15 +523,12 @@ PROMPT;
                 'readonly' => (bool)($entry['readonly'] ?? false),
                 'intent' => (string)($entry['intent'] ?? ''),
                 'minimal_input' => (array)($entry['minimal_input'] ?? []),
-                'example_input' => $this->compact_catalog_example_input(
-                    (array)($entry['example_input'] ?? []),
-                    (array)($entry['minimal_input'] ?? [])
-                ),
+                'example_input' => $this->compact_catalog_example_input((array)($entry['example_input'] ?? [])),
                 'description' => $this->compact_catalog_description((string)($entry['description'] ?? '')),
                 'message_triggers' => $this->compact_catalog_message_triggers((array)($entry['message_triggers'] ?? [])),
             ];
 
-            if ($newentry['minimal_input'] == $newentry['example_input']) {
+            if (empty($newentry['example_input']) || $newentry['minimal_input'] == $newentry['example_input']) {
                 unset($newentry['example_input']);
             }
 
@@ -549,21 +556,14 @@ PROMPT;
     /**
      * Keep example_input as a compact property-name list for routing hints.
      *
-     * This preserves the field while avoiding token-heavy concrete sample payloads.
+     * This preserves only explicitly declared example fields while avoiding
+     * token-heavy concrete sample payloads.
      *
      * @param array $exampleinput
-     * @param array $minimalinput
      * @return array<int,string>
      */
-    private function compact_catalog_example_input(array $exampleinput, array $minimalinput): array {
+    private function compact_catalog_example_input(array $exampleinput): array {
         $keys = [];
-
-        foreach ($minimalinput as $key) {
-            $name = trim((string)$key);
-            if ($name !== '') {
-                $keys[] = $name;
-            }
-        }
 
         foreach (array_keys($exampleinput) as $key) {
             $name = trim((string)$key);
@@ -752,13 +752,15 @@ PROMPT;
      * @param string $steptype
      * @param bool $isfirstassistantturn
      * @param bool $hasobservations
+     * @param array $taskcatalog
      * @return string
      */
     private function build_runtime_context_block(
         int $cmid,
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
         bool $isfirstassistantturn = false,
-        bool $hasobservations = false
+        bool $hasobservations = false,
+        array $taskcatalog = []
     ): string {
         $timezonename = (string)(get_config('core', 'timezone') ?? '');
         if ($timezonename === '' || $timezonename === '99') {
@@ -792,6 +794,15 @@ PROMPT;
             $lines[] = '';
             $lines[] = 'NON-OPTIONAL LANGUAGE POLICY:';
             $lines[] = "- Include valid ISO 639-1 value 'user_lang'.";
+        }
+
+        if (!empty($taskcatalog)) {
+            $taskcatalogjson = json_encode($taskcatalog, JSON_UNESCAPED_UNICODE);
+            if (is_string($taskcatalogjson) && $taskcatalogjson !== '') {
+                $lines[] = '';
+                $lines[] = 'TASK CATALOG:';
+                $lines[] = $taskcatalogjson;
+            }
         }
 
         return implode("\n", $lines);
