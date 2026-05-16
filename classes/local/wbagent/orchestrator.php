@@ -508,7 +508,7 @@ PROMPT;
                 continue;
             }
 
-            $slimcatalog[] = [
+            $newentry = [
                 'task' => $taskname,
                 'readonly' => (bool)($entry['readonly'] ?? false),
                 'intent' => (string)($entry['intent'] ?? ''),
@@ -520,6 +520,12 @@ PROMPT;
                 'description' => $this->compact_catalog_description((string)($entry['description'] ?? '')),
                 'message_triggers' => $this->compact_catalog_message_triggers((array)($entry['message_triggers'] ?? [])),
             ];
+
+            if ($newentry['minimal_input'] == $newentry['example_input']) {
+                unset($newentry['example_input']);
+            }
+
+            $slimcatalog[] = $newentry;
         }
 
         return $slimcatalog;
