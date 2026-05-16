@@ -63,6 +63,18 @@ class orchestrator {
     /** Final synthesis turn: generate_text composes the polished answer from accumulated observations. */
     public const STEP_TYPE_FINAL_SYNTHESIS = 'final_synthesis';
 
+    /** Default model for task-catalog embeddings. */
+    public const EMBEDDINGS_DEFAULT_MODEL = 'text-embedding-3-small';
+
+    /** Default embedding dimensions. */
+    public const EMBEDDINGS_DEFAULT_DIMENSIONS = 1536;
+
+    /** Default number of best matching tasks to inject for first planner step. */
+    public const EMBEDDINGS_DEFAULT_TOP_K = 5;
+
+    /** Debounce window (seconds) for scheduling embeddings rebuild task. */
+    public const EMBEDDINGS_REBUILD_DEBOUNCE_SECONDS = 300;
+
     /** Wunderbyte planner action class name. */
     private const WB_ACTION_PLANNER_DECIDE = '\\aiprovider_wunderbyte\\aiactions\\planner_decide';
 
