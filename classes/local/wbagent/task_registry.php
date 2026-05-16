@@ -389,6 +389,123 @@ class task_registry {
     }
 
     /**
+     * Build minimal planner input fields when schema prompt_meta is absent.
+     *
+     * @param string $taskname
+     * @param array<string,mixed> $properties
+     * @return array<int,string>
+     */
+    private function build_minimal_input_fields(string $taskname, array $properties): array {
+        $fields = [];
+
+        foreach ($properties as $name => $spec) {
+            if (!is_string($name) || $name === '' || !is_array($spec)) {
+                continue;
+            }
+            if (!empty($spec['required'])) {
+                $fields[] = $name;
+            }
+        }
+
+        if (!empty($fields)) {
+            return array_values(array_unique($fields));
+        }
+
+        // Fallback heuristics for legacy schemas without required flags.
+        $lower = strtolower($taskname);
+        $preferred = [];
+
+        if (str_contains($lower, '.search_') && isset($properties['query'])) {
+            $preferred[] = 'query';
+        }
+        if (str_contains($lower, '.list_') && isset($properties['scope'])) {
+            $preferred[] = 'scope';
+        }
+        if (str_contains($lower, '.diagnose_') && isset($properties['question'])) {
+            $preferred[] = 'question';
+        }
+        if (str_contains($lower, '.create_rule_from_template')) {
+            foreach (['templatequery', 'rulename', 'isactive'] as $key) {
+                if (isset($properties[$key])) {
+                    $preferred[] = $key;
+                }
+            }
+        }
+        if (str_contains($lower, '.create_') && isset($properties['text'])) {
+            $preferred[] = 'text';
+        }
+        if (str_contains($lower, '.update_')) {
+            foreach (['optionquery', 'optionid', 'text'] as $key) {
+                if (isset($properties[$key])) {
+                    $preferred[] = $key;
+                }
+            }
+        }
+
+        if (!empty($preferred)) {
+            return array_values(array_unique($preferred));
+        }
+
+        // Last resort: include first few known-safe fields.
+        $fallbackorder = [
+            'question',
+            'query',
+            'scope',
+            'text',
+            'name',
+            'optionquery',
+            'optionid',
+            'userquery',
+            'templatequery',
+            'rulename',
+        ];
+        foreach ($fallbackorder as $candidate) {
+            if (isset($properties[$candidate])) {
+                $fields[] = $candidate;
+            }
+        }
+
+        if (!empty($fields)) {
+            return array_values(array_unique($fields));
+        }
+
+        return array_slice(array_values(array_filter(array_map('strval', array_keys($properties)))), 0, 3);
+    }
+
+    /**
+     * Derive compact anchor fields from available task properties.
+     *
+     * @param array<string,mixed> $properties
+     * @return array<int,string>
+     */
+    private function extract_anchor_fields(array $properties): array {
+        $anchors = [];
+
+        $keys = array_map('strval', array_keys($properties));
+        $has = static function (string $needle) use ($keys): bool {
+            return in_array($needle, $keys, true);
+        };
+
+        if ($has('optionquery') || $has('optionid') || $has('optionids')) {
+            $anchors[] = 'option';
+        }
+        if ($has('userquery') || $has('userid') || $has('userids')) {
+            $anchors[] = 'user';
+        }
+        if ($has('courseid') || $has('coursequery') || $has('courseids')) {
+            $anchors[] = 'course';
+        }
+        if ($has('question')) {
+            $anchors[] = 'question';
+        }
+        if ($has('doc_path') || $has('doc_path_candidates') || $has('search_queries') || $has('topic_hint')) {
+            $anchors[] = 'docs';
+        }
+
+        return array_values(array_unique($anchors));
+    }
+
+    /**
      * Derive a compact intent label for routing.
      *
      * @param string $taskname
@@ -434,106 +551,6 @@ class task_registry {
         return 'mutate';
     }
 
-    /**
-     * Extract anchor fields from schema properties.
-     *
-     * DEPRECATED: Tasks should declare anchor_fields in schema['prompt_meta']['anchor_fields'].
-     * This method is only used as a fallback when prompt_meta is not present.
-     *
-     * Maps property names to domain concepts (option, user, course, etc.).
-     * Specific to mod_booking domain; other plugins should use prompt_meta instead.
-     *
-     * @deprecated Use schema['prompt_meta']['anchor_fields'] instead
-     * @param array $properties
-     * @return array<int,string>
-     */
-    private function extract_anchor_fields(array $properties): array {
-        $anchors = [];
-        $map = [
-            'optionquery' => 'option',
-            'optionid' => 'option',
-            'userquery' => 'user',
-            'targetuserid' => 'user',
-            'userids' => 'user',
-            'coursequery' => 'course',
-            'courseid' => 'course',
-            'question' => 'question',
-            'search_queries' => 'docs',
-        ];
-
-        foreach ($map as $field => $anchor) {
-            if (array_key_exists($field, $properties) && !in_array($anchor, $anchors, true)) {
-                $anchors[] = $anchor;
-            }
-        }
-
-        return $anchors;
-    }
-
-    /**
-     * Build a short list of the most relevant input keys for prompt routing.
-     *
-     * DEPRECATED: Tasks should declare input_fields_for_prompt in schema['prompt_meta']['input_fields_for_prompt'].
-     * This method is only used as a fallback when prompt_meta is not present.
-     *
-     * Specific to mod_booking; other plugins should use prompt_meta instead.
-     *
-     * @deprecated Use schema['prompt_meta']['input_fields_for_prompt'] instead
-     * @param string $taskname
-     * @param array $properties
-     * @return array<int,string>
-     */
-    private function build_minimal_input_fields(string $taskname, array $properties): array {
-        $preferred = [
-            'booking.create_option' => ['text'],
-            'booking.create_user' => ['firstname', 'lastname', 'email'],
-            'booking.update_option' => ['optionquery', 'optionid', 'text', 'optiondates'],
-            'booking.bulk_update_options' => ['optionquery', 'optionids', 'changes'],
-            'booking.search_options' => ['query'],
-            'booking.search_users' => ['query'],
-            'booking.search_courses' => ['query'],
-            'booking.analyze_rules' => ['active_only'],
-            'booking.create_rule_from_template' => ['templatequery', 'rulename'],
-            'booking.update_rule_from_template' => ['rulequery', 'templatequery', 'rulename'],
-            'booking.add_price_category' => ['name'],
-            'booking.list_option_properties' => ['scope'],
-            'booking.list_actions' => ['scope'],
-            'booking.get_current_user' => [],
-            'booking.explain_docs_topic' => ['question', 'search_queries', 'doc_path', 'line_start', 'line_count'],
-            'booking.diagnose_booking_issue' => ['question', 'optionquery', 'optionid', 'userquery'],
-            'booking.diagnose_cancellation_issue' => ['question', 'optionquery', 'optionid', 'userquery'],
-            'booking.book_users' => ['optionquery', 'optionid', 'userquery', 'userids'],
-        ];
-
-        $selected = [];
-        foreach ($preferred[$taskname] ?? [] as $field) {
-            if (array_key_exists($field, $properties)) {
-                $selected[] = $field;
-            }
-        }
-
-        if (!empty($selected)) {
-            return $selected;
-        }
-
-        foreach ($properties as $field => $definition) {
-            if (!empty($definition['required'])) {
-                $selected[] = (string)$field;
-            }
-        }
-
-        if (count($selected) >= 6) {
-            return array_slice(array_values(array_unique($selected)), 0, 6);
-        }
-
-        foreach (['optionquery', 'optionid', 'query', 'question', 'text', 'name'] as $field) {
-            if (array_key_exists($field, $properties)) {
-                $selected[] = $field;
-            }
-        }
-
-        return array_slice(array_values(array_unique($selected)), 0, 6);
-    }
 
     /**
      * Return all context-specific prompt packs from registered providers.

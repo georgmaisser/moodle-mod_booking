@@ -543,8 +543,7 @@ PROMPT;
             return '';
         }
 
-        // Routing needs intent hints, not long prose paragraphs.
-        return core_text::substr($normalized, 0, 180);
+        return $normalized;
     }
 
     /**

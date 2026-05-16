@@ -118,7 +118,7 @@ class planner_service {
             $threadid,
             $cmid,
             $userid,
-            'planner.generic.input_enrichment',
+            $this->build_planner_debug_source($threadid),
             $prompt
         );
         if (empty($call['success'])) {
@@ -543,5 +543,28 @@ class planner_service {
         $rootdocpath = trim((string)(get_config('booking', 'aidocsentry') ?? 'README.md'));
 
         return new docs_lookup_service($docsroot !== '' ? $docsroot : null, $rootdocpath !== '' ? $rootdocpath : null);
+    }
+
+    /**
+     * Build a compact debug source string in the same style as orchestrator telemetry.
+     *
+     * @param int $threadid
+     * @return string
+     */
+    private function build_planner_debug_source(int $threadid): string {
+        $historycount = 0;
+        if ($threadid > 0) {
+            $historycount = count($this->store->get_recent_messages($threadid, 8));
+        }
+
+        return 'orc'
+            . '|st=pln'
+            . '|ac=gen'
+            . '|rt=oa'
+            . '|fb=0'
+            . '|pv=oai'
+            . '|hm=' . max(0, $historycount)
+            . '|ob=0'
+            . '|ex=0';
     }
 }
