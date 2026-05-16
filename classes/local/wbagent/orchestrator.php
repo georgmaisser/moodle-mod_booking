@@ -296,8 +296,77 @@ class orchestrator {
         );
         $shouldincludetaskcatalog = ($normalizedsteptype === self::STEP_TYPE_TOOL_CALL_PARSE) && !$hasanyobservations;
         $runtimecatalog = [];
+        $llm = new llm_call_service($this->store);
         if ($shouldincludetaskcatalog) {
             $runtimecatalog = $this->slim_prompt_catalog_for_planner($adaptivecatalog);
+
+            $iswunderbyteplanner = ($routing['routepolicy'] ?? '') === 'wunderbyte'
+                && $actionclass === self::WB_ACTION_PLANNER_DECIDE;
+
+            if ($iswunderbyteplanner) {
+                $embeddingmodel = trim((string)(get_config('booking', 'ai_embeddings_model')
+                    ?? self::EMBEDDINGS_DEFAULT_MODEL));
+                if ($embeddingmodel === '') {
+                    $embeddingmodel = self::EMBEDDINGS_DEFAULT_MODEL;
+                }
+
+                $embeddingdimensions = (int)(get_config('booking', 'ai_embeddings_dimensions')
+                    ?? self::EMBEDDINGS_DEFAULT_DIMENSIONS);
+                if ($embeddingdimensions < 1) {
+                    $embeddingdimensions = self::EMBEDDINGS_DEFAULT_DIMENSIONS;
+                }
+
+                $embeddingtopk = (int)(get_config('booking', 'ai_embeddings_top_k')
+                    ?? self::EMBEDDINGS_DEFAULT_TOP_K);
+                if ($embeddingtopk < 1) {
+                    $embeddingtopk = self::EMBEDDINGS_DEFAULT_TOP_K;
+                }
+
+                $readiness = new embeddings_readiness_service();
+                if ($readiness->is_wunderbyte_embeddings_available()) {
+                    $status = $readiness->get_catalog_status($this->registry, $embeddingmodel, $embeddingdimensions);
+                    $readiness->ensure_rebuild_scheduled_if_needed(
+                        $status,
+                        $embeddingmodel,
+                        $embeddingdimensions,
+                        self::EMBEDDINGS_REBUILD_DEBOUNCE_SECONDS
+                    );
+
+                    if (!empty($status['ready']) && !empty($status['rows']) && is_array($status['rows'])) {
+                        $querytext = '';
+                        foreach (array_reverse($messages) as $msg) {
+                            if (($msg->role ?? '') === 'user') {
+                                $querytext = trim((string)($msg->content ?? ''));
+                                break;
+                            }
+                        }
+
+                        if ($querytext !== '') {
+                            $embeddingcall = $llm->invoke_embeddings(
+                                $threadid,
+                                $cmid,
+                                $userid,
+                                'orc|st=tcp|ac=emb|rt=wb',
+                                $querytext,
+                                $embeddingdimensions
+                            );
+
+                            if (!empty($embeddingcall['success']) && !empty($embeddingcall['embedding'])) {
+                                $retrieval = new embeddings_retrieval_service();
+                                $toprows = $retrieval->search_top_k(
+                                    (array)$embeddingcall['embedding'],
+                                    $status['rows'],
+                                    $embeddingtopk
+                                );
+                                $subset = $retrieval->build_planner_catalog_subset($toprows);
+                                if (!empty($subset)) {
+                                    $runtimecatalog = $subset;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         $systemprompt = $this->build_system_prompt(
@@ -338,7 +407,6 @@ class orchestrator {
             false
         );
 
-        $llm = new llm_call_service($this->store);
         $call = $llm->invoke($threadid, $cmid, $userid, $debugsource, $prompt, $actionclass);
         $rawtext = (string)($call['rawcontent'] ?? '');
 
