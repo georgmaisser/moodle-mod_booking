@@ -77,13 +77,24 @@ class activate_trial_context extends external_api {
         $courseid = (int)$cm->course;
 
         // If a Wunderbyte provider exists but is disabled, enable it as part of activation.
+        // Prefer native aiprovider_wunderbyte instances, fallback to legacy openai-based instances.
         if (class_exists('\\core_ai\\manager')) {
             try {
                 $manager = di::get(ai_manager::class);
-                $instances = $manager->get_provider_instances([
-                    'name' => request_trial_key::PROVIDER_NAME,
-                    'provider' => 'aiprovider_openai\\provider',
-                ]);
+
+                $instances = [];
+                if (class_exists('\\aiprovider_wunderbyte\\provider')) {
+                    $instances = $manager->get_provider_instances([
+                        'provider' => 'aiprovider_wunderbyte\\provider',
+                    ]);
+                }
+
+                if (empty($instances)) {
+                    $instances = $manager->get_provider_instances([
+                        'name' => request_trial_key::PROVIDER_NAME,
+                        'provider' => 'aiprovider_openai\\provider',
+                    ]);
+                }
 
                 foreach ($instances as $instance) {
                     if (!$instance->enabled) {
@@ -105,6 +116,9 @@ class activate_trial_context extends external_api {
             'generate_text' => true,
             'summarise_text' => true,
             'explain_text' => true,
+            'planner_decide' => true,
+            'generate_agent_reply' => true,
+            'generate_embeddings' => true,
         ]), ['id' => $cmid]);
 
         \core_plugin_manager::reset_caches();

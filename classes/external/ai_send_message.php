@@ -129,12 +129,19 @@ class ai_send_message extends external_api {
         $store = new conversation_store();
         $orchestrator = new orchestrator($registry, new interpreter($registry), $store);
 
-        if (!$orchestrator->is_provider_available($cmid, (int)$USER->id)) {
-            $notconfiguredmsg = get_string('ai_provider_not_configured', 'mod_booking');
+        $runtimeproviderstatus = $orchestrator->get_runtime_provider_status($cmid);
+        if (empty($runtimeproviderstatus['runtimeavailable'])) {
+            $errormessage = get_string('ai_provider_not_configured', 'mod_booking');
+            if (!empty($runtimeproviderstatus['provideractive']) && empty($runtimeproviderstatus['courseenabled'])) {
+                $errormessage = get_string('aiready_check_course_enabled_todo', 'mod_booking');
+            } else if (!empty($runtimeproviderstatus['provideractive']) && empty($runtimeproviderstatus['contextenabled'])) {
+                $errormessage = get_string('aiready_check_context_enabled_todo', 'mod_booking');
+            }
+
             return [
                 'response_type'         => 'error',
-                'message'               => $notconfiguredmsg,
-                'displaymessage'        => $notconfiguredmsg,
+                'message'               => $errormessage,
+                'displaymessage'        => $errormessage,
                 'privacyapplied'        => 0,
                 'commands'              => '[]',
                 'ambiguities'           => '[]',

@@ -35,6 +35,21 @@ use mod_booking\singleton_service;
  * Central readiness state for the booking AI panel.
  */
 class aiready {
+    /** Wunderbyte provider class name. */
+    private const WB_PROVIDER_CLASS = 'aiprovider_wunderbyte\\provider';
+
+    /** Legacy trial provider class name used via OpenAI compatibility. */
+    private const WB_LEGACY_PROVIDER_CLASS = 'aiprovider_openai\\provider';
+
+    /** Legacy trial provider display name. */
+    private const WB_LEGACY_PROVIDER_NAME = 'Wunderbyte';
+
+    /** Wunderbyte planner action class name. */
+    private const WB_ACTION_PLANNER_DECIDE = '\\aiprovider_wunderbyte\\aiactions\\planner_decide';
+
+    /** Wunderbyte final reply action class name. */
+    private const WB_ACTION_GENERATE_AGENT_REPLY = '\\aiprovider_wunderbyte\\aiactions\\generate_agent_reply';
+
     /** @var int */
     private int $cmid;
 
@@ -92,17 +107,41 @@ class aiready {
             try {
                 $manager = di::get(ai_manager::class);
                 $providersconfigured = !empty($manager->get_provider_instances());
-                $haswunderbyteprovider = !empty($manager->get_provider_instances([
-                    'name' => 'Wunderbyte',
-                    'provider' => 'aiprovider_openai\\provider',
+
+                $hasnativewunderbyteprovider = !empty($manager->get_provider_instances([
+                    'provider' => self::WB_PROVIDER_CLASS,
                 ]));
-                $provideractive = $manager->is_action_available(generate_text::class);
+                $haslegacywunderbyteprovider = !empty($manager->get_provider_instances([
+                    'name' => self::WB_LEGACY_PROVIDER_NAME,
+                    'provider' => self::WB_LEGACY_PROVIDER_CLASS,
+                ]));
+                $haswunderbyteprovider = $hasnativewunderbyteprovider || $haslegacywunderbyteprovider;
+
+                $registry = task_registry::make_default();
+                $store = new conversation_store();
+                $interp = new interpreter($registry);
+                $orchestrator = new orchestrator($registry, $interp, $store);
+                $runtimeproviderstatus = $orchestrator->get_runtime_provider_status($this->cmid);
+
+                $provideractive = (bool)($runtimeproviderstatus['provideractive'] ?? false);
+
                 if (
                     method_exists($manager, 'is_ai_tools_enabled_in_course') &&
                     method_exists($manager, 'is_action_enabled_in_context')
                 ) {
-                    $courseenabled = ai_manager::is_ai_tools_enabled_in_course($context);
-                    $contextenabled = $manager->is_action_enabled_in_context($context, generate_text::class);
+                    $courseenabled = (bool)($runtimeproviderstatus['courseenabled'] ?? false);
+                    $contextenabled = (bool)($runtimeproviderstatus['contextenabled'] ?? false);
+
+                    // For wunderbyte custom actions (without placement wiring),
+                    // fall back to the module-level AI toggle when provider + course are active.
+                    if (
+                        !$contextenabled
+                        && $haswunderbyteprovider
+                        && $provideractive
+                        && $courseenabled
+                    ) {
+                        $contextenabled = $this->is_module_ai_toggle_enabled();
+                    }
                 } else {
                     // Fallback if method does not exist (e.g. older core version) - assume enabled.
                     $courseenabled = true;
@@ -117,7 +156,7 @@ class aiready {
             }
         }
 
-        $readyforchat = $provideractive && $contextenabled && $hascapability;
+        $readyforchat = $provideractive && $courseenabled && $contextenabled && $hascapability;
         $threadid = 0;
 
         if ($readyforchat) {
@@ -239,6 +278,20 @@ class aiready {
                 ? '<i class="fa fa-check-square text-success" aria-hidden="true"></i>'
                 : '<i class="fa fa-square-o text-muted" aria-hidden="true"></i>',
         ];
+    }
+
+    /**
+     * Check whether the module-level AI toggle is enabled.
+     *
+     * @return bool
+     */
+    private function is_module_ai_toggle_enabled(): bool {
+        try {
+            $fields = ai_manager::get_ai_fields_from_course_module($this->cmid);
+            return is_null($fields->enableaitools) || (bool)$fields->enableaitools;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**

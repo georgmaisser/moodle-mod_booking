@@ -37,6 +37,12 @@ use core_ai\manager as ai_manager;
  * Provides one entry point for all model calls in the booking agent.
  */
 class llm_call_service {
+    /** Wunderbyte planner action class name. */
+    private const WB_ACTION_PLANNER_DECIDE = '\\aiprovider_wunderbyte\\aiactions\\planner_decide';
+
+    /** Wunderbyte final reply action class name. */
+    private const WB_ACTION_GENERATE_AGENT_REPLY = '\\aiprovider_wunderbyte\\aiactions\\generate_agent_reply';
+
     /** @var conversation_store */
     private conversation_store $store;
 
@@ -86,6 +92,26 @@ class llm_call_service {
                 );
             } else if ($actionclass === explain_text::class) {
                 $action = new explain_text(
+                    contextid: $context->id,
+                    userid: $userid,
+                    prompttext: $prompt,
+                );
+            } else if (
+                $actionclass === self::WB_ACTION_GENERATE_AGENT_REPLY
+                && class_exists(self::WB_ACTION_GENERATE_AGENT_REPLY)
+            ) {
+                $wbactionclass = self::WB_ACTION_GENERATE_AGENT_REPLY;
+                $action = new $wbactionclass(
+                    contextid: $context->id,
+                    userid: $userid,
+                    prompttext: $prompt,
+                );
+            } else if (
+                $actionclass === self::WB_ACTION_PLANNER_DECIDE
+                && class_exists(self::WB_ACTION_PLANNER_DECIDE)
+            ) {
+                $wbactionclass = self::WB_ACTION_PLANNER_DECIDE;
+                $action = new $wbactionclass(
                     contextid: $context->id,
                     userid: $userid,
                     prompttext: $prompt,

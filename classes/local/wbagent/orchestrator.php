@@ -63,6 +63,12 @@ class orchestrator {
     /** Final synthesis turn: generate_text composes the polished answer from accumulated observations. */
     public const STEP_TYPE_FINAL_SYNTHESIS = 'final_synthesis';
 
+    /** Wunderbyte planner action class name. */
+    private const WB_ACTION_PLANNER_DECIDE = '\\aiprovider_wunderbyte\\aiactions\\planner_decide';
+
+    /** Wunderbyte final reply action class name. */
+    private const WB_ACTION_GENERATE_AGENT_REPLY = '\\aiprovider_wunderbyte\\aiactions\\generate_agent_reply';
+
     /** @var task_registry */
     private task_registry $registry;
 
@@ -97,23 +103,140 @@ class orchestrator {
      * @return bool
      */
     public function is_provider_available(int $cmid, int $userid): bool {
+        $status = $this->get_runtime_provider_status($cmid);
+        return (bool)($status['runtimeavailable'] ?? false);
+    }
+
+    /**
+     * Resolve centralized provider/runtime status for booking agent execution.
+     *
+     * This is the single source of truth for availability checks used by both
+     * readiness UI and runtime message processing.
+     *
+     * @param int $cmid Course-module id.
+     * @return array<string,mixed>
+     */
+    public function get_runtime_provider_status(int $cmid): array {
+        $default = [
+            'providerconfigured' => false,
+            'provideractive' => false,
+            'courseenabled' => false,
+            'contextenabled' => false,
+            'runtimeavailable' => false,
+            'toolactionclass' => '',
+            'finalactionclass' => '',
+            'toolroutepolicy' => 'default',
+            'finalroutepolicy' => 'default',
+        ];
+
         if (!class_exists('\core_ai\manager')) {
-            return false;
+            return $default;
         }
+
         try {
             $context = context_module::instance($cmid);
             $manager = di::get(ai_manager::class);
 
-            if (!$manager->is_action_available(generate_text::class)) {
-                return false;
-            }
-            if (!method_exists($manager, 'is_action_enabled_in_context')) {
-                return true;
+            $providerinstances = (array)$manager->get_provider_instances();
+            $providerconfigured = !empty($providerinstances);
+
+            $hasenabledproviderinstance = false;
+            foreach ($providerinstances as $instance) {
+                if (!empty($instance->enabled)) {
+                    $hasenabledproviderinstance = true;
+                    break;
+                }
             }
 
-            return $manager->is_action_enabled_in_context($context, generate_text::class);
+            $provideractive = $hasenabledproviderinstance;
+            $candidateactions = [
+                generate_text::class,
+                summarise_text::class,
+                explain_text::class,
+                self::WB_ACTION_PLANNER_DECIDE,
+                self::WB_ACTION_GENERATE_AGENT_REPLY,
+            ];
+            foreach ($candidateactions as $candidate) {
+                if (!class_exists($candidate)) {
+                    continue;
+                }
+                try {
+                    $actionavailable = $manager->is_action_available($candidate);
+                } catch (\Throwable $e) {
+                    $actionavailable = false;
+                }
+                if ($actionavailable) {
+                    $provideractive = true;
+                    break;
+                }
+            }
+
+            $courseenabled = method_exists($manager, 'is_ai_tools_enabled_in_course')
+                ? ai_manager::is_ai_tools_enabled_in_course($context)
+                : true;
+
+            $moduleaienabled = true;
+            if ($context->contextlevel === CONTEXT_MODULE) {
+                $moduleaifields = ai_manager::get_ai_fields_from_course_module($context->instanceid);
+                $moduleaienabled = is_null($moduleaifields->enableaitools)
+                    || (bool)$moduleaifields->enableaitools;
+            }
+
+            $toolrouting = $this->resolve_action_class_for_step($manager, $context, self::STEP_TYPE_TOOL_CALL_PARSE);
+            $finalrouting = $this->resolve_action_class_for_step($manager, $context, self::STEP_TYPE_FINAL_REASONING);
+
+            $toolactionclass = (string)($toolrouting['actionclass'] ?? '');
+            $finalactionclass = (string)($finalrouting['actionclass'] ?? '');
+
+            $toolroutepolicy = (string)($toolrouting['routepolicy'] ?? 'default');
+            $finalroutepolicy = (string)($finalrouting['routepolicy'] ?? 'default');
+
+            $wunderbyteroutingselected = $toolroutepolicy === 'wunderbyte' && $finalroutepolicy === 'wunderbyte';
+
+            $toolenabledincontext = false;
+            if ($toolactionclass !== '') {
+                if ($wunderbyteroutingselected) {
+                    // Explicit override for wunderbyte custom actions: they are not
+                    // placement-backed in core, so do not block on module action flags.
+                    $toolenabledincontext = true;
+                } else if ($toolroutepolicy === 'wunderbyte') {
+                    // Defensive fallback when only one side is tagged as wunderbyte.
+                    $toolenabledincontext = $moduleaienabled;
+                } else {
+                    $toolenabledincontext = $this->is_action_available_in_context($manager, $context, $toolactionclass);
+                }
+            }
+
+            $finalenabledincontext = false;
+            if ($finalactionclass !== '') {
+                if ($wunderbyteroutingselected) {
+                    // Explicit override for wunderbyte custom actions: they are not
+                    // placement-backed in core, so do not block on module action flags.
+                    $finalenabledincontext = true;
+                } else if ($finalroutepolicy === 'wunderbyte') {
+                    // Defensive fallback when only one side is tagged as wunderbyte.
+                    $finalenabledincontext = $moduleaienabled;
+                } else {
+                    $finalenabledincontext = $this->is_action_available_in_context($manager, $context, $finalactionclass);
+                }
+            }
+
+            $contextenabled = $toolenabledincontext && $finalenabledincontext;
+            $runtimeavailable = $provideractive && $courseenabled && $contextenabled;
+
+            return [
+                'providerconfigured' => $providerconfigured,
+                'provideractive' => $provideractive,
+                'courseenabled' => $courseenabled,
+                'contextenabled' => $contextenabled,
+                'runtimeavailable' => $runtimeavailable,
+                'toolactionclass' => $toolactionclass,
+                'finalactionclass' => $finalactionclass,
+                'toolroutepolicy' => $toolroutepolicy,
+                'finalroutepolicy' => $finalroutepolicy,
+            ];
         } catch (\Throwable $e) {
-            return false;
+            return $default;
         }
     }
 
@@ -279,7 +402,10 @@ class orchestrator {
      * @return string
      */
     public static function get_default_initial_prompt_template_for_action(string $actionclass): string {
-        if ($actionclass === summarise_text::class) {
+        if (
+            $actionclass === summarise_text::class
+            || $actionclass === self::WB_ACTION_PLANNER_DECIDE
+        ) {
             return <<<'PROMPT'
 You are an AI agent planner for the "{{bookingname}}" context.
 
@@ -354,7 +480,10 @@ TASK CATALOG:
 PROMPT;
         }
 
-        if ($actionclass === generate_text::class) {
+        if (
+            $actionclass === generate_text::class
+            || $actionclass === self::WB_ACTION_GENERATE_AGENT_REPLY
+        ) {
             return <<<'PROMPT'
 You are an expert that composes polished, helpful answers for the "{{bookingname}}" context.
 
@@ -448,7 +577,10 @@ PROMPT;
         // Only a single optional synthesis prefix is allowed via aiinitialprompt_summarise_text.
         $template = self::get_default_initial_prompt_template_for_action($actionclass);
 
-        if ($actionclass === generate_text::class) {
+        if (
+            $actionclass === generate_text::class
+            || $actionclass === self::WB_ACTION_GENERATE_AGENT_REPLY
+        ) {
             // Only prepend a custom admin-configured prefix; the default template already
             // contains the "You are an expert..." opening, so skip when no override is set.
             $summaryprefix = trim((string)(get_config('booking', 'aiinitialprompt_summarise_text') ?? ''));
@@ -960,13 +1092,19 @@ PROMPT;
      * @return string
      */
     private function get_action_initial_prompt_config_key(string $actionclass): string {
-        if ($actionclass === summarise_text::class) {
+        if (
+            $actionclass === summarise_text::class
+            || $actionclass === self::WB_ACTION_PLANNER_DECIDE
+        ) {
             return 'aiinitialprompt_summarise_text';
         }
         if ($actionclass === explain_text::class) {
             return 'aiinitialprompt_explain_text';
         }
-        if ($actionclass === generate_text::class) {
+        if (
+            $actionclass === generate_text::class
+            || $actionclass === self::WB_ACTION_GENERATE_AGENT_REPLY
+        ) {
             return 'aiinitialprompt_generate_text';
         }
         return '';
@@ -1015,6 +1153,25 @@ PROMPT;
      * @return array{actionclass:string, routepolicy:string, routingfallback:bool}
      */
     private function resolve_action_class_for_step(ai_manager $manager, context_module $context, string $steptype): array {
+        if ($this->is_wunderbyte_routing_available($manager)) {
+            if (
+                $steptype === self::STEP_TYPE_FINAL_REASONING
+                || $steptype === self::STEP_TYPE_FINAL_SYNTHESIS
+            ) {
+                return [
+                    'actionclass' => self::WB_ACTION_GENERATE_AGENT_REPLY,
+                    'routepolicy' => 'wunderbyte',
+                    'routingfallback' => false,
+                ];
+            }
+
+            return [
+                'actionclass' => self::WB_ACTION_PLANNER_DECIDE,
+                'routepolicy' => 'wunderbyte',
+                'routingfallback' => false,
+            ];
+        }
+
         if (!$this->should_use_openai_step_routing($manager)) {
             return [
                 'actionclass' => generate_text::class,
@@ -1081,6 +1238,41 @@ PROMPT;
     }
 
     /**
+     * Determine whether wunderbyte-specific action routing is available.
+     *
+     * @param ai_manager $manager
+     * @return bool
+     */
+    private function is_wunderbyte_routing_available(ai_manager $manager): bool {
+        if (!class_exists(self::WB_ACTION_PLANNER_DECIDE) || !class_exists(self::WB_ACTION_GENERATE_AGENT_REPLY)) {
+            return false;
+        }
+
+        try {
+            $instances = $manager->get_provider_instances(['provider' => 'aiprovider_wunderbyte\\provider']);
+            if (empty($instances)) {
+                return false;
+            }
+
+            foreach ($instances as $instance) {
+                if (empty($instance->enabled)) {
+                    continue;
+                }
+
+                if (method_exists($instance, 'is_provider_configured') && !$instance->is_provider_configured()) {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
      * Resolve the primary enabled provider plugin for an action.
      *
      * @param ai_manager $manager
@@ -1134,11 +1326,18 @@ PROMPT;
             generate_text::class => 'gen',
             summarise_text::class => 'sum',
             explain_text::class => 'exp',
+            self::WB_ACTION_PLANNER_DECIDE => 'wpl',
+            self::WB_ACTION_GENERATE_AGENT_REPLY => 'wgr',
         ];
 
         $step = $stepmap[$steptype] ?? 'unk';
         $action = $actionmap[$actionclass] ?? 'oth';
-        $route = ($routepolicy === 'openai') ? 'oa' : 'df';
+        $route = 'df';
+        if ($routepolicy === 'openai') {
+            $route = 'oa';
+        } else if ($routepolicy === 'wunderbyte') {
+            $route = 'wb';
+        }
         $provider = $this->short_provider_for_debug($primaryprovider);
 
         $source = 'orc'
