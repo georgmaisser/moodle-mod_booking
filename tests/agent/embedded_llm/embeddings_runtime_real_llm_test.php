@@ -44,7 +44,22 @@ final class embeddings_runtime_real_llm_test extends abstract_agent_testcase {
      */
     protected function setUp(): void {
         parent::setUp();
-        $this->require_real_llm();
+
+        $apikey = trim((string)(getenv('BOOKING_TEST_AI_KEY') ?: ''));
+        $model = trim((string)(getenv('BOOKING_TEST_AI_MODEL') ?: ''));
+        $endpoint = trim((string)(getenv('BOOKING_TEST_AI_ENDPOINT') ?: ''));
+        if ($apikey === '' || $model === '' || $endpoint === '') {
+            $this->markTestSkipped(
+                'Real-LLM tests require BOOKING_TEST_AI_KEY + BOOKING_TEST_AI_MODEL + BOOKING_TEST_AI_ENDPOINT.'
+            );
+        }
+
+        if (!$this->hasliveprovider) {
+            $this->fail('Real-LLM credentials exist, but provider registration is not active.');
+        }
+
+        // This suite validates embeddings telemetry markers, not generate_text routing.
+        $this->enforcegeneratetextassertion = false;
     }
 
     /**
