@@ -1,0 +1,94 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * Real-LLM embedded planner telemetry tests.
+ *
+ * @package    mod_booking
+ * @category   test
+ * @group      real_llm
+ * @group      embedded_llm
+ * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+namespace mod_booking;
+
+defined('MOODLE_INTERNAL') || die();
+
+require_once(__DIR__ . '/../abstract_agent_testcase.php');
+
+use mod_booking\local\wbagent\embeddings_csv_repository;
+
+/**
+ * Opt-in runtime checks for embeddings planner telemetry markers.
+ *
+ * @coversNothing
+ */
+final class embeddings_runtime_real_llm_test extends abstract_agent_testcase {
+    /**
+     * Require a live provider in this suite.
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        $this->require_real_llm();
+    }
+
+    /**
+     * First planner turn must emit embeddings telemetry markers in LLM debug logs.
+     */
+    public function test_first_turn_emits_embeddings_telemetry_markers(): void {
+        global $DB;
+
+        $this->setUser($this->teacher);
+
+        // Force a cold-start catalog state so fallback + queue telemetry is visible.
+        $repo = new embeddings_csv_repository();
+        $path = $repo->get_csv_path();
+        if (is_file($path)) {
+            @unlink($path);
+        }
+
+        [$store, $runtime, $threadid] = $this->build_runtime();
+        $result = $this->chat(
+            'Prepare one booking.create_option command for title "Embedding Runtime Test", '
+            . 'maxanswers 10, start 2045-12-01T09:00:00, end 2045-12-01T11:00:00.',
+            $threadid,
+            $store,
+            $runtime
+        );
+
+        $this->assertNotSame('error', (string)($result['response_type'] ?? ''));
+
+        $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => $threadid], 'id ASC');
+        $this->assertNotEmpty($entries, 'Expected booking_ai_llm_debug rows for runtime telemetry assertions.');
+
+        $hasmarker = false;
+        foreach ($entries as $entry) {
+            $source = (string)($entry->source ?? '');
+            if (
+                strpos($source, '|cm=') !== false
+                && strpos($source, '|em=') !== false
+                && strpos($source, '|rq=') !== false
+            ) {
+                $hasmarker = true;
+                break;
+            }
+        }
+
+        $this->assertTrue($hasmarker, 'Expected embeddings telemetry markers (cm/em/rq) in debug source.');
+    }
+}
