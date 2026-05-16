@@ -296,14 +296,19 @@ class orchestrator {
         );
         $shouldincludetaskcatalog = ($normalizedsteptype === self::STEP_TYPE_TOOL_CALL_PARSE) && !$hasanyobservations;
         $runtimecatalog = [];
+        $catalogselectionmode = 'none';
+        $embeddingstatus = 'off';
+        $embeddingrebuildqueued = false;
         $llm = new llm_call_service($this->store);
         if ($shouldincludetaskcatalog) {
             $runtimecatalog = $this->slim_prompt_catalog_for_planner($adaptivecatalog);
+            $catalogselectionmode = 'slim';
 
             $iswunderbyteplanner = ($routing['routepolicy'] ?? '') === 'wunderbyte'
                 && $actionclass === self::WB_ACTION_PLANNER_DECIDE;
 
             if ($iswunderbyteplanner) {
+                $embeddingstatus = 'check';
                 $embeddingmodel = trim((string)(get_config('booking', 'ai_embeddings_model')
                     ?? self::EMBEDDINGS_DEFAULT_MODEL));
                 if ($embeddingmodel === '') {
@@ -325,7 +330,8 @@ class orchestrator {
                 $readiness = new embeddings_readiness_service();
                 if ($readiness->is_wunderbyte_embeddings_available()) {
                     $status = $readiness->get_catalog_status($this->registry, $embeddingmodel, $embeddingdimensions);
-                    $readiness->ensure_rebuild_scheduled_if_needed(
+                    $embeddingstatus = (string)($status['status'] ?? 'unknown');
+                    $embeddingrebuildqueued = $readiness->ensure_rebuild_scheduled_if_needed(
                         $status,
                         $embeddingmodel,
                         $embeddingdimensions,
@@ -361,10 +367,18 @@ class orchestrator {
                                 $subset = $retrieval->build_planner_catalog_subset($toprows);
                                 if (!empty($subset)) {
                                     $runtimecatalog = $subset;
+                                    $catalogselectionmode = 'embed';
+                                    $embeddingstatus = 'applied';
+                                } else {
+                                    $embeddingstatus = 'nomatch';
                                 }
+                            } else {
+                                $embeddingstatus = 'callfail';
                             }
                         }
                     }
+                } else {
+                    $embeddingstatus = 'unavailable';
                 }
             }
         }
@@ -404,6 +418,10 @@ class orchestrator {
             $primaryprovider,
             $historycount,
             $observationcount,
+            $catalogselectionmode,
+            $embeddingstatus,
+            count($runtimecatalog),
+            $embeddingrebuildqueued,
             false
         );
 
@@ -1383,6 +1401,10 @@ PROMPT;
      * @param string $primaryprovider
      * @param int $historycount
      * @param int $observationcount
+     * @param string $catalogselectionmode
+     * @param string $embeddingstatus
+     * @param int $catalogsize
+     * @param bool $embeddingrebuildqueued
      * @param bool $exception
      * @return string
      */
@@ -1394,6 +1416,10 @@ PROMPT;
         string $primaryprovider,
         int $historycount,
         int $observationcount,
+        string $catalogselectionmode,
+        string $embeddingstatus,
+        int $catalogsize,
+        bool $embeddingrebuildqueued,
         bool $exception
     ): string {
         $stepmap = [
@@ -1428,6 +1454,10 @@ PROMPT;
             . '|pv=' . $provider
             . '|hm=' . max(0, $historycount)
             . '|ob=' . max(0, $observationcount)
+            . '|cm=' . $this->short_debug_token($catalogselectionmode)
+            . '|em=' . $this->short_debug_token($embeddingstatus)
+            . '|tk=' . max(0, $catalogsize)
+            . '|rq=' . ($embeddingrebuildqueued ? '1' : '0')
             . '|ex=' . ($exception ? '1' : '0');
 
         if (core_text::strlen($source) > 100) {
@@ -1435,6 +1465,25 @@ PROMPT;
         }
 
         return $source;
+    }
+
+    /**
+     * Keep debug token values compact and stable.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function short_debug_token(string $value): string {
+        $normalized = preg_replace('/[^a-z0-9_\-]+/i', '', core_text::strtolower(trim($value)));
+        if (!is_string($normalized) || $normalized === '') {
+            return 'na';
+        }
+
+        if (core_text::strlen($normalized) > 10) {
+            return core_text::substr($normalized, 0, 10);
+        }
+
+        return $normalized;
     }
 
     /**
