@@ -201,6 +201,8 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
             $summary .= ' Templates: ' . count($templates) . '.';
         }
 
+        $ruleslink = (string)$this->ruleservice->build_rules_link($cmid);
+
         // Serialize rules inline so the generic observation handler sees them.
         $rulelines = [];
         foreach ($filtered as $rule) {
@@ -233,6 +235,13 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
             $summary .= "\n" . implode("\n", $rulelines);
         }
 
+        // Mandatory guidance line for follow-up mutation flows in observation context.
+        if ($ruleslink !== '') {
+            $summary .= "\nYou can add or edit messages here: {$ruleslink}";
+        } else {
+            $summary .= "\nYou can add or edit messages here.";
+        }
+
         return [
             'status' => 'executed',
             'detail' => $summary,
@@ -241,7 +250,7 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
             'resultid' => null,
             'rules' => $filtered,
             'templates' => $templates,
-            'link' => $this->ruleservice->build_rules_link($cmid),
+            'link' => $ruleslink,
             'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $input, [
                 'cmid: ' . $cmid,
                 'active_only: ' . ($activeonly ? 'yes' : 'no'),
