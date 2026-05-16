@@ -156,7 +156,9 @@ class orchestrator {
         $hasanyobservations = !empty($observations);
         $haseffectiveobservations = $hasanyobservations
             && !$this->observations_are_framework_retry_hints($observations);
-        $lastplannerresult = trim((string)$this->store->get_thread_metadata_value($threadid, 'last_planner_result_json'));
+        $plannertracehistory = $this->normalize_planner_trace_history(
+            $this->store->get_thread_metadata_value($threadid, 'planner_trace_history')
+        );
         $shouldincludetaskcatalog = ($normalizedsteptype === self::STEP_TYPE_TOOL_CALL_PARSE) && !$hasanyobservations;
         $runtimecatalog = [];
         if ($shouldincludetaskcatalog) {
@@ -185,7 +187,7 @@ class orchestrator {
             $observations,
             $normalizedsteptype,
             $runtimecontext,
-            $lastplannerresult
+            $plannertracehistory
         );
         $historycount = count(array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype)));
         $observationcount = count($observations);
@@ -679,7 +681,7 @@ PROMPT;
      * @param  \stdClass[] $messages
      * @param  string[]    $observations  Structured observation strings (may be empty).
      * @param  string      $runtimecontext Dynamic per-request context appended after static system prompt.
-     * @param  string      $plannerresultjson Full previous planner JSON response from thread metadata.
+     * @param  string[]    $plannertracehistory Full planner trace history from thread metadata.
      * @return string
      */
     private function build_prompt(
@@ -688,7 +690,7 @@ PROMPT;
         array $observations = [],
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
         string $runtimecontext = '',
-        string $plannerresultjson = ''
+        array $plannertracehistory = []
     ): string {
         $normalizedsteptype = $this->normalize_step_type($steptype);
         $trimmedmessages = array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype));
@@ -716,10 +718,6 @@ PROMPT;
             $parts[] = "[SYSTEM_RUNTIME]\n{$runtimecontext}";
         }
 
-        if ($plannerresultjson !== '') {
-            $parts[] = "[PLANNER_RESULT]\n{$plannerresultjson}";
-        }
-
         foreach ($trimmedmessages as $msg) {
             $role    = strtoupper($msg->role ?? 'user');
             $content = $msg->content ?? '';
@@ -731,15 +729,73 @@ PROMPT;
             $parts[] = "[ASSISTANT_STATE {$num}]\n{$block}";
         }
 
-        // Inject tool observations from prior internal loop steps.
-        // These are ephemeral — they are NOT stored in the conversation history.
-        foreach ($observations as $idx => $observation) {
-            $num = $idx + 1;
-            $parts[] = "[OBSERVATION {$num}]\n{$observation}";
-        }
+        $parts = $this->append_planner_traces_and_observations($parts, $plannertracehistory, $observations);
 
         $parts[] = '[ASSISTANT]';
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * Normalize planner trace history values from thread metadata.
+     *
+     * @param mixed $value
+     * @return array<int,string>
+     */
+    private function normalize_planner_trace_history($value): array {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $history = [];
+        foreach ($value as $entry) {
+            if (is_string($entry)) {
+                $text = trim($entry);
+                if ($text !== '') {
+                    $history[] = $text;
+                }
+                continue;
+            }
+
+            if (is_array($entry)) {
+                $json = json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if (is_string($json) && $json !== '') {
+                    $history[] = $json;
+                }
+            }
+        }
+
+        return $history;
+    }
+
+    /**
+     * Append planner traces and observations in interleaved order.
+     *
+     * Desired shape: USER, PLANNER_TRACE 1, OBSERVATION 1, PLANNER_TRACE 2, OBSERVATION 2, ...
+     *
+     * @param array<int,string> $parts
+     * @param array<int,string> $plannertracehistory
+     * @param array<int,string> $observations
+     * @return array<int,string>
+     */
+    private function append_planner_traces_and_observations(
+        array $parts,
+        array $plannertracehistory,
+        array $observations
+    ): array {
+        $max = max(count($plannertracehistory), count($observations));
+        for ($i = 0; $i < $max; $i++) {
+            $num = $i + 1;
+
+            if (isset($plannertracehistory[$i])) {
+                $parts[] = "[PLANNER_TRACE {$num}]\n" . $plannertracehistory[$i];
+            }
+
+            if (isset($observations[$i])) {
+                $parts[] = "[OBSERVATION {$num}]\n" . (string)$observations[$i];
+            }
+        }
+
+        return $parts;
     }
 
     /**

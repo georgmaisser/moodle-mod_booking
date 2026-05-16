@@ -258,6 +258,7 @@ class agent_runtime {
             // New user turn: reset planner-result cache so stale payloads from a
             // previous turn cannot leak into the next [PLANNER_RESULT] block.
             $this->store->set_thread_metadata_value($threadid, 'last_planner_result_json', null);
+            $this->store->set_thread_metadata_value($threadid, 'planner_trace_history', []);
             // Clean up an expired entry if present.
             if (is_array($resumedata)) {
                 $this->store->set_thread_metadata_value($threadid, '_loop_resume', null);
@@ -1565,6 +1566,15 @@ class agent_runtime {
         // (no observations). Retry/repair steps must not overwrite it, otherwise
         // [PLANNER_RESULT] can bloat with preflight clarification payloads.
         $plannerresultjson = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (is_string($plannerresultjson) && $plannerresultjson !== '') {
+            $history = $this->store->get_thread_metadata_value($threadid, 'planner_trace_history');
+            if (!is_array($history)) {
+                $history = [];
+            }
+            $history[] = $plannerresultjson;
+            $this->store->set_thread_metadata_value($threadid, 'planner_trace_history', $history);
+        }
+
         if (
             $plannersteptype === orchestrator::STEP_TYPE_TOOL_CALL_PARSE
             && empty($observations)
