@@ -284,7 +284,7 @@ class rules_info {
     /**
      * Save all booking rules.
      * @param stdClass $data reference to the form data
-     * @return void
+     * @return int
      */
     public static function save_booking_rule(stdClass &$data) {
 
@@ -303,7 +303,7 @@ class rules_info {
 
         self::execute_booking_rules($ruleid);
 
-        return;
+        return $ruleid;
     }
 
     /**

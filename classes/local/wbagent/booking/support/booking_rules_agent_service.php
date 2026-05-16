@@ -403,18 +403,13 @@ class booking_rules_agent_service {
         if (array_key_exists('isactive', $overrides)) {
             $data->ruleisactive = !empty($overrides['isactive']) ? 1 : 0;
         } else if (!isset($data->ruleisactive)) {
-            $data->ruleisactive = 1;
+            $data->ruleisactive = 0;
         }
 
-        rules_info::save_booking_rule($data);
+        $newruleid = rules_info::save_booking_rule($data);
 
         $newruleid = (int)($data->id ?? 0);
-        if ($newruleid <= 0) {
-            $newruleid = (int)$DB->get_field_sql(
-                'SELECT MAX(id) FROM {booking_rules} WHERE contextid = :contextid',
-                ['contextid' => $contextid]
-            );
-        }
+
         if ($newruleid <= 0) {
             return ['status' => 'error', 'message' => 'Regel wurde gespeichert, konnte aber nicht eindeutig ermittelt werden.'];
         }
