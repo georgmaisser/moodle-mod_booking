@@ -300,6 +300,7 @@ class rules_info {
 
         // Rule has to be saved last, because it actually writes to DB.
         $ruleid = $rule->save_rule($data);
+        $data->id = $ruleid;
 
         self::execute_booking_rules($ruleid);
 

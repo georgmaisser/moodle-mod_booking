@@ -408,8 +408,6 @@ class booking_rules_agent_service {
 
         $newruleid = rules_info::save_booking_rule($data);
 
-        $newruleid = (int)($data->id ?? 0);
-
         if ($newruleid <= 0) {
             return ['status' => 'error', 'message' => 'Regel wurde gespeichert, konnte aber nicht eindeutig ermittelt werden.'];
         }
