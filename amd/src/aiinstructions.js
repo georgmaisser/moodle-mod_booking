@@ -46,6 +46,10 @@ let stepPollInterval = null;
 let lastSeenStepId = 0;
 /** @type {Array<HTMLElement>} */
 let activeStepBubbles = [];
+/** Highest assistant message id already rendered from continuation fetches. */
+let lastSeenAssistantMessageId = 0;
+/** Monotonic token used to discard stale continuation wait responses. */
+let continuationWaitToken = 0;
 /** Set to true when the user clicks Stop to discard the pending LLM response. */
 let sendAborted = false;
 
@@ -1287,10 +1291,13 @@ const showConfirmPanel = (message, commands) => {
         return;
     }
 
-    preview.innerHTML = '';
+    const messageHtml = renderAssistantMessageHtml(String(message || '').trim());
+    preview.innerHTML = messageHtml !== ''
+        ? `<div class="booking-ai-confirm-message mb-2">${messageHtml}</div>`
+        : '';
 
     if (debugModeEnabled) {
-        let previewHtml = `<p>${escapeHtml(message)}</p><ul>`;
+        let previewHtml = `${preview.innerHTML}<ul>`;
         commands.forEach((cmd) => {
             previewHtml += `<li><strong>${escapeHtml(cmd.task)}</strong>: ${escapeHtml(JSON.stringify(cmd.input))}`;
             previewHtml += '</li>';
@@ -1572,6 +1579,93 @@ const extractPreviewOptionIds = (results) => {
 };
 
 /**
+ * Append continuation message only once using assistant message id dedup.
+ *
+ * @param {number} messageId
+ * @param {string} continuationText
+ * @param {string} continuationType
+ * @param {number} runid
+ * @param {string} source
+ */
+const appendContinuationMessageIfNew = (messageId, continuationText, continuationType, runid, source) => {
+    const text = String(continuationText || '').trim();
+    const type = String(continuationType || '').trim();
+    if (text === '' || type === '') {
+        return;
+    }
+
+    const normalizedId = Number(messageId || 0);
+    if (normalizedId > 0 && normalizedId <= lastSeenAssistantMessageId) {
+        return;
+    }
+    if (normalizedId > 0) {
+        lastSeenAssistantMessageId = normalizedId;
+    }
+
+    appendMessage('assistant', text, {
+        response_type: type,
+        threadid: Number(currentThreadId || 0),
+        runid: Number(runid || 0),
+        source: String(source || 'continuation'),
+        time: (new Date()).toISOString(),
+    });
+};
+
+/**
+ * Wait for a continuation assistant response produced after execution_result.
+ *
+ * @param {number} threadid
+ * @param {number} cmid
+ * @param {number} sinceMessageId
+ * @param {number} runid
+ */
+const waitForContinuationMessage = (threadid, cmid, sinceMessageId, runid) => {
+    if (threadid <= 0 || cmid <= 0) {
+        return;
+    }
+
+    const token = ++continuationWaitToken;
+    Ajax.call([{
+        methodname: 'mod_booking_ai_wait_thread_response',
+        args: {
+            cmid,
+            threadid,
+            sinceid: Math.max(0, Number(sinceMessageId || 0)),
+            timeoutms: 60000,
+        },
+    }])[0].then((resp) => {
+        if (token !== continuationWaitToken) {
+            return resp;
+        }
+
+        if (Number(resp.found || 0) !== 1) {
+            return resp;
+        }
+
+        appendAssistantPrivacyNote(resp, 'ai_wait_thread_response');
+        appendContinuationMessageIfNew(
+            Number(resp.messageid || 0),
+            String(resp.displaymessage || resp.message || ''),
+            String(resp.responsetype || ''),
+            runid,
+            'ai_wait_thread_response'
+        );
+
+        const waitCommands = parseJsonList(resp.commands || '[]');
+        if (
+            (resp.responsetype === 'confirmation_request' || resp.responsetype === 'task_call')
+            && waitCommands.length > 0
+        ) {
+            showConfirmPanel(String(resp.displaymessage || resp.message || ''), waitCommands);
+        }
+
+        return resp;
+    }).catch(() => {
+        // Continuation wait timeouts/errors are non-fatal; step polling remains active.
+    });
+};
+
+/**
  * Poll a run until it is completed or failed.
  *
  * @param {number} runid
@@ -1643,17 +1737,28 @@ const pollRunStatus = (runid, cmid) => {
                 const continuationText = String(
                     resp.continuationdisplaymessage || resp.continuationmessage || ''
                 ).trim();
-                if (
-                    continuationText !== ''
-                    && continuationType !== ''
-                ) {
-                    appendMessage('assistant', continuationText, {
-                        response_type: continuationType,
-                        threadid: Number(currentThreadId || 0),
-                        runid: Number(resp.runid || 0),
-                        source: 'ai_poll_run_status.continuation',
-                        time: (new Date()).toISOString(),
-                    });
+                const continuationMessageId = Number(resp.continuationmessageid || 0);
+                if (continuationText !== '' && continuationType !== '') {
+                    appendContinuationMessageIfNew(
+                        continuationMessageId,
+                        continuationText,
+                        continuationType,
+                        Number(resp.runid || 0),
+                        'ai_poll_run_status.continuation'
+                    );
+                }
+
+                const executionMessageId = Number(resp.executionmessageid || 0);
+                if (continuationMessageId <= 0) {
+                    const sinceMessageId = executionMessageId > 0
+                        ? executionMessageId
+                        : Number(lastSeenAssistantMessageId || 0);
+                    waitForContinuationMessage(
+                        Number(currentThreadId || 0),
+                        Number(cmid || 0),
+                        sinceMessageId,
+                        Number(resp.runid || 0)
+                    );
                 }
 
                 if (resp.status === 'completed') {
@@ -1860,6 +1965,7 @@ const sendMessage = (message) => {
     }
 
     sendAborted = false;
+    continuationWaitToken++;
 
     appendMessage('user', message, {
         source: 'chat_input',
@@ -2119,6 +2225,22 @@ const sendMessage = (message) => {
             const optionIds = extractPreviewOptionIds(results);
             if (optionIds.length > 0) {
                 renderOptionPreviewsInline(currentCmid, optionIds);
+            }
+
+            const continuationMessageId = Number(resp.continuationmessageid || 0);
+            if (continuationMessageId <= 0) {
+                const executionMessageId = Number(resp.executionmessageid || resp.messageid || 0);
+                const sinceMessageId = executionMessageId > 0
+                    ? executionMessageId
+                    : Number(lastSeenAssistantMessageId || 0);
+                window.setTimeout(() => {
+                    waitForContinuationMessage(
+                        Number(currentThreadId || 0),
+                        Number(currentCmid || 0),
+                        sinceMessageId,
+                        Number(resp.runid || 0)
+                    );
+                }, 500);
             }
 
             // Keep the thread poller alive so additional step bubbles from the same
@@ -2429,6 +2551,7 @@ const displayWelcomeMessage = (numOptions, numBooked) => {
  */
 const stopCurrentRun = () => {
     sendAborted = true;
+    continuationWaitToken++;
     stopStepPolling();
     clearStepBubbles();
     const thinkingEl = document.getElementById('booking-ai-thinking');

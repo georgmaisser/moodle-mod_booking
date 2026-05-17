@@ -540,7 +540,7 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
         $hasgenerate = false;
         foreach ($entries as $entry) {
             $source = (string)($entry->source ?? '');
-            if (strpos($source, 'ac=gen') !== false) {
+            if (strpos($source, 'ac=gen') !== false || strpos($source, 'ac=wpl') !== false) {
                 $hasgenerate = true;
                 break;
             }
@@ -548,7 +548,7 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
 
         $this->assertTrue(
             $hasgenerate,
-            'Expected at least one generate_text LLM debug entry (source contains ac=gen) in booking_ai_llm_debug.'
+            'Expected at least one generate_text LLM debug entry (source contains ac=gen or ac=wpl) in booking_ai_llm_debug.'
         );
     }
 

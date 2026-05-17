@@ -223,6 +223,29 @@ class conversation_store implements agent_conversation_store {
     }
 
     /**
+     * Return non-step messages written after a given message id.
+     *
+     * Used by continuation wait/poll endpoints to fetch only fresh messages.
+     *
+     * @param int $threadid
+     * @param int $sinceid Return only messages with id > $sinceid (0 = all).
+     * @return stdClass[]
+     */
+    public function get_messages_since(int $threadid, int $sinceid): array {
+        global $DB;
+        $sql = 'SELECT * FROM {booking_ai_messages}
+                 WHERE threadid = :threadid
+                   AND role    <> :steprole
+                   AND id       > :sinceid
+                 ORDER BY id ASC';
+        return array_values($DB->get_records_sql($sql, [
+            'threadid' => $threadid,
+            'steprole' => 'step',
+            'sinceid'  => $sinceid,
+        ]));
+    }
+
+    /**
      * Return all messages for a thread ordered by timecreated ASC.
      *
      * @param int $threadid
@@ -231,6 +254,18 @@ class conversation_store implements agent_conversation_store {
     public function get_messages(int $threadid): array {
         global $DB;
         return array_values($DB->get_records('booking_ai_messages', ['threadid' => $threadid], 'timecreated ASC'));
+    }
+
+    /**
+     * Return one thread by id.
+     *
+     * @param int $threadid
+     * @return stdClass|null
+     */
+    public function get_thread(int $threadid): ?stdClass {
+        global $DB;
+        $thread = $DB->get_record('booking_ai_threads', ['id' => $threadid]);
+        return $thread ?: null;
     }
 
     /**

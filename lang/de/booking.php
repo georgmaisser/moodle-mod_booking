@@ -700,6 +700,7 @@ $string['ai_trial_token_invalid_subscription_message'] = 'Ihr AI-Trial-Token ist
 <a href="{$a->basicurl}">Basic-Abonnement</a>
 <a href="{$a->privacyplusurl}">Privacy Plus</a>';
 $string['ai_trial_token_invalid_title'] = 'Trial-Token ungueltig';
+$string['ai_wait_thread_timeout_message'] = 'Anscheinend gab es ein Problem beim Warten auf den naechsten AI-Planungsschritt. Bitte versuchen Sie es erneut.';
 $string['ai_welcome_empty'] = 'Willkommen! Möchten Sie, dass ich Ihnen bei der Erstellung Ihrer ersten Buchungsoption helfe?';
 $string['ai_welcome_with_options'] = 'Willkommen! Sie haben hier {$a->numoptions} Buchungsoptionen, und {$a->numbooked} Personen sind bereits gebucht. Wie kann ich Ihnen helfen?';
 $string['aifollowupsuggestionscount'] = 'Anzahl Folge-Vorschlaege';

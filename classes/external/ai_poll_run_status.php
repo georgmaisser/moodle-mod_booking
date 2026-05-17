@@ -85,6 +85,7 @@ class ai_poll_run_status extends external_api {
             return [
                 'runid'      => $params['runid'],
                 'status'     => 'notfound',
+                'executionmessageid' => 0,
                 'message'    => '',
                 'displaymessage' => '',
                 'privacyapplied' => 0,
@@ -93,6 +94,7 @@ class ai_poll_run_status extends external_api {
                 'followupmessage' => '',
                 'followupdisplaymessage' => '',
                 'followupcommandsjson' => '[]',
+                'continuationmessageid' => 0,
                 'continuationresponsetype' => '',
                 'continuationmessage' => '',
                 'continuationdisplaymessage' => '',
@@ -100,6 +102,7 @@ class ai_poll_run_status extends external_api {
             ];
         }
 
+        $executionmessageid = 0;
         $message = '';
         $displaymessage = '';
         $privacyapplied = 0;
@@ -112,11 +115,13 @@ class ai_poll_run_status extends external_api {
         $followupmessage = '';
         $followupdisplaymessage = '';
         $followupcommandsjson = '[]';
+        $continuationmessageid = 0;
         $continuationresponsetype = '';
         $continuationmessage = '';
         $continuationdisplaymessage = '';
         $executionmessage = $store->get_latest_execution_result_message_for_run((int)$run->threadid, (int)$run->id);
         if ($executionmessage) {
+            $executionmessageid = (int)($executionmessage->id ?? 0);
             $message = (string)($executionmessage->content ?? '');
             $displaymessage = $message;
             $anonymizer = new privacy_anonymizer($store);
@@ -186,6 +191,7 @@ class ai_poll_run_status extends external_api {
                     continue;
                 }
 
+                $continuationmessageid = (int)($candidate->id ?? 0);
                 $continuationresponsetype = $responsetype;
                 $continuationmessage = trim((string)($candidate->content ?? ''));
                 if ($continuationmessage !== '') {
@@ -213,6 +219,7 @@ class ai_poll_run_status extends external_api {
         return [
             'runid'       => (int)$run->id,
             'status'      => $run->status,
+            'executionmessageid' => $executionmessageid,
             'message'     => $message,
             'displaymessage' => $displaymessage,
             'privacyapplied' => $privacyapplied,
@@ -221,6 +228,7 @@ class ai_poll_run_status extends external_api {
             'followupmessage' => $followupmessage,
             'followupdisplaymessage' => $followupdisplaymessage,
             'followupcommandsjson' => $followupcommandsjson,
+            'continuationmessageid' => $continuationmessageid,
             'continuationresponsetype' => $continuationresponsetype,
             'continuationmessage' => $continuationmessage,
             'continuationdisplaymessage' => $continuationdisplaymessage,
@@ -289,6 +297,7 @@ class ai_poll_run_status extends external_api {
         return new external_single_structure([
             'runid'       => new external_value(PARAM_INT, 'Run id.'),
             'status'      => new external_value(PARAM_TEXT, 'Run status.'),
+            'executionmessageid' => new external_value(PARAM_INT, 'Execution result message id (0 if not available).'),
             'message'     => new external_value(PARAM_RAW, 'Assistant message stored for this run.'),
             'displaymessage' => new external_value(PARAM_RAW, 'Display message for this run.'),
             'privacyapplied' => new external_value(PARAM_INT, 'Whether de-masking was applied for display.'),
@@ -297,6 +306,7 @@ class ai_poll_run_status extends external_api {
             'followupmessage' => new external_value(PARAM_RAW, 'Follow-up assistant confirmation message.'),
             'followupdisplaymessage' => new external_value(PARAM_RAW, 'Display message for the follow-up confirmation.'),
             'followupcommandsjson' => new external_value(PARAM_RAW, 'JSON-encoded follow-up commands.'),
+            'continuationmessageid' => new external_value(PARAM_INT, 'Continuation message id (0 if not available).'),
             'continuationresponsetype' => new external_value(
                 PARAM_TEXT,
                 'Post-run continuation response type (clarification/sufficient/error/confirmation_request).'

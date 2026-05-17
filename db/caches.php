@@ -222,4 +222,16 @@ $definitions = [
         'staticaccelerationsize' => 1000,
         'invalidationevents' => ['setbackcustomfields'],
     ],
+    'aiwaitstate' => [
+        'mode' => cache_store::MODE_SESSION,
+        'simplekeys' => true,
+        'staticacceleration' => false,
+        'ttl' => 60,
+    ],
+    'aiwaitmailbox' => [
+        'mode' => cache_store::MODE_SESSION,
+        'simplekeys' => true,
+        'staticacceleration' => false,
+        'ttl' => 60,
+    ],
 ];

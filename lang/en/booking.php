@@ -704,6 +704,7 @@ $string['ai_trial_token_invalid_subscription_message'] = 'Your AI trial token is
 <a href="{$a->basicurl}">Basic subscription</a>
 <a href="{$a->privacyplusurl}">Privacy Plus</a>';
 $string['ai_trial_token_invalid_title'] = 'Trial token invalid';
+$string['ai_wait_thread_timeout_message'] = 'It looks like there was a problem while waiting for the next AI planning step. Please try again.';
 $string['ai_welcome_empty'] = 'Welcome! Would you like me to help you create your first booking option?';
 $string['ai_welcome_with_options'] = 'Welcome! You have {$a->numoptions} booking options here, and {$a->numbooked} people are already booked. How can I help you?';
 $string['aiexecutionmode'] = 'AI execution mode';
