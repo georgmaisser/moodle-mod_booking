@@ -89,6 +89,7 @@ final class agent_architecture_contract_test extends booking_advanced_testcase {
             'booking.list_option_properties',
             'booking.get_current_user',
             'booking.add_price_category',
+            'booking.recall_memory',
         ];
 
         foreach ($required as $taskname) {

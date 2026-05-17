@@ -5503,5 +5503,40 @@ function xmldb_booking_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026042204, 'booking');
     }
 
+    if ($oldversion < 2026051700) {
+        // Add userid to booking_ai_messages and harden user-isolated message retrieval.
+        $table = new xmldb_table('booking_ai_messages');
+        $nullablefield = new xmldb_field('userid', XMLDB_TYPE_INTEGER, '10', null, null, null, '0', 'threadid');
+        if (!$dbman->field_exists($table, $nullablefield)) {
+            $dbman->add_field($table, $nullablefield);
+        }
+
+        $sql = "SELECT m.id AS messageid, t.userid AS threaduserid
+                  FROM {booking_ai_messages} m
+                  JOIN {booking_ai_threads} t
+                    ON t.id = m.threadid
+                 WHERE m.userid IS NULL OR m.userid = 0";
+        $recordset = $DB->get_recordset_sql($sql);
+        foreach ($recordset as $row) {
+            $update = new stdClass();
+            $update->id = (int)$row->messageid;
+            $update->userid = (int)$row->threaduserid;
+            $DB->update_record('booking_ai_messages', $update);
+        }
+        $recordset->close();
+
+        $notnullfield = new xmldb_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'threadid');
+        if ($dbman->field_exists($table, $notnullfield)) {
+            $dbman->change_field_notnull($table, $notnullfield);
+        }
+
+        $index = new xmldb_index('useridthreadidx', XMLDB_INDEX_NOTUNIQUE, ['userid', 'threadid']);
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        upgrade_mod_savepoint(true, 2026051700, 'booking');
+    }
+
     return true;
 }

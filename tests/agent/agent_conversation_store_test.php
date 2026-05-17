@@ -135,4 +135,40 @@ final class agent_conversation_store_test extends booking_advanced_testcase {
         $this->assertStringContainsString('Message 3', $recent[0]->content);
         $this->assertStringContainsString('Message 5', $recent[2]->content);
     }
+
+    /**
+     * Test message insert persists userid derived from thread.
+     */
+    public function test_add_message_persists_userid_from_thread(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $store = new conversation_store();
+        $thread = $store->get_or_create_thread(42, 70, 19);
+
+        $messageid = $store->add_message((int)$thread->id, 'user', 'User-scoped message');
+        $record = $DB->get_record('booking_ai_messages', ['id' => $messageid], 'id,threadid,userid', MUST_EXIST);
+
+        $this->assertSame((int)$thread->id, (int)$record->threadid);
+        $this->assertSame(42, (int)$record->userid);
+    }
+
+    /**
+     * Test user-fenced memory reads never return other user messages.
+     */
+    public function test_get_user_messages_for_thread_enforces_dual_user_fence(): void {
+        $this->resetAfterTest();
+        $store = new conversation_store();
+        $threada = $store->get_or_create_thread(81, 80, 21);
+        $threadb = $store->get_or_create_thread(82, 80, 21);
+
+        $store->add_message((int)$threada->id, 'user', 'Private A');
+        $store->add_message((int)$threadb->id, 'user', 'Private B');
+
+        $resulta = $store->get_user_messages_for_thread(81, (int)$threada->id);
+        $resultmismatch = $store->get_user_messages_for_thread(81, (int)$threadb->id);
+
+        $this->assertCount(1, $resulta);
+        $this->assertSame('Private A', (string)$resulta[0]->content);
+        $this->assertSame([], $resultmismatch);
+    }
 }

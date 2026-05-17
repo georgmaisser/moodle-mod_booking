@@ -97,6 +97,10 @@ abstract class booking_task_base extends base_task {
             'input_fields_for_prompt' => [],
             'anchor_fields' => [],
         ],
+        'booking.recall_memory' => [
+            'input_fields_for_prompt' => ['mode', 'date_hint', 'query'],
+            'anchor_fields' => [],
+        ],
         'booking.explain_docs_topic' => [
             'input_fields_for_prompt' => ['question'],
             'anchor_fields' => [],
@@ -179,6 +183,12 @@ abstract class booking_task_base extends base_task {
         ],
         'booking.recreate_task_catalog' => [
             'force' => true,
+        ],
+        'booking.recall_memory' => [
+            'mode' => 'date_window',
+            'date_hint' => 'last friday',
+            'query' => 'document',
+            'include_structured' => true,
         ],
         'booking.search_courses' => [
             'query' => 'Mathematik',

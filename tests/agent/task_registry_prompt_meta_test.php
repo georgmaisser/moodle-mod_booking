@@ -186,6 +186,7 @@ final class task_registry_prompt_meta_test extends booking_advanced_testcase {
         $this->assertContains('booking.search_options', $readyonlynames);
         $this->assertContains('booking.explain_docs_topic', $readyonlynames);
         $this->assertContains('booking.get_current_user', $readyonlynames);
+        $this->assertContains('booking.recall_memory', $readyonlynames);
 
         // Should NOT include mutating tasks.
         $this->assertNotContains('booking.create_option', $readyonlynames);

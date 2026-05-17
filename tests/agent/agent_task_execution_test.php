@@ -17,7 +17,7 @@
 /**
  * Wave 2: Focused Task Execution Tests
  *
- * Tests for all 10 booking agent tasks with realistic scenarios:
+ * Tests for booking agent tasks with realistic scenarios:
  * - create_option, update_option, bulk_update
  * - search_options, search_users, search_courses
  * - list_actions, list_option_properties, get_current_user, add_price_category
@@ -38,7 +38,7 @@ use mod_booking\local\wbagent\executor;
 use mod_booking\local\wbagent\task_registry;
 
 /**
- * Focused tests for all 10 booking agent tasks.
+ * Focused tests for booking agent tasks.
  *
  * @group mod_booking
  * @group mod_booking_agent
@@ -46,7 +46,7 @@ use mod_booking\local\wbagent\task_registry;
  */
 final class agent_task_execution_test extends abstract_agent_testcase {
     /**
-     * Test: Task registry contains all 10 core booking tasks
+     * Test: Task registry contains all mandatory booking tasks
      */
     public function test_task_registry_has_all_core_tasks(): void {
         $registry = task_registry::make_default();
@@ -63,6 +63,7 @@ final class agent_task_execution_test extends abstract_agent_testcase {
             'booking.list_option_properties',
             'booking.get_current_user',
             'booking.add_price_category',
+            'booking.recall_memory',
         ];
 
         foreach ($expected as $task) {

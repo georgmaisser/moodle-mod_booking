@@ -1426,6 +1426,7 @@ class booking_task_support {
             list_option_properties_task::TASK_NAME,
             list_actions_task::TASK_NAME,
             get_current_user_task::TASK_NAME,
+            'booking.recall_memory',
         ], true);
     }
 
@@ -1598,6 +1599,7 @@ class booking_task_support {
             list_option_properties_task::TASK_NAME => 'ai_action_list_option_properties',
             list_actions_task::TASK_NAME => 'ai_action_list_actions',
             get_current_user_task::TASK_NAME => 'ai_action_get_current_user',
+            'booking.recall_memory' => 'ai_action_recall_memory',
             recreate_task_catalog_task::TASK_NAME => 'ai_action_recreate_task_catalog',
         ];
 

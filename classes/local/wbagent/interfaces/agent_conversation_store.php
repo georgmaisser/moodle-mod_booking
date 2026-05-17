@@ -71,6 +71,49 @@ interface agent_conversation_store {
     public function get_recent_messages(int $threadid, int $limit): array;
 
     /**
+     * Return the previous thread context for a user in a booking instance.
+     *
+     * @param int $userid
+     * @param int $cmid
+     * @return \stdClass|null
+     */
+    public function get_last_thread_for_user(int $userid, int $cmid): ?\stdClass;
+
+    /**
+     * Return user-owned thread ids that contain messages in a date window.
+     *
+     * @param int $userid
+     * @param int $cmid
+     * @param int $fromtimestamp
+     * @param int $totimestamp
+     * @return int[]
+     */
+    public function get_user_threads_by_date_window(
+        int $userid,
+        int $cmid,
+        int $fromtimestamp,
+        int $totimestamp
+    ): array;
+
+    /**
+     * Return messages for one thread fenced by both message.userid and thread.userid.
+     *
+     * @param int $userid
+     * @param int $threadid
+     * @param int|null $fromtimestamp
+     * @param int|null $totimestamp
+     * @param string $query
+     * @return \stdClass[]
+     */
+    public function get_user_messages_for_thread(
+        int $userid,
+        int $threadid,
+        ?int $fromtimestamp = null,
+        ?int $totimestamp = null,
+        string $query = ''
+    ): array;
+
+    /**
      * Create a run record for the thread.
      *
      * @param int    $threadid

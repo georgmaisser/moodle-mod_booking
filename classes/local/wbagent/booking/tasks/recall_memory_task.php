@@ -14,23 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace mod_booking\local\wbagent\booking\tasks;
+
 /**
- * Module Booking.
+ * Backward-compatible wrapper for core task location.
  *
- * @package mod_booking
- * @copyright 2025 Wunderbyte GmbH <info@wunderbyte.at>,
- * @author David Bogner, Georg Maißer, Bernhard Fischer, Magdalena Holczik, Andraž Prinčič
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package    mod_booking
+ * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-defined('MOODLE_INTERNAL') || die();
-
-$plugin->version = 2026051700;
-$plugin->requires = 2024100700; // Requires this Moodle version. Current: Moodle 4.5.
-$plugin->release = '9.3.0';
-$plugin->maturity = MATURITY_STABLE;
-$plugin->component = 'mod_booking';
-$plugin->supported = [405, 501];
-$plugin->dependencies = [
-    'local_wunderbyte_table' => 2026032600,
-];
+class recall_memory_task extends \mod_booking\local\wbagent\core\tasks\recall_memory_task {
+}

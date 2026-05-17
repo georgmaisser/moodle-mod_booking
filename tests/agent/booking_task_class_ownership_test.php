@@ -35,6 +35,7 @@ use mod_booking\local\wbagent\booking\tasks\search_options_task;
 use mod_booking\local\wbagent\booking\tasks\search_users_task;
 use mod_booking\local\wbagent\booking\tasks\update_option_task;
 use mod_booking\local\wbagent\core\tasks\get_current_user_task;
+use mod_booking\local\wbagent\core\tasks\recall_memory_task;
 
 /**
  * Ensures task classes own schema and validation behavior.
@@ -60,6 +61,7 @@ final class booking_task_class_ownership_test extends booking_advanced_testcase 
             [list_option_properties_task::class],
             [list_actions_task::class],
             [get_current_user_task::class],
+            [recall_memory_task::class],
         ];
     }
 

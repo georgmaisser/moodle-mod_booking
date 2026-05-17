@@ -31,6 +31,7 @@ use mod_booking\local\wbagent\booking\tasks\search_courses_task;
 use mod_booking\local\wbagent\booking\tasks\search_options_task;
 use mod_booking\local\wbagent\booking\tasks\search_users_task;
 use mod_booking\local\wbagent\core\tasks\get_current_user_task;
+use mod_booking\local\wbagent\core\tasks\recall_memory_task;
 use mod_booking\local\wbagent\task_registry;
 
 /**
@@ -241,6 +242,25 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
         $this->assertSame((int)$this->teacher->id, (int)$result['userid']);
     }
 
+    /**
+     * recall_memory_task returns structured memory payload without calling LLM.
+     */
+    public function test_recall_memory_returns_structured_data(): void {
+        $store = new \mod_booking\local\wbagent\conversation_store();
+        $thread = $store->get_or_create_thread((int)$this->teacher->id, (int)$this->booking->cmid, (int)$this->booking->id);
+        $store->add_message((int)$thread->id, 'user', 'Memory contract user message');
+        $store->add_message((int)$thread->id, 'assistant', 'Memory contract assistant message');
+        $store->create_fresh_thread((int)$this->teacher->id, (int)$this->booking->cmid, (int)$this->booking->id);
+
+        $result = $this->exec_command('booking.recall_memory', ['mode' => 'last_thread']);
+
+        $this->assertSame('executed', $result['status']);
+        $this->assertArrayHasKey('messages', $result);
+        $this->assertArrayHasKey('memory_observation_text', $result);
+        $this->assertIsArray($result['messages']);
+        $this->assertNotSame('', trim((string)($result['memory_observation_text'] ?? '')));
+    }
+
     // Agent runtime: fallback_message uses task schema (Phase 4).
 
     /**
@@ -327,6 +347,7 @@ final class task_pure_data_contract_test extends abstract_agent_testcase {
             [list_option_properties_task::class],
             [list_actions_task::class],
             [get_current_user_task::class],
+            [recall_memory_task::class],
             [bulk_update_options_task::class],
             [add_price_category_task::class],
         ];

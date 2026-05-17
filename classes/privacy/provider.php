@@ -237,6 +237,7 @@ class provider implements
             'booking_ai_messages',
             [
                 'threadid'       => 'privacy:metadata:bookingaimessages:threadid',
+                'userid'         => 'privacy:metadata:bookingaimessages:userid',
                 'role'           => 'privacy:metadata:bookingaimessages:role',
                 'content'        => 'privacy:metadata:bookingaimessages:content',
                 'structuredjson' => 'privacy:metadata:bookingaimessages:structuredjson',

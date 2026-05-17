@@ -220,6 +220,7 @@ final class agent_privacy_mode_test extends abstract_agent_testcase {
             'booking.list_option_properties',
             'booking.get_current_user',
             'booking.add_price_category',
+            'booking.recall_memory',
         ];
 
         $tasknames = $registry->get_task_names();

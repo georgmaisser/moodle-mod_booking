@@ -143,8 +143,14 @@ class conversation_store implements agent_conversation_store {
     public function add_message(int $threadid, string $role, string $content, array $structured = []): int {
         global $DB;
 
+        $thread = $DB->get_record('booking_ai_threads', ['id' => $threadid], 'id, userid', IGNORE_MISSING);
+        if (!$thread) {
+            throw new \coding_exception('Cannot add message to unknown thread id: ' . $threadid);
+        }
+
         $record = new stdClass();
         $record->threadid = $threadid;
+        $record->userid = (int)$thread->userid;
         $record->role = $role;
         $record->content = $content;
         $record->structuredjson = !empty($structured) ? json_encode($structured) : null;
@@ -241,6 +247,182 @@ class conversation_store implements agent_conversation_store {
         ], 0, $limit);
         // Return in chronological order.
         return array_reverse(array_values($records));
+    }
+
+    /**
+     * Return the previous thread for a user in this booking instance.
+     *
+     * Preference order:
+     * 1) latest archived thread
+     * 2) latest non-active thread
+     * 3) latest thread excluding the active one
+     *
+     * @param int $userid
+     * @param int $cmid
+     * @return stdClass|null
+     */
+    public function get_last_thread_for_user(int $userid, int $cmid): ?stdClass {
+        global $DB;
+
+        $activethread = $DB->get_record('booking_ai_threads', [
+            'userid' => $userid,
+            'cmid' => $cmid,
+            'status' => 'active',
+        ], '*', IGNORE_MISSING);
+        $activeid = (int)($activethread->id ?? 0);
+
+        $sql = 'SELECT *
+                  FROM {booking_ai_threads}
+                 WHERE userid = :userid
+                   AND cmid = :cmid
+                   AND status = :status
+              ORDER BY timemodified DESC, id DESC';
+        $archived = $DB->get_records_sql($sql, [
+            'userid' => $userid,
+            'cmid' => $cmid,
+            'status' => 'archived',
+        ], 0, 1);
+        if (!empty($archived)) {
+            $thread = reset($archived);
+            return $thread ?: null;
+        }
+
+        $sql = 'SELECT *
+                  FROM {booking_ai_threads}
+                 WHERE userid = :userid
+                   AND cmid = :cmid
+                   AND status <> :status
+              ORDER BY timemodified DESC, id DESC';
+        $nonactive = $DB->get_records_sql($sql, [
+            'userid' => $userid,
+            'cmid' => $cmid,
+            'status' => 'active',
+        ], 0, 1);
+        if (!empty($nonactive)) {
+            $thread = reset($nonactive);
+            return $thread ?: null;
+        }
+
+        $params = [
+            'userid' => $userid,
+            'cmid' => $cmid,
+        ];
+        $excludewhere = '';
+        if ($activeid > 0) {
+            $excludewhere = ' AND id <> :activeid';
+            $params['activeid'] = $activeid;
+        }
+        $sql = 'SELECT *
+                  FROM {booking_ai_threads}
+                 WHERE userid = :userid
+                   AND cmid = :cmid'
+                . $excludewhere
+                . ' ORDER BY timemodified DESC, id DESC';
+        $threads = $DB->get_records_sql($sql, $params, 0, 1);
+        $thread = reset($threads);
+        return $thread ?: null;
+    }
+
+    /**
+     * Return user-owned thread ids with messages in the given time window.
+     *
+     * @param int $userid
+     * @param int $cmid
+     * @param int $fromtimestamp
+     * @param int $totimestamp
+     * @return int[]
+     */
+    public function get_user_threads_by_date_window(
+        int $userid,
+        int $cmid,
+        int $fromtimestamp,
+        int $totimestamp
+    ): array {
+        global $DB;
+
+        $sql = 'SELECT DISTINCT t.id
+                  FROM {booking_ai_threads} t
+                  JOIN {booking_ai_messages} m
+                    ON m.threadid = t.id
+                 WHERE t.userid = :userid
+                   AND m.userid = :userid2
+                   AND t.cmid = :cmid
+                   AND m.timecreated >= :fromts
+                   AND m.timecreated <= :tots
+              ORDER BY t.timemodified DESC, t.id DESC';
+        $records = $DB->get_records_sql($sql, [
+            'userid' => $userid,
+            'userid2' => $userid,
+            'cmid' => $cmid,
+            'fromts' => $fromtimestamp,
+            'tots' => $totimestamp,
+        ]);
+
+        return array_values(array_map(static fn(stdClass $row): int => (int)$row->id, $records));
+    }
+
+    /**
+     * Return messages for a user-owned thread with strict dual user fences.
+     *
+     * @param int $userid
+     * @param int $threadid
+     * @param int|null $fromtimestamp
+     * @param int|null $totimestamp
+     * @param string $query
+     * @return stdClass[]
+     */
+    public function get_user_messages_for_thread(
+        int $userid,
+        int $threadid,
+        ?int $fromtimestamp = null,
+        ?int $totimestamp = null,
+        string $query = ''
+    ): array {
+        global $DB;
+
+        $thread = $DB->get_record('booking_ai_threads', ['id' => $threadid, 'userid' => $userid], 'id', IGNORE_MISSING);
+        if (!$thread) {
+            return [];
+        }
+
+        $params = [
+            'threadid' => $threadid,
+            'userid' => $userid,
+            'userid2' => $userid,
+            'steprole' => 'step',
+        ];
+        $where = 'm.threadid = :threadid
+                  AND m.userid = :userid
+                  AND t.userid = :userid2
+                  AND m.role <> :steprole';
+
+        if ($fromtimestamp !== null) {
+            $where .= ' AND m.timecreated >= :fromts';
+            $params['fromts'] = $fromtimestamp;
+        }
+        if ($totimestamp !== null) {
+            $where .= ' AND m.timecreated <= :tots';
+            $params['tots'] = $totimestamp;
+        }
+
+        $query = trim($query);
+        if ($query !== '') {
+            $like = '%' . $DB->sql_like_escape(\core_text::strtolower($query)) . '%';
+            $where .= ' AND (
+                ' . $DB->sql_like('LOWER(' . $DB->sql_cast_char2text('m.content') . ')', ':querylike', false) . '
+                OR ' . $DB->sql_like('LOWER(' . $DB->sql_cast_char2text('m.structuredjson') . ')', ':querylikestruct', false) . '
+            )';
+            $params['querylike'] = $like;
+            $params['querylikestruct'] = $like;
+        }
+
+        $sql = 'SELECT m.*
+                  FROM {booking_ai_messages} m
+                  JOIN {booking_ai_threads} t
+                    ON t.id = m.threadid
+                 WHERE ' . $where . '
+              ORDER BY m.timecreated ASC, m.id ASC';
+        return array_values($DB->get_records_sql($sql, $params));
     }
 
     /**
