@@ -32,10 +32,13 @@ use external_api;
 use external_function_parameters;
 use external_single_structure;
 use external_value;
+use mod_booking\local\wbagent\agent_runtime;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\execution_feedback_service;
 use mod_booking\local\wbagent\executor;
+use mod_booking\local\wbagent\interpreter;
+use mod_booking\local\wbagent\orchestrator;
 use mod_booking\local\wbagent\task_registry;
 use mod_booking\task\execute_ai_run_adhoc;
 
@@ -114,7 +117,8 @@ class ai_confirm_run extends external_api {
             ];
         }
 
-        $cmdsarray = $pendingintent['commands'];
+        $cmdsarray = array_values((array)$pendingintent['commands']);
+        $commandsforrun = self::slice_first_confirmation_stage($cmdsarray);
         $outputlang = trim((string)$store->get_thread_metadata_value((int)$params['threadid'], 'last_output_lang'));
         if ($outputlang === '') {
             $outputlang = current_language();
@@ -135,13 +139,13 @@ class ai_confirm_run extends external_api {
         }
 
         $idempotencykey = hash('sha256', $USER->id . ':' . $params['cmid'] . ':' . $params['threadid']
-            . ':' . json_encode($cmdsarray) . ':' . microtime(true));
+            . ':' . json_encode($commandsforrun) . ':' . microtime(true));
         $runid = $store->create_run(
             $params['threadid'],
             (int)$USER->id,
             $params['cmid'],
             $idempotencykey,
-            $cmdsarray
+            $commandsforrun
         );
 
         $executionmode = (string)(get_config('booking', 'aiexecutionmode') ?? 'direct');
@@ -176,7 +180,7 @@ class ai_confirm_run extends external_api {
             $registry = task_registry::make_default();
             $exec = new executor($registry, $store, $authz);
             $rawresults = $exec->execute_commands(
-                $cmdsarray,
+                $commandsforrun,
                 $params['cmid'],
                 (int)$USER->id,
                 $idempotencykey,
@@ -187,7 +191,7 @@ class ai_confirm_run extends external_api {
                 (int)$params['threadid'],
                 (int)$params['cmid'],
                 (int)$USER->id,
-                $cmdsarray,
+                $commandsforrun,
                 $rawresults,
                 $outputlang
             );
@@ -199,6 +203,12 @@ class ai_confirm_run extends external_api {
                 'status' => 'completed',
                 'results' => $results,
             ]);
+
+            // Continue multistep plans in the same thread after a successful confirmation execution.
+            // This starts a new planner turn from conversation history (fresh task-catalog + embeddings path).
+            $orchestrator = new orchestrator($registry, new interpreter($registry), $store);
+            $runtime = new agent_runtime($registry, $orchestrator, $store, $authz);
+            $runtime->run_loop((int)$params['threadid'], (int)$params['cmid'], (int)$USER->id);
 
             return [
                 'success' => true,
@@ -212,7 +222,7 @@ class ai_confirm_run extends external_api {
                 (int)$params['threadid'],
                 (int)$params['cmid'],
                 (int)$USER->id,
-                $cmdsarray,
+                $commandsforrun,
                 $rawresults,
                 $outputlang
             );
@@ -242,5 +252,23 @@ class ai_confirm_run extends external_api {
             'runid'   => new external_value(PARAM_INT, 'The id of the created run.'),
             'message' => new external_value(PARAM_TEXT, 'Status message.'),
         ]);
+    }
+
+    /**
+     * Execute at most one command per explicit confirmation interaction.
+     *
+     * Multi-command mutation plans are continued by a follow-up planner turn
+     * after this first command finishes.
+     *
+     * @param array $commands
+     * @return array
+     */
+    private static function slice_first_confirmation_stage(array $commands): array {
+        $commands = array_values(array_filter($commands, static fn($entry): bool => is_array($entry)));
+        if (empty($commands)) {
+            return [];
+        }
+
+        return [$commands[0]];
     }
 }

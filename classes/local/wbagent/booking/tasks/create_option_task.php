@@ -270,6 +270,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         $rawinput = $input;
         $appliedaliases = [];
         $input = self::normalize_create_option_input($input, $appliedaliases);
+        $input = self::strip_create_targeting_fields($input);
+        $rawinput = self::strip_create_targeting_fields($rawinput);
 
         $text = trim((string)($input['text'] ?? ''));
         $missingtitle = ($text === '');
@@ -406,6 +408,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         $errors = [];
         $appliedaliases = [];
         $input = self::normalize_create_option_input($input, $appliedaliases);
+        $input = self::strip_create_targeting_fields($input);
 
         // Title is required (structural, but re-check for safety).
         if (empty($input['text'])) {
@@ -1121,6 +1124,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      * @return array
      */
     public function execute(array $preparedinput, int $cmid, int $userid): array {
+        $preparedinput = self::strip_create_targeting_fields($preparedinput);
         $service = new booking_task_mutation_execute_service();
         $result = $service->execute(self::TASK_NAME, $preparedinput, $cmid, $userid, $this->support);
         if (is_array($result)) {
@@ -1138,5 +1142,19 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             'resultid' => null,
             'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $preparedinput, ['Status: error']),
         ];
+    }
+
+    /**
+     * Drop targeting fields that belong to update/bulk flows.
+     *
+     * create_option always creates a fresh option and must never resolve an
+     * existing option by query/id in preflight or execute.
+     *
+     * @param array $input
+     * @return array
+     */
+    private static function strip_create_targeting_fields(array $input): array {
+        unset($input['optionquery'], $input['optionid'], $input['optionwhen']);
+        return $input;
     }
 }

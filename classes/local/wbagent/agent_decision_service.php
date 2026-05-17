@@ -849,7 +849,13 @@ class agent_decision_service {
         if (!empty($mutatingcommands)) {
             // Write operations remain confirmation-gated.
             $result['response_type'] = 'confirmation_request';
-            $result['commands'] = $mutatingcommands;
+            $result['commands'] = $this->slice_first_mutation_confirmation_stage($mutatingcommands);
+            if (count($mutatingcommands) > 1) {
+                $result['issue_codes'] = array_values(array_unique(array_merge(
+                    (array)($result['issue_codes'] ?? []),
+                    ['MULTISTEP_MUTATION_STAGED']
+                )));
+            }
 
             $confirmmessage = trim((string)($result['message'] ?? ''));
             if ($confirmmessage === '') {
@@ -891,6 +897,24 @@ class agent_decision_service {
         }
 
         return $result;
+    }
+
+    /**
+     * Keep only the first mutating command for the current confirmation stage.
+     *
+     * Remaining steps are expected to be produced by a follow-up planner turn
+     * after the first command has been executed.
+     *
+     * @param array $mutatingcommands
+     * @return array
+     */
+    private function slice_first_mutation_confirmation_stage(array $mutatingcommands): array {
+        $mutatingcommands = array_values(array_filter($mutatingcommands, static fn($entry): bool => is_array($entry)));
+        if (empty($mutatingcommands)) {
+            return [];
+        }
+
+        return [$mutatingcommands[0]];
     }
 
     /**

@@ -375,6 +375,12 @@ class agent_runtime {
                 $result['message'] = '';
                 $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
                 $result['sufficiency_exit'] = true;
+            } else if ($this->should_synthesize_after_success_without_pending_intent($threadid, $result, $state)) {
+                // Some planner outputs downgrade successful completion to confirm_pending
+                // even though no pending intent remains. Synthesize a proper final answer.
+                $result['response_type'] = 'sufficient';
+                $result['message'] = '';
+                $result = $this->run_synthesis_step($threadid, $cmid, $userid, $state, $result);
             } else if (
                 (string)($result['response_type'] ?? '') === 'clarification'
                 && empty((array)($result['commands'] ?? []))
@@ -1146,13 +1152,67 @@ class agent_runtime {
             }
         }
 
-        // Preflight happens strictly before any execute() call. That makes one
-        // silent retry generically safe for all task types: the planner gets a
-        // synthetic observation describing the failed preflight and can either
-        // repair the command or return a better clarification. We still require
-        // that no prior tool observation exists so the retry stays scoped to the
-        // current failed planning step and cannot re-run already successful tasks.
-        return empty($state->get_observations());
+        // Default behavior: allow retry before any prior observation exists.
+        if (empty($state->get_observations())) {
+            return true;
+        }
+
+        // In multi-step runs, only retry when we have clear schema/contract-repair
+        // evidence. This avoids perturbing unrelated clarification flows.
+        foreach ($issuecodes as $code) {
+            $upper = core_text::strtoupper((string)$code);
+            if (str_starts_with($upper, 'CONTRACT_')) {
+                return true;
+            }
+        }
+
+        $repairtext = core_text::strtolower(
+            trim((string)($result['message'] ?? '')) . ' ' . implode(' ', $errors)
+        );
+        $repairmarkers = [
+            'corrected canonical keys',
+            'missing required fields',
+            'remove unknown keys',
+            'unknown properties',
+            'schema mismatch',
+            'resend the same task once with corrected input',
+        ];
+
+        foreach ($repairmarkers as $marker) {
+            if ($marker !== '' && str_contains($repairtext, $marker)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Decide whether a post-success confirm_pending should be synthesized.
+     *
+     * @param int $threadid
+     * @param array $result
+     * @param agent_state $state
+     * @return bool
+     */
+    private function should_synthesize_after_success_without_pending_intent(
+        int $threadid,
+        array $result,
+        agent_state $state
+    ): bool {
+        if ((string)($result['response_type'] ?? '') !== 'confirm_pending') {
+            return false;
+        }
+
+        if (!empty((array)($result['commands'] ?? []))) {
+            return false;
+        }
+
+        if (count($state->get_observations()) === 0) {
+            return false;
+        }
+
+        return $this->store->get_pending_intent($threadid) === null;
     }
 
     /**
@@ -1193,11 +1253,62 @@ class agent_runtime {
             $parts[] = 'attempted_tasks=' . implode(',', array_slice($attemptedtasks, 0, 4));
         }
 
+        $taskcatalogcontext = $this->build_retry_task_catalog_context($attemptedtasks);
+        if ($taskcatalogcontext !== '') {
+            $parts[] = $taskcatalogcontext;
+        }
+
         if (empty($parts)) {
             return 'RETRY_HINT: Step ' . $step . ': Preflight clarification without details.';
         }
 
         return 'RETRY_HINT: Step ' . $step . ': Preflight clarification. ' . implode(' ', $parts);
+    }
+
+    /**
+     * Build compact task-catalog context for retry observations.
+     *
+     * @param array<int,string> $attemptedtasks
+     * @return string
+     */
+    private function build_retry_task_catalog_context(array $attemptedtasks): string {
+        if (empty($attemptedtasks)) {
+            return '';
+        }
+
+        $contracts = (array)$this->registry->get_all_prompt_contracts();
+        $bytask = [];
+        foreach ($contracts as $contract) {
+            if (!is_array($contract)) {
+                continue;
+            }
+
+            $taskname = trim((string)($contract['task'] ?? ''));
+            if ($taskname === '') {
+                continue;
+            }
+
+            $bytask[$taskname] = $contract;
+        }
+
+        $selected = [];
+        foreach ($attemptedtasks as $taskname) {
+            if (isset($bytask[$taskname])) {
+                $selected[] = $bytask[$taskname];
+            }
+        }
+
+        if (empty($selected)) {
+            return '';
+        }
+
+        if (count($selected) === 1) {
+            $json = json_encode($selected[0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return is_string($json) ? $json : '';
+        }
+
+        $json = json_encode($selected, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return is_string($json) ? $json : '';
     }
 
     /**
@@ -1562,25 +1673,19 @@ class agent_runtime {
             $plannersteptype
         );
 
-        // Persist planner response only for the initial planner call of this turn
-        // (no observations). Retry/repair steps must not overwrite it, otherwise
-        // [PLANNER_RESULT] can bloat with preflight clarification payloads.
-        $plannerresultjson = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if (is_string($plannerresultjson) && $plannerresultjson !== '') {
-            $history = $this->store->get_thread_metadata_value($threadid, 'planner_trace_history');
-            if (!is_array($history)) {
-                $history = [];
-            }
-            $history[] = $plannerresultjson;
-            $this->store->set_thread_metadata_value($threadid, 'planner_trace_history', $history);
-        }
+        $plannerrawresponse = is_string($result['_planner_raw_response'] ?? null)
+            ? (string)$result['_planner_raw_response']
+            : '';
+        unset($result['_planner_raw_response']);
 
-        if (
-            $plannersteptype === orchestrator::STEP_TYPE_TOOL_CALL_PARSE
-            && empty($observations)
-            && is_string($plannerresultjson)
-            && $plannerresultjson !== ''
-        ) {
+        // Keep PLANNER_TRACE as the exact last planner answer for the next call.
+        $plannerresultjson = $plannerrawresponse;
+        if ($plannerresultjson === '') {
+            $fallbackjson = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $plannerresultjson = is_string($fallbackjson) ? $fallbackjson : '';
+        }
+        if ($plannerresultjson !== '') {
+            $this->store->set_thread_metadata_value($threadid, 'planner_trace_history', [$plannerresultjson]);
             $this->store->set_thread_metadata_value($threadid, 'last_planner_result_json', $plannerresultjson);
         }
 
@@ -1934,6 +2039,15 @@ class agent_runtime {
                     ? orchestrator::STEP_TYPE_SIMPLE_RETRIEVAL
                     : orchestrator::STEP_TYPE_TOOL_CALL_PARSE
             );
+
+            $retryrawresponse = is_string($retryresult['_planner_raw_response'] ?? null)
+                ? (string)$retryresult['_planner_raw_response']
+                : '';
+            unset($retryresult['_planner_raw_response']);
+            if ($retryrawresponse !== '') {
+                $this->store->set_thread_metadata_value($threadid, 'planner_trace_history', [$retryrawresponse]);
+                $this->store->set_thread_metadata_value($threadid, 'last_planner_result_json', $retryrawresponse);
+            }
 
             if (!$this->is_hard_contract_error($retryresult)) {
                 // Recovery successful: return retry result.

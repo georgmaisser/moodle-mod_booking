@@ -35,9 +35,9 @@ use mod_booking\local\wbagent\conversation_store;
  */
 final class confirmation_session_allow_service_test extends booking_advanced_testcase {
     /**
-     * The allowlist must persist per user and thread.
+     * The allowlist must persist per user and cmid, independent of thread id.
      */
-    public function test_allowlist_persists_per_thread_contract(): void {
+    public function test_allowlist_persists_per_cmid_contract(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
 
@@ -50,7 +50,8 @@ final class confirmation_session_allow_service_test extends booking_advanced_tes
         $service->allow_confirmation_for_thread($userid, $cmid, $threadid, time() + 60);
 
         $this->assertTrue($service->is_confirmation_allowed_for_thread($userid, $cmid, $threadid));
-        $this->assertFalse($service->is_confirmation_allowed_for_thread($userid, $cmid, $threadid + 1));
+        $this->assertTrue($service->is_confirmation_allowed_for_thread($userid, $cmid, $threadid + 1));
+        $this->assertFalse($service->is_confirmation_allowed_for_thread($userid, $cmid + 1, $threadid));
 
         $service->clear_confirmation_allowance($userid, $cmid, $threadid);
         $this->assertFalse($service->is_confirmation_allowed_for_thread($userid, $cmid, $threadid));

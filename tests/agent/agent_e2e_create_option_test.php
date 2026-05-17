@@ -231,4 +231,24 @@ final class agent_e2e_create_option_test extends abstract_agent_testcase {
         $this->assertEquals('WbTable Visible Option', $row->text);
         $this->assertEquals(5, (int)$row->maxanswers);
     }
+
+    /**
+     * optionquery is an update/bulk targeting field and must be ignored for create_option.
+     */
+    public function test_create_option_ignores_optionquery_targeting_field(): void {
+        $result = $this->exec_command('booking.create_option', [
+            'text'            => 'Create Ignores Optionquery',
+            'optionquery'     => 'This existing-option selector must be ignored',
+            'maxanswers'      => 10,
+            'coursestarttime' => '2045-03-15T09:00:00',
+            'courseendtime'   => '2045-03-15T17:00:00',
+            'teacherquery'    => 'current',
+        ]);
+
+        $this->assertEquals('executed', $result['status'], $result['detail'] ?? '');
+        $this->assertGreaterThan(0, (int)$result['resultid']);
+
+        $option = $this->get_option_from_db((int)$result['resultid']);
+        $this->assertEquals('Create Ignores Optionquery', $option->text);
+    }
 }

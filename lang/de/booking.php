@@ -569,6 +569,9 @@ $string['ai_action_update_option'] = 'Buchungsoption aktualisieren';
 $string['ai_agent_loop_repeat_message'] = 'Ich habe {$a->steps} wiederholte Nachschlage-Schritte abgeschlossen und das neueste Ergebnis zurückgegeben.';
 $string['ai_agent_malformed_taskcall_clarification'] =
     'Ich konnte den letzten Schritt nicht zuverlaessig verarbeiten. Bitte stellen Sie Ihre Frage noch einmal in einem kurzen Satz.';
+$string['ai_btn_cancel'] = 'Abbrechen';
+$string['ai_btn_confirm'] = 'Bestaetigen und ausfuehren';
+$string['ai_btn_confirm_session'] = 'Bestaetigen und fuer die naechsten 12 Stunden ausfuehren';
 $string['ai_confirm_missing_teacher_user_create_option'] = 'Benutzer "{$a->userquery}" wurde nicht gefunden. Um diesen Auftrag auszufuehren, muss dieser Benutzer zusaetzlich erstellt werden. Soll ich Benutzer und Buchungsoption erstellen?';
 $string['ai_diagnose_recall_blocked_use_existing'] =
     'Ich habe bereits relevante Diagnoseergebnisse und fasse diese direkt zusammen, statt dieselbe Prüfung erneut auszuführen.';

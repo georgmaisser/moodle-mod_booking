@@ -32,6 +32,7 @@ require_once(__DIR__ . '/../routed_ai_manager_mock.php');
 require_once(__DIR__ . '/ai_send_message_mock_scenarios.php');
 
 use mod_booking\external\ai_confirm_run;
+use mod_booking\external\ai_poll_run_status;
 use mod_booking\external\ai_send_message;
 
 /**
@@ -115,7 +116,10 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         $_POST['sesskey'] = sesskey();
         $response = ai_send_message::execute((int)$this->booking->cmid, (string)$case['prompt']);
 
-        $expectedresponses = array_map(static fn($value): string => (string)$value, (array)($case['expected_response_types'] ?? [$case['expected_response_type']]));
+        $expectedresponses = array_map(
+            static fn($value): string => (string)$value,
+            (array)($case['expected_response_types'] ?? [$case['expected_response_type']])
+        );
         $this->assertContains((string)($response['response_type'] ?? ''), $expectedresponses);
 
         $this->assertGreaterThan(0, (int)($response['threadid'] ?? 0));
@@ -609,5 +613,208 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         $resulttext = json_encode($results, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $this->assertIsString($resulttext);
         $this->assertStringContainsString((string)$option->text, $resulttext);
+    }
+
+    /**
+     * Confirming the first mutation must continue multistep planning in the same thread.
+     *
+     * After the run completes, polling should expose a follow-up confirmation request
+     * (next mutation step) without requiring a new user message.
+     *
+     * @return void
+     */
+    public function test_confirm_run_continues_to_next_confirmation_step(): void {
+        global $DB;
+
+        $this->setUser($this->teacher);
+        set_config('aiexecutionmode', 'direct', 'booking');
+
+        $title = 'Webservice Multistep Continue ' . uniqid('', true);
+
+        $this->install_routed_ai_manager([
+            [
+                'prompt_contains' => ['Create booking option'],
+                'responses' => [
+                    [
+                        'response_type' => 'confirmation_request',
+                        'message' => 'Please confirm creating this booking option.',
+                        'commands' => [[
+                            'task' => 'booking.create_option',
+                            'version' => 1,
+                            'input' => [
+                                'text' => $title,
+                                'optiontype' => 'normal',
+                                'maxanswers' => 7,
+                                'coursestarttime' => '2045-11-01T09:00:00',
+                                'courseendtime' => '2045-11-01T11:00:00',
+                                'teacherquery' => 'current',
+                            ],
+                        ]],
+                    ],
+                    [
+                        'response_type' => 'confirmation_request',
+                        'message' => 'Please confirm making this option visible.',
+                        'commands' => [[
+                            'task' => 'booking.update_option',
+                            'version' => 1,
+                            'input' => [
+                                'optionquery' => $title,
+                                'visible' => 1,
+                            ],
+                        ]],
+                    ],
+                ],
+            ],
+        ]);
+
+        $_POST['sesskey'] = sesskey();
+        $firstresponse = ai_send_message::execute(
+            (int)$this->booking->cmid,
+            'Create booking option "' . $title . '" with 7 spots from 2045-11-01T09:00:00 to 2045-11-01T11:00:00.'
+        );
+
+        $this->assertSame('confirmation_request', (string)($firstresponse['response_type'] ?? ''));
+        $this->assertNotSame('', trim((string)($firstresponse['pendingconfirmationcode'] ?? '')));
+
+        $_POST['sesskey'] = sesskey();
+        $confirm = ai_confirm_run::execute(
+            (int)$this->booking->cmid,
+            (int)$firstresponse['threadid'],
+            (string)($firstresponse['commands'] ?? '[]')
+        );
+
+        $this->assertTrue((bool)($confirm['success'] ?? false), (string)($confirm['message'] ?? ''));
+        $this->assertGreaterThan(0, (int)($confirm['runid'] ?? 0));
+
+        $created = $DB->get_record('booking_options', [
+            'bookingid' => (int)$this->booking->id,
+            'text' => $title,
+        ]);
+        $this->assertNotFalse($created, 'Confirmed run must create the booking option.');
+
+        $_POST['sesskey'] = sesskey();
+        $poll = ai_poll_run_status::execute((int)$this->booking->cmid, (int)$confirm['runid']);
+
+        $this->assertSame('completed', (string)($poll['status'] ?? ''));
+        $this->assertSame(1, (int)($poll['followupconfirmation'] ?? 0));
+        $this->assertSame(0, (int)($poll['sessionallowactive'] ?? 0));
+
+        $followupcommands = json_decode((string)($poll['followupcommandsjson'] ?? '[]'), true);
+        $this->assertIsArray($followupcommands);
+        $this->assertNotEmpty($followupcommands);
+        $this->assertSame('booking.update_option', (string)($followupcommands[0]['task'] ?? ''));
+    }
+
+    /**
+     * A confirmation containing multiple mutating commands must execute only the
+     * first command and surface the next command as a follow-up confirmation.
+     *
+     * @return void
+     */
+    public function test_confirm_run_stages_multi_command_confirmation_plan(): void {
+        global $DB;
+
+        $this->setUser($this->teacher);
+        set_config('aiexecutionmode', 'direct', 'booking');
+
+        $title = 'Webservice Staged Confirm ' . uniqid('', true);
+        $target = $this->getDataGenerator()->create_user([
+            'firstname' => 'Staged',
+            'lastname' => 'Target',
+            'email' => 'staged.target.' . uniqid('', true) . '@example.com',
+        ]);
+
+        $this->install_routed_ai_manager([
+            [
+                'prompt_contains' => ['Create booking option'],
+                'responses' => [
+                    [
+                        'response_type' => 'confirmation_request',
+                        'message' => 'Please confirm creating and then booking the user.',
+                        'commands' => [
+                            [
+                                'task' => 'booking.create_option',
+                                'version' => 1,
+                                'input' => [
+                                    'text' => $title,
+                                    'optiontype' => 'normal',
+                                    'maxanswers' => 7,
+                                    'coursestarttime' => '2045-11-01T09:00:00',
+                                    'courseendtime' => '2045-11-01T11:00:00',
+                                    'teacherquery' => 'current',
+                                ],
+                            ],
+                            [
+                                'task' => 'booking.book_users',
+                                'version' => 1,
+                                'input' => [
+                                    'optionquery' => $title,
+                                    'bookusersquery' => (string)$target->email,
+                                ],
+                            ],
+                        ],
+                    ],
+                    [
+                        'response_type' => 'confirmation_request',
+                        'message' => 'Please confirm booking the selected user for this option.',
+                        'commands' => [[
+                            'task' => 'booking.book_users',
+                            'version' => 1,
+                            'input' => [
+                                'optionquery' => $title,
+                                'bookusersquery' => (string)$target->email,
+                            ],
+                        ]],
+                    ],
+                ],
+            ],
+        ]);
+
+        $_POST['sesskey'] = sesskey();
+        $firstresponse = ai_send_message::execute(
+            (int)$this->booking->cmid,
+            'Create booking option "' . $title . '" and then book ' . (string)$target->email . ' into it.'
+        );
+
+        $this->assertSame('confirmation_request', (string)($firstresponse['response_type'] ?? ''));
+        $commands = json_decode((string)($firstresponse['commands'] ?? '[]'), true);
+        $this->assertIsArray($commands);
+        $this->assertCount(1, $commands, 'Server-side staging must expose only the first mutation for confirmation.');
+        $this->assertSame('booking.create_option', (string)($commands[0]['task'] ?? ''));
+
+        $_POST['sesskey'] = sesskey();
+        $confirm = ai_confirm_run::execute(
+            (int)$this->booking->cmid,
+            (int)$firstresponse['threadid'],
+            (string)($firstresponse['commands'] ?? '[]')
+        );
+
+        $this->assertTrue((bool)($confirm['success'] ?? false), (string)($confirm['message'] ?? ''));
+
+        $created = $DB->get_record('booking_options', [
+            'bookingid' => (int)$this->booking->id,
+            'text' => $title,
+        ]);
+        $this->assertNotFalse($created, 'First stage must create the booking option.');
+
+        $this->assertFalse(
+            $DB->record_exists('booking_answers', [
+                'bookingid' => (int)$this->booking->id,
+                'optionid' => (int)$created->id,
+                'userid' => (int)$target->id,
+            ]),
+            'Second stage must NOT execute in the same confirmation run.'
+        );
+
+        $_POST['sesskey'] = sesskey();
+        $poll = ai_poll_run_status::execute((int)$this->booking->cmid, (int)$confirm['runid']);
+
+        $this->assertSame('completed', (string)($poll['status'] ?? ''));
+        $this->assertSame(1, (int)($poll['followupconfirmation'] ?? 0));
+
+        $followupcommands = json_decode((string)($poll['followupcommandsjson'] ?? '[]'), true);
+        $this->assertIsArray($followupcommands);
+        $this->assertCount(1, $followupcommands, 'Follow-up should expose exactly the next stage command.');
+        $this->assertSame('booking.book_users', (string)($followupcommands[0]['task'] ?? ''));
     }
 }

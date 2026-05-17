@@ -1630,8 +1630,30 @@ const pollRunStatus = (runid, cmid) => {
 
                     const followupMessage = String(resp.followupdisplaymessage || resp.followupmessage || '').trim();
                     if (followupCommands.length > 0) {
-                        showConfirmPanel(followupMessage || 'Please confirm the updated command plan.', followupCommands);
+                        if (Number(resp.sessionallowactive || 0) === 1) {
+                            pendingCommands = followupCommands;
+                            confirmRun(true);
+                        } else {
+                            showConfirmPanel(followupMessage || 'Please confirm the updated command plan.', followupCommands);
+                        }
                     }
+                }
+
+                const continuationType = String(resp.continuationresponsetype || '').trim();
+                const continuationText = String(
+                    resp.continuationdisplaymessage || resp.continuationmessage || ''
+                ).trim();
+                if (
+                    continuationText !== ''
+                    && continuationType !== ''
+                ) {
+                    appendMessage('assistant', continuationText, {
+                        response_type: continuationType,
+                        threadid: Number(currentThreadId || 0),
+                        runid: Number(resp.runid || 0),
+                        source: 'ai_poll_run_status.continuation',
+                        time: (new Date()).toISOString(),
+                    });
                 }
 
                 if (resp.status === 'completed') {
@@ -1815,6 +1837,15 @@ const stopStepPolling = () => {
     if (stepPollInterval !== null) {
         clearInterval(stepPollInterval);
         stepPollInterval = null;
+    }
+};
+
+/**
+ * Resume step polling for the active thread if a thread is available.
+ */
+const resumeStepPolling = () => {
+    if (currentThreadId > 0 && currentCmid > 0) {
+        startStepPolling(currentThreadId, currentCmid);
     }
 };
 
@@ -2089,6 +2120,10 @@ const sendMessage = (message) => {
             if (optionIds.length > 0) {
                 renderOptionPreviewsInline(currentCmid, optionIds);
             }
+
+            // Keep the thread poller alive so additional step bubbles from the same
+            // conversation thread still appear after the execution result is rendered.
+            resumeStepPolling();
         } else if (resp.response_type === 'confirmation_request' || resp.response_type === 'task_call') {
             try {
                 const parsedCommands = JSON.parse(resp.commands || '[]');
@@ -2185,6 +2220,7 @@ const confirmRun = (allowSession = false) => {
         },
     }])[0].then((resp) => {
         if (resp.success) {
+            resumeStepPolling();
             pollRunStatus(resp.runid, currentCmid);
         } else {
             clearActivePlanBubble();

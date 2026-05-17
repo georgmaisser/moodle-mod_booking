@@ -455,7 +455,14 @@ class orchestrator {
             }
         }
 
-        return $this->interpreter->interpret($rawtext, $cmid, $userid, $lastusermessage);
+        $interpreted = $this->interpreter->interpret($rawtext, $cmid, $userid, $lastusermessage);
+        if (is_array($interpreted)) {
+            // Preserve the exact raw planner payload so runtime can pass it unchanged
+            // into the next call as PLANNER_TRACE.
+            $interpreted['_planner_raw_response'] = $rawtext;
+        }
+
+        return $interpreted;
     }
 
     /**
@@ -1003,9 +1010,8 @@ PROMPT;
         $history = [];
         foreach ($value as $entry) {
             if (is_string($entry)) {
-                $text = trim($entry);
-                if ($text !== '') {
-                    $history[] = $text;
+                if ($entry !== '') {
+                    $history[] = $entry;
                 }
                 continue;
             }

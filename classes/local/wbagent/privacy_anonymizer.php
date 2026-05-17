@@ -302,7 +302,7 @@ class privacy_anonymizer {
         if (is_string($value)) {
             return preg_replace_callback('/\bANON_USER_\d+(?:_[a-z]+)?\b/', function (array $m) use ($entries, $fieldkey): string {
                 $token = $m[0];
-                $entry = $entries[$token] ?? null;
+                $entry = $this->resolve_token_entry($entries, $token);
                 if (!is_array($entry)) {
                     return $token;
                 }
@@ -320,6 +320,37 @@ class privacy_anonymizer {
         }
 
         return $value;
+    }
+
+    /**
+     * Resolve a token entry for exact and base-token variants.
+     *
+     * Planner output can contain ANON_USER_<n> while the token map contains only
+     * ANON_USER_<n>_firstname / _lastname / _email / _both variants.
+     *
+     * @param array<string,mixed> $entries
+     * @param string $token
+     * @return array<string,mixed>|null
+     */
+    private function resolve_token_entry(array $entries, string $token): ?array {
+        $entry = $entries[$token] ?? null;
+        if (is_array($entry)) {
+            return $entry;
+        }
+
+        $base = $this->extract_base_token_from_anon_token($token);
+        if ($base === '') {
+            return null;
+        }
+
+        foreach (['both', 'email', 'firstname', 'lastname'] as $suffix) {
+            $candidate = $entries[$base . '_' . $suffix] ?? null;
+            if (is_array($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1119,7 +1150,7 @@ class privacy_anonymizer {
         }
 
         if ($this->is_user_reference_field($normalizedfield)) {
-            foreach (['firstname', 'both', 'lastname', 'email'] as $variantkey) {
+            foreach (['email', 'both', 'firstname', 'lastname'] as $variantkey) {
                 $variant = trim((string)($variants[$variantkey] ?? ''));
                 if ($variant !== '') {
                     return $variant;

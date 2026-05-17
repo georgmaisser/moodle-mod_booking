@@ -41,8 +41,8 @@ class conversation_store implements agent_conversation_store {
     /** Preference key that stores session allowlist entries. */
     private const CONFIRMATION_SESSION_ALLOWLIST_KEY = 'mod_booking_ai_confirmation_session_allowlist';
 
-    /** Default lifetime for a thread allowlist entry in seconds. */
-    private const CONFIRMATION_SESSION_ALLOWLIST_TTL = 3600;
+    /** Default lifetime for a confirmation allowlist entry in seconds (12h). */
+    private const CONFIRMATION_SESSION_ALLOWLIST_TTL = 43200;
 
     /**
      * Get the active thread for a user and cmid.
@@ -726,7 +726,10 @@ class conversation_store implements agent_conversation_store {
     }
 
     /**
-     * Allow confirmations for a specific thread for the current session window.
+     * Allow confirmations for a booking context for the current session window.
+     *
+     * Thread id is accepted for backward compatibility but not part of the key,
+     * so a page reload/new thread keeps the allowance active.
      *
      * @param int $userid
      * @param int $cmid
@@ -736,7 +739,7 @@ class conversation_store implements agent_conversation_store {
      */
     public function allow_confirmation_for_thread(int $userid, int $cmid, int $threadid, ?int $expiresat = null): void {
         $allowlist = $this->get_confirmation_session_allowlist($userid);
-        $key = $this->make_confirmation_session_allowlist_key($cmid, $threadid);
+        $key = $this->make_confirmation_session_allowlist_key($cmid);
         $allowlist[$key] = [
             'cmid' => $cmid,
             'threadid' => $threadid,
@@ -746,7 +749,9 @@ class conversation_store implements agent_conversation_store {
     }
 
     /**
-     * Check whether confirmations may be auto-approved for a thread.
+     * Check whether confirmations may be auto-approved for this booking context.
+     *
+     * Thread id is accepted for backward compatibility but ignored for matching.
      *
      * @param int $userid
      * @param int $cmid
@@ -755,12 +760,14 @@ class conversation_store implements agent_conversation_store {
      */
     public function is_confirmation_allowed_for_thread(int $userid, int $cmid, int $threadid): bool {
         $allowlist = $this->get_confirmation_session_allowlist($userid);
-        $key = $this->make_confirmation_session_allowlist_key($cmid, $threadid);
+        $key = $this->make_confirmation_session_allowlist_key($cmid);
         return !empty($allowlist[$key]);
     }
 
     /**
-     * Remove a thread from the confirmation allowlist.
+     * Remove allowance for this booking context from the confirmation allowlist.
+     *
+     * Thread id is accepted for backward compatibility but ignored for matching.
      *
      * @param int $userid
      * @param int $cmid
@@ -769,20 +776,19 @@ class conversation_store implements agent_conversation_store {
      */
     public function clear_confirmation_allowance(int $userid, int $cmid, int $threadid): void {
         $allowlist = $this->get_confirmation_session_allowlist($userid);
-        $key = $this->make_confirmation_session_allowlist_key($cmid, $threadid);
+        $key = $this->make_confirmation_session_allowlist_key($cmid);
         unset($allowlist[$key]);
         $this->save_confirmation_session_allowlist($userid, $allowlist);
     }
 
     /**
-     * Build a stable preference key for a thread.
+     * Build a stable preference key per booking context.
      *
      * @param int $cmid
-     * @param int $threadid
      * @return string
      */
-    private function make_confirmation_session_allowlist_key(int $cmid, int $threadid): string {
-        return $cmid . ':' . $threadid;
+    private function make_confirmation_session_allowlist_key(int $cmid): string {
+        return (string)$cmid;
     }
 
     /**
