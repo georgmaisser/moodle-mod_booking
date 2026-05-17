@@ -434,6 +434,10 @@ $string['agent_booking_teacher_no_email'] =
 $string['agent_booking_unknown_price_categories'] =
     'Unbekannte Preiskategorie(n): {$a->unknown}. Vorhandene Kategorien: {$a->existing}.';
 $string['agent_booking_unknown_task'] = 'Unbekannte Buchungsaufgabe: {$a}.';
+$string['agent_booking_recreate_task_catalog_invalid_dimensions'] =
+    'Embedding-Dimensionen muessen groesser als 0 sein.';
+$string['agent_booking_recreate_task_catalog_queued'] =
+    'Der Neuaufbau des Task-Katalogs wurde eingeplant.';
 $string['agent_booking_update_option_invalid_optionid'] =
 'Die angegebene Options-ID {$a} gehoert nicht zu dieser Buchungsinstanz.';
 $string['agent_booking_update_option_invalid_optionid_question'] =
@@ -556,6 +560,7 @@ $string['ai_action_explain_docs_topic'] = 'Dokumentationsthema erklaeren';
 $string['ai_action_get_current_user'] = 'Aktuellen Benutzer abrufen';
 $string['ai_action_list_actions'] = 'Unterstuetzte Aktionen auflisten';
 $string['ai_action_list_option_properties'] = 'Bearbeitbare Eigenschaften von Buchungsoptionen auflisten';
+$string['ai_action_recreate_task_catalog'] = 'Task-Katalog-Embeddings neu erstellen';
 $string['ai_action_search_courses'] = 'Kurse suchen';
 $string['ai_action_search_options'] = 'Buchungsoptionen suchen';
 $string['ai_action_search_users'] = 'Nutzer:innen suchen';
@@ -661,11 +666,13 @@ $string['ai_result_feedback_users_found'] = 'Ich habe {$a} passende Nutzer gefun
 $string['ai_result_feedback_users_none'] = 'Ich konnte keine passenden Nutzer finden.';
 $string['ai_status_confirm_booking_bulk_update_options'] = 'Ich werde mehrere Buchungsoptionen auf einmal aktualisieren. Soll ich fortfahren?';
 $string['ai_status_confirm_booking_create_option'] = 'Ich werde eine neue Buchungsoption erstellen.';
+$string['ai_status_confirm_booking_recreate_task_catalog'] = 'Ich werde jetzt den Task-Katalog fuer Embeddings neu erstellen.';
 $string['ai_status_confirm_booking_search_options'] = 'Ich werde die Buchungsoptionen auflisten.';
 $string['ai_status_confirm_booking_update_option'] = 'Ich werde die Buchungsoption aktualisieren.';
 $string['ai_status_confirm_default'] = 'Soll ich die vorgeschlagene Aktion ausfuehren?';
 $string['ai_status_taskcall_booking_bulk_update_options'] = 'Aktualisiere mehrere Buchungsoptionen.';
 $string['ai_status_taskcall_booking_create_option'] = 'Erstelle die Buchungsoption.';
+$string['ai_status_taskcall_booking_recreate_task_catalog'] = 'Erstelle Task-Katalog-Embeddings neu.';
 $string['ai_status_taskcall_booking_search_courses'] = 'Suche passende Kurse.';
 $string['ai_status_taskcall_booking_search_options'] = 'Lade Liste der Buchungsoptionen.';
 $string['ai_status_taskcall_booking_search_users'] = 'Suche passende Nutzer:innen.';

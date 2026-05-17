@@ -278,6 +278,9 @@ class task_registry {
                 'userquery' => 'Anna Example',
             ],
             'booking.get_current_user' => [],
+            'booking.recreate_task_catalog' => [
+                'force' => true,
+            ],
             'booking.update_option' => [
                 'optionquery' => 'Geburtstag ANON_USER_1',
                 'text' => 'Geburtstag ANON_USER_1',

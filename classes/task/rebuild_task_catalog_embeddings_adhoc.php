@@ -75,6 +75,7 @@ class rebuild_task_catalog_embeddings_adhoc extends \core\task\adhoc_task {
         $context = context_system::instance();
         $admin = get_admin();
         $userid = !empty($admin->id) ? (int)$admin->id : 2;
+        $embeddedtasks = [];
 
         $manager = di::get(ai_manager::class);
         foreach ($rows as $idx => $row) {
@@ -103,6 +104,10 @@ class rebuild_task_catalog_embeddings_adhoc extends \core\task\adhoc_task {
             }
 
             $rows[$idx]['embedding_json'] = json_encode($embedding, JSON_UNESCAPED_UNICODE);
+            $taskname = trim((string)($row['task'] ?? ''));
+            if ($taskname !== '') {
+                $embeddedtasks[] = $taskname;
+            }
             unset($rows[$idx]['_embedding_input']);
         }
 
@@ -111,5 +116,14 @@ class rebuild_task_catalog_embeddings_adhoc extends \core\task\adhoc_task {
         }
 
         $repo->write_rows($rows);
+
+        $embeddedtasks = array_values(array_unique($embeddedtasks));
+        sort($embeddedtasks);
+
+        mtrace('mod_booking embeddings rebuild: generated embeddings for '
+            . count($embeddedtasks) . ' tasks.');
+        if (!empty($embeddedtasks)) {
+            mtrace('mod_booking embeddings rebuild tasks: ' . implode(', ', $embeddedtasks));
+        }
     }
 }

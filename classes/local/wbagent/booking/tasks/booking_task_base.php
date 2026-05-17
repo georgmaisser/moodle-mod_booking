@@ -93,6 +93,10 @@ abstract class booking_task_base extends base_task {
             'input_fields_for_prompt' => [],
             'anchor_fields' => [],
         ],
+        'booking.recreate_task_catalog' => [
+            'input_fields_for_prompt' => [],
+            'anchor_fields' => [],
+        ],
         'booking.explain_docs_topic' => [
             'input_fields_for_prompt' => ['question'],
             'anchor_fields' => [],

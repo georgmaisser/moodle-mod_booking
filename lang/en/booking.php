@@ -419,6 +419,10 @@ $string['agent_booking_teacher_no_email'] =
 $string['agent_booking_unknown_price_categories'] =
     'Unknown price category/categories: {$a->unknown}. Existing categories are: {$a->existing}.';
 $string['agent_booking_unknown_task'] = 'Unknown booking task: {$a}.';
+$string['agent_booking_recreate_task_catalog_invalid_dimensions'] =
+    'Embedding dimensions must be greater than 0.';
+$string['agent_booking_recreate_task_catalog_queued'] =
+    'Task catalog rebuild has been queued.';
 $string['agent_booking_update_option_invalid_optionid'] =
     'The provided option id {$a} does not belong to this booking instance.';
 $string['agent_booking_update_option_invalid_optionid_question'] =
@@ -531,6 +535,7 @@ $string['ai_action_explain_docs_topic'] = 'Explain booking documentation topic';
 $string['ai_action_get_current_user'] = 'Get current user';
 $string['ai_action_list_actions'] = 'List supported actions';
 $string['ai_action_list_option_properties'] = 'List editable booking option properties';
+$string['ai_action_recreate_task_catalog'] = 'Recreate task catalog embeddings';
 $string['ai_action_search_courses'] = 'Search courses';
 $string['ai_action_search_options'] = 'Search booking options';
 $string['ai_action_search_users'] = 'Search users';
@@ -666,11 +671,13 @@ $string['ai_run_executed'] = 'Your request has been executed.';
 $string['ai_run_queued'] = 'Your request has been queued for processing.';
 $string['ai_status_confirm_booking_bulk_update_options'] = 'I will update multiple booking options at once. Should I proceed?';
 $string['ai_status_confirm_booking_create_option'] = 'I will create a new booking option.';
+$string['ai_status_confirm_booking_recreate_task_catalog'] = 'I will recreate the task catalog embeddings now.';
 $string['ai_status_confirm_booking_search_options'] = 'I will list the booking options.';
 $string['ai_status_confirm_booking_update_option'] = 'I will update the booking option.';
 $string['ai_status_confirm_default'] = 'Should I execute the proposed action?';
 $string['ai_status_taskcall_booking_bulk_update_options'] = 'Updating multiple booking options.';
 $string['ai_status_taskcall_booking_create_option'] = 'Creating the booking option.';
+$string['ai_status_taskcall_booking_recreate_task_catalog'] = 'Recreating task catalog embeddings.';
 $string['ai_status_taskcall_booking_search_courses'] = 'Searching for matching courses.';
 $string['ai_status_taskcall_booking_search_options'] = 'Fetching list of booking options.';
 $string['ai_status_taskcall_booking_search_users'] = 'Searching for matching users.';

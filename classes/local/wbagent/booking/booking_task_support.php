@@ -33,6 +33,7 @@ use mod_booking\local\wbagent\booking\tasks\create_option_task;
 use mod_booking\local\wbagent\booking\tasks\create_user_task;
 use mod_booking\local\wbagent\booking\tasks\list_actions_task;
 use mod_booking\local\wbagent\booking\tasks\list_option_properties_task;
+use mod_booking\local\wbagent\booking\tasks\recreate_task_catalog_task;
 use mod_booking\local\wbagent\booking\tasks\search_courses_task;
 use mod_booking\local\wbagent\booking\tasks\search_options_task;
 use mod_booking\local\wbagent\booking\tasks\search_users_task;
@@ -1620,6 +1621,7 @@ class booking_task_support {
             list_option_properties_task::TASK_NAME => 'ai_action_list_option_properties',
             list_actions_task::TASK_NAME => 'ai_action_list_actions',
             get_current_user_task::TASK_NAME => 'ai_action_get_current_user',
+            recreate_task_catalog_task::TASK_NAME => 'ai_action_recreate_task_catalog',
         ];
 
         if (isset($map[$taskname])) {

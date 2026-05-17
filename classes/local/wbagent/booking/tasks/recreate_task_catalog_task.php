@@ -23,5 +23,5 @@ namespace mod_booking\local\wbagent\booking\tasks;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class search_users_task extends \mod_booking\local\wbagent\core\tasks\search_users_task {
+class recreate_task_catalog_task extends \mod_booking\local\wbagent\core\tasks\recreate_task_catalog_task {
 }

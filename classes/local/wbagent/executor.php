@@ -478,6 +478,7 @@ class executor implements agent_executor {
             'booking.list_option_properties' => 'ai_action_list_option_properties',
             'booking.list_actions' => 'ai_action_list_actions',
             'booking.get_current_user' => 'ai_action_get_current_user',
+            'booking.recreate_task_catalog' => 'ai_action_recreate_task_catalog',
             'booking.explain_docs_topic' => 'ai_action_explain_docs_topic',
             'booking.diagnose_booking_issue' => 'ai_action_diagnose_booking_issue',
         ];
