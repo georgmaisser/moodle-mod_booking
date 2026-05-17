@@ -119,9 +119,10 @@ final class diagnose_booking_issue_task_test extends abstract_agent_testcase {
         $this->assertSame('executed', $result['status']);
         $this->assertSame((int)$option->id, (int)$result['resultid']);
         $this->assertContains((int)$option->id, $result['previewoptionids'] ?? []);
-        $this->assertStringContainsString(
-            'You are already booked, so another normal booking is not available.',
-            (string)($result['diagnosis']['reasons'][1] ?? '')
+        $reasons = (array)($result['diagnosis']['reasons'] ?? []);
+        $this->assertNotEmpty(
+            array_filter($reasons, static fn(string $line): bool =>
+                stripos($line, 'already booked, so another normal booking is not available') !== false)
         );
         $this->assertSame('booking_status', (string)($result['diagnosis']['issue'] ?? ''));
         $this->assertSame('booked', (string)($result['diagnosis']['userstatus'] ?? ''));
@@ -164,9 +165,42 @@ final class diagnose_booking_issue_task_test extends abstract_agent_testcase {
 
         $this->assertSame('executed', $result['status']);
         $this->assertSame('missing_email', (string)($result['diagnosis']['issue'] ?? ''));
-        $this->assertStringContainsString(
-            'This self-service check cannot prove whether an email was actually sent or delivered.',
-            (string)($result['diagnosis']['reasons'][1] ?? '')
+        $reasons = (array)($result['diagnosis']['reasons'] ?? []);
+        $this->assertNotEmpty(
+            array_filter($reasons, static fn(string $line): bool =>
+                stripos($line, 'cannot prove whether an email was actually sent or delivered') !== false)
+        );
+    }
+
+    /**
+     * Enrollment context must remain supplementary and not be part of decisive reasons.
+     */
+    public function test_not_enrolled_context_is_supplementary_not_primary_reason(): void {
+        $option = $this->create_generated_option('Diagnosis Not Enrolled Context');
+        $target = $this->getDataGenerator()->create_user([
+            'firstname' => 'Outsider',
+            'lastname' => 'User',
+            'email' => 'outsider.user@example.com',
+        ]);
+
+        $result = $this->exec_command('booking.diagnose_booking_issue', [
+            'question' => 'Kann Outsider User die Option buchen?',
+            'optionid' => (int)$option->id,
+            'targetuserid' => (int)$target->id,
+        ]);
+
+        $this->assertSame('executed', $result['status']);
+
+        $reasons = (array)($result['diagnosis']['reasons'] ?? []);
+        $this->assertEmpty(
+            array_filter($reasons, static fn(string $line): bool => stripos($line, 'not enrolled') !== false),
+            'Course enrollment should not appear as primary reason.'
+        );
+
+        $supplementary = (array)($result['diagnosis']['supplementary_context'] ?? []);
+        $this->assertNotEmpty(
+            array_filter($supplementary, static fn(string $line): bool => stripos($line, 'not enrolled') !== false),
+            'Course enrollment should be preserved as supplementary context.'
         );
     }
 

@@ -432,6 +432,11 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
             $outputlang,
             $instancecontext
         );
+        $supplementary = $this->build_supplementary_context_lines(
+            $isselfdiagnosis,
+            $outputlang,
+            $instancecontext
+        );
 
         $introk = $isselfdiagnosis
             ? 'agent_booking_diagnose_intro_checked_option'
@@ -458,6 +463,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
                 'stats' => $optionstats,
                 'instance_checks' => $instancecontext,
                 'reasons' => $reasons,
+                'supplementary_context' => $supplementary,
                 'consistency' => $consistency,
             ],
             'debugmessage' => $this->build_task_debug_message(
@@ -469,6 +475,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
                     'Issue: ' . $issuetype,
                     'User status: ' . $userstatus,
                     'Reasons: ' . count($reasons),
+                    'Supplementary context lines: ' . count($supplementary),
                     'Consistency user mismatch: ' . (!empty($consistency['user_mismatch']) ? 'yes' : 'no'),
                     'Consistency option mismatch: ' . (!empty($consistency['option_mismatch']) ? 'yes' : 'no'),
                 ]
@@ -852,28 +859,6 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
 
         // --- Fundamental access checks (evaluated for all issue types) ---
 
-        // Check 1: Course enrollment.
-        // Not being enrolled is supplementary context and not necessarily a blocker on its own.
-        if (isset($instancecontext['isenrolled']) && !$instancecontext['isenrolled']) {
-            $reasons[] = $this->localized_string(
-                $isselfdiagnosis
-                    ? 'agent_booking_diagnose_reason_not_enrolled'
-                    : 'agent_booking_diagnose_reason_not_enrolled_other',
-                null,
-                $lang
-            );
-            $reasons[] = $this->localized_string(
-                'agent_booking_diagnose_reason_not_enrolled_concrete',
-                (int)($instancecontext['courseid'] ?? 0),
-                $lang
-            );
-            $reasons[] = $this->localized_string(
-                'agent_booking_diagnose_reason_not_enrolled_supplementary',
-                null,
-                $lang
-            );
-        }
-
         // Check 2: Option visibility.
         // invisible=1 → hidden for non-privileged users (hard blocker).
         // invisible=2 → not shown in list, but still accessible via direct link (soft, informational).
@@ -1106,5 +1091,44 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         }
 
         return $reasons;
+    }
+
+    /**
+     * Build supplementary context lines that must remain secondary in feedback.
+     *
+     * @param bool $isselfdiagnosis
+     * @param string $lang
+     * @param array $instancecontext
+     * @return array<int,string>
+     */
+    private function build_supplementary_context_lines(
+        bool $isselfdiagnosis,
+        string $lang = '',
+        array $instancecontext = []
+    ): array {
+        $lines = [];
+
+        // Course enrollment is useful context but intentionally non-decisive.
+        if (isset($instancecontext['isenrolled']) && !$instancecontext['isenrolled']) {
+            $lines[] = $this->localized_string(
+                $isselfdiagnosis
+                    ? 'agent_booking_diagnose_reason_not_enrolled'
+                    : 'agent_booking_diagnose_reason_not_enrolled_other',
+                null,
+                $lang
+            );
+            $lines[] = $this->localized_string(
+                'agent_booking_diagnose_reason_not_enrolled_concrete',
+                (int)($instancecontext['courseid'] ?? 0),
+                $lang
+            );
+            $lines[] = $this->localized_string(
+                'agent_booking_diagnose_reason_not_enrolled_supplementary',
+                null,
+                $lang
+            );
+        }
+
+        return array_values(array_unique(array_filter(array_map('trim', $lines))));
     }
 }
