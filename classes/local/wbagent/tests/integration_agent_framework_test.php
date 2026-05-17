@@ -245,6 +245,40 @@ final class integration_agent_framework_test extends TestCase {
     }
 
     /**
+     * Test that embedding-selected planner subsets include compact schema properties.
+     */
+    public function test_embedding_subset_includes_property_descriptions(): void {
+        task_registry_factory::reset();
+
+        $retrieval = new \mod_booking\local\wbagent\embeddings_retrieval_service();
+        $subset = $retrieval->build_planner_catalog_subset([
+            [
+                'task' => 'booking.recreate_task_catalog',
+                'intent' => 'mutate',
+                'readonly' => '0',
+                'description' => 'stale csv description',
+                'minimal_input_json' => '[]',
+                'example_input_json' => '{"force":true}',
+                'message_triggers_json' => '[]',
+                'embedding_model' => 'wunderbyte-embeddings',
+                'embedding_dimensions' => '1536',
+                'content_hash' => 'dummy',
+                'embedding_json' => '[]',
+            ],
+        ]);
+
+        $this->assertCount(1, $subset);
+        $this->assertArrayHasKey('properties', $subset[0]);
+        $this->assertIsArray($subset[0]['properties']);
+        $this->assertArrayHasKey('force', $subset[0]['properties']);
+        $this->assertArrayHasKey('description', $subset[0]['properties']['force']);
+        $this->assertStringContainsString(
+            'force regeneration',
+            (string)$subset[0]['properties']['force']['description']
+        );
+    }
+
+    /**
      * Test that orchestrator prompts are generic and do not hardcode plugin names.
      */
     public function test_orchestrator_prompts_are_generic(): void {

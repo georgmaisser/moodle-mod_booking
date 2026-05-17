@@ -75,6 +75,12 @@ class embeddings_retrieval_service {
     public function build_planner_catalog_subset(array $toprows, array $livecontracts = []): array {
         $subset = [];
         $contractsbytask = $this->build_live_contract_lookup($livecontracts);
+        $taskregistry = null;
+        try {
+            $taskregistry = task_registry_factory::get_default();
+        } catch (\Throwable $e) {
+            $taskregistry = null;
+        }
 
         foreach ($toprows as $row) {
             $task = trim((string)($row['task'] ?? ''));
@@ -83,8 +89,25 @@ class embeddings_retrieval_service {
             }
 
             if (isset($contractsbytask[$task])) {
-                $subset[] = $contractsbytask[$task];
+                $contract = $contractsbytask[$task];
+                if (empty($contract['properties']) && $taskregistry !== null) {
+                    $livetask = $taskregistry->get_task($task);
+                    if ($livetask !== null) {
+                        $schema = (array)$livetask->get_schema();
+                        $contract['properties'] = $this->compact_properties_for_planner((array)($schema['properties'] ?? []));
+                    }
+                }
+                $subset[] = $contract;
                 continue;
+            }
+
+            $compactproperties = [];
+            if ($taskregistry !== null) {
+                $livetask = $taskregistry->get_task($task);
+                if ($livetask !== null) {
+                    $schema = (array)$livetask->get_schema();
+                    $compactproperties = $this->compact_properties_for_planner((array)($schema['properties'] ?? []));
+                }
             }
 
             $subset[] = [
@@ -95,6 +118,7 @@ class embeddings_retrieval_service {
                 'minimal_input' => $this->decode_json_array($row['minimal_input_json'] ?? '[]'),
                 'example_input' => $this->decode_json_array($row['example_input_json'] ?? '[]'),
                 'message_triggers' => $this->decode_json_array($row['message_triggers_json'] ?? '[]'),
+                'properties' => $compactproperties,
             ];
         }
 
@@ -109,11 +133,25 @@ class embeddings_retrieval_service {
      */
     private function build_live_contract_lookup(array $livecontracts): array {
         $contractsbytask = [];
+        $taskregistry = null;
+        try {
+            $taskregistry = task_registry_factory::get_default();
+        } catch (\Throwable $e) {
+            $taskregistry = null;
+        }
 
-        $register = static function(array $contract) use (&$contractsbytask): void {
+        $register = function(array $contract) use (&$contractsbytask, $taskregistry): void {
             $taskname = trim((string)($contract['task'] ?? ''));
             if ($taskname === '') {
                 return;
+            }
+
+            if (!isset($contract['properties']) && $taskregistry !== null) {
+                $task = $taskregistry->get_task($taskname);
+                if ($task !== null) {
+                    $schema = (array)$task->get_schema();
+                    $contract['properties'] = $this->compact_properties_for_planner((array)($schema['properties'] ?? []));
+                }
             }
 
             $contractsbytask[$taskname] = $contract;
@@ -141,6 +179,42 @@ class embeddings_retrieval_service {
         }
 
         return $contractsbytask;
+    }
+
+    /**
+     * Build compact schema properties for planner prompts.
+     *
+     * @param array<string,mixed> $properties
+     * @return array<string,array<string,mixed>>
+     */
+    private function compact_properties_for_planner(array $properties): array {
+        $compact = [];
+        $count = 0;
+
+        foreach ($properties as $name => $spec) {
+            if (!is_string($name) || $name === '' || !is_array($spec)) {
+                continue;
+            }
+
+            $row = [
+                'type' => (string)($spec['type'] ?? ''),
+                'required' => !empty($spec['required']),
+            ];
+
+            $description = trim((string)($spec['description'] ?? ''));
+            $description = trim((string)(preg_replace('/\s+/', ' ', $description) ?? $description));
+            if ($description !== '') {
+                $row['description'] = \core_text::substr($description, 0, 180);
+            }
+
+            $compact[$name] = $row;
+            $count++;
+            if ($count >= 40) {
+                break;
+            }
+        }
+
+        return $compact;
     }
 
     /**

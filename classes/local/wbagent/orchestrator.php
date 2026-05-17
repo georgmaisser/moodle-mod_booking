@@ -70,7 +70,7 @@ class orchestrator {
     public const EMBEDDINGS_DEFAULT_DIMENSIONS = 1536;
 
     /** Default number of best matching tasks to inject for first planner step. */
-    public const EMBEDDINGS_DEFAULT_TOP_K = 5;
+    public const EMBEDDINGS_DEFAULT_TOP_K = 3;
 
     /** Debounce window (seconds) for scheduling embeddings rebuild task. */
     public const EMBEDDINGS_REBUILD_DEBOUNCE_SECONDS = 300;
@@ -313,11 +313,8 @@ class orchestrator {
                 $embeddingmodel = (string)($embeddingsettings['model'] ?? self::EMBEDDINGS_DEFAULT_MODEL);
                 $embeddingdimensions = (int)($embeddingsettings['dimensions'] ?? self::EMBEDDINGS_DEFAULT_DIMENSIONS);
 
-                $embeddingtopk = (int)(get_config('booking', 'ai_embeddings_top_k')
-                    ?? self::EMBEDDINGS_DEFAULT_TOP_K);
-                if ($embeddingtopk < 1) {
-                    $embeddingtopk = self::EMBEDDINGS_DEFAULT_TOP_K;
-                }
+                // Keep embed-selected planner catalogs intentionally narrow.
+                $embeddingtopk = self::EMBEDDINGS_DEFAULT_TOP_K;
 
                 $readiness = new embeddings_readiness_service();
                 if ($readiness->is_wunderbyte_embeddings_available()) {
