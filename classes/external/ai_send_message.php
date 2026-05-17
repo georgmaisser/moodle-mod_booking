@@ -32,7 +32,6 @@ use external_function_parameters;
 use external_single_structure;
 use external_value;
 use mod_booking\local\wbagent\agent_runtime;
-use mod_booking\local\wbagent\confirmation_session_allow_service;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\interpreter;
@@ -199,10 +198,9 @@ class ai_send_message extends external_api {
         $runtime = new agent_runtime($registry, $orchestrator, $store, $authz);
         $result = $runtime->run_loop($threadid, $cmid, (int)$USER->id);
 
-        $allowservice = new confirmation_session_allow_service();
         if (
             (string)($result['response_type'] ?? '') === 'confirmation_request'
-            && $allowservice->is_thread_allowed((int)$USER->id, $cmid, $threadid)
+            && $store->is_confirmation_allowed_for_thread((int)$USER->id, $cmid, $threadid)
             && !empty($result['commands'])
         ) {
             $confirmresult = ai_confirm_run::execute(

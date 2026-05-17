@@ -547,6 +547,7 @@ $string['ai_agent_malformed_taskcall_clarification'] =
     'I could not reliably parse the last step. Please ask your question again in one short sentence.';
 $string['ai_btn_cancel'] = 'Cancel';
 $string['ai_btn_confirm'] = 'Confirm & Execute';
+$string['ai_btn_confirm_session'] = 'Confirm & Execute for this session';
 $string['ai_btn_send'] = 'Send';
 $string['ai_btn_stop'] = 'Stop';
 $string['ai_capability_explain_setup_desc'] = 'I can show which settings are available and what can be changed in the current context.';

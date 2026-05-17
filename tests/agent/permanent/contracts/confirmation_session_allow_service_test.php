@@ -26,7 +26,7 @@
 namespace mod_booking;
 
 use mod_booking\local\testing\booking_advanced_testcase;
-use mod_booking\local\wbagent\confirmation_session_allow_service;
+use mod_booking\local\wbagent\conversation_store;
 
 /**
  * Session allowlist contract tests.
@@ -41,19 +41,19 @@ final class confirmation_session_allow_service_test extends booking_advanced_tes
         $this->resetAfterTest();
         $this->setAdminUser();
 
-        $service = new confirmation_session_allow_service();
+        $service = new conversation_store();
         global $USER;
         $userid = (int)$USER->id;
         $cmid = 101;
         $threadid = 202;
 
-        $service->allow_thread($userid, $cmid, $threadid, time() + 60);
+        $service->allow_confirmation_for_thread($userid, $cmid, $threadid, time() + 60);
 
-        $this->assertTrue($service->is_thread_allowed($userid, $cmid, $threadid));
-        $this->assertFalse($service->is_thread_allowed($userid, $cmid, $threadid + 1));
+        $this->assertTrue($service->is_confirmation_allowed_for_thread($userid, $cmid, $threadid));
+        $this->assertFalse($service->is_confirmation_allowed_for_thread($userid, $cmid, $threadid + 1));
 
-        $service->clear_thread($userid, $cmid, $threadid);
-        $this->assertFalse($service->is_thread_allowed($userid, $cmid, $threadid));
+        $service->clear_confirmation_allowance($userid, $cmid, $threadid);
+        $this->assertFalse($service->is_confirmation_allowed_for_thread($userid, $cmid, $threadid));
     }
 
     /**
@@ -63,14 +63,14 @@ final class confirmation_session_allow_service_test extends booking_advanced_tes
         $this->resetAfterTest();
         $this->setAdminUser();
 
-        $service = new confirmation_session_allow_service();
+        $service = new conversation_store();
         global $USER;
         $userid = (int)$USER->id;
         $cmid = 303;
         $threadid = 404;
 
-        $service->allow_thread($userid, $cmid, $threadid, time() - 1);
+        $service->allow_confirmation_for_thread($userid, $cmid, $threadid, time() - 1);
 
-        $this->assertFalse($service->is_thread_allowed($userid, $cmid, $threadid));
+        $this->assertFalse($service->is_confirmation_allowed_for_thread($userid, $cmid, $threadid));
     }
 }

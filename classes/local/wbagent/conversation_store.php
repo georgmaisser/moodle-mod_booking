@@ -38,6 +38,12 @@ class conversation_store implements agent_conversation_store {
     /** Default pending intent TTL in seconds. */
     private const PENDING_INTENT_TTL = 900;
 
+    /** Preference key that stores session allowlist entries. */
+    private const CONFIRMATION_SESSION_ALLOWLIST_KEY = 'mod_booking_ai_confirmation_session_allowlist';
+
+    /** Default lifetime for a thread allowlist entry in seconds. */
+    private const CONFIRMATION_SESSION_ALLOWLIST_TTL = 3600;
+
     /**
      * Get the active thread for a user and cmid.
      *
@@ -717,6 +723,122 @@ class conversation_store implements agent_conversation_store {
      */
     public function clear_pending_intent(int $threadid): void {
         $this->set_thread_metadata_value($threadid, 'pending_intent', null);
+    }
+
+    /**
+     * Allow confirmations for a specific thread for the current session window.
+     *
+     * @param int $userid
+     * @param int $cmid
+     * @param int $threadid
+     * @param int|null $expiresat
+     * @return void
+     */
+    public function allow_confirmation_for_thread(int $userid, int $cmid, int $threadid, ?int $expiresat = null): void {
+        $allowlist = $this->get_confirmation_session_allowlist($userid);
+        $key = $this->make_confirmation_session_allowlist_key($cmid, $threadid);
+        $allowlist[$key] = [
+            'cmid' => $cmid,
+            'threadid' => $threadid,
+            'expiresat' => $expiresat ?? (time() + self::CONFIRMATION_SESSION_ALLOWLIST_TTL),
+        ];
+        $this->save_confirmation_session_allowlist($userid, $allowlist);
+    }
+
+    /**
+     * Check whether confirmations may be auto-approved for a thread.
+     *
+     * @param int $userid
+     * @param int $cmid
+     * @param int $threadid
+     * @return bool
+     */
+    public function is_confirmation_allowed_for_thread(int $userid, int $cmid, int $threadid): bool {
+        $allowlist = $this->get_confirmation_session_allowlist($userid);
+        $key = $this->make_confirmation_session_allowlist_key($cmid, $threadid);
+        return !empty($allowlist[$key]);
+    }
+
+    /**
+     * Remove a thread from the confirmation allowlist.
+     *
+     * @param int $userid
+     * @param int $cmid
+     * @param int $threadid
+     * @return void
+     */
+    public function clear_confirmation_allowance(int $userid, int $cmid, int $threadid): void {
+        $allowlist = $this->get_confirmation_session_allowlist($userid);
+        $key = $this->make_confirmation_session_allowlist_key($cmid, $threadid);
+        unset($allowlist[$key]);
+        $this->save_confirmation_session_allowlist($userid, $allowlist);
+    }
+
+    /**
+     * Build a stable preference key for a thread.
+     *
+     * @param int $cmid
+     * @param int $threadid
+     * @return string
+     */
+    private function make_confirmation_session_allowlist_key(int $cmid, int $threadid): string {
+        return $cmid . ':' . $threadid;
+    }
+
+    /**
+     * Load and prune the allowlist from user preferences.
+     *
+     * @param int $userid
+     * @return array<string,array<string,int>>
+     */
+    private function get_confirmation_session_allowlist(int $userid): array {
+        $raw = (string)get_user_preferences(self::CONFIRMATION_SESSION_ALLOWLIST_KEY, '', $userid);
+        if ($raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $now = time();
+        $allowlist = [];
+        foreach ($decoded as $key => $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $cmid = (int)($entry['cmid'] ?? 0);
+            $threadid = (int)($entry['threadid'] ?? 0);
+            $expiresat = (int)($entry['expiresat'] ?? 0);
+            if ($cmid <= 0 || $threadid <= 0 || $expiresat <= $now) {
+                continue;
+            }
+
+            $allowlist[(string)$key] = [
+                'cmid' => $cmid,
+                'threadid' => $threadid,
+                'expiresat' => $expiresat,
+            ];
+        }
+
+        if ($allowlist !== $decoded) {
+            $this->save_confirmation_session_allowlist($userid, $allowlist);
+        }
+
+        return $allowlist;
+    }
+
+    /**
+     * Persist the allowlist in user preferences.
+     *
+     * @param int $userid
+     * @param array<string,array<string,int>> $allowlist
+     * @return void
+     */
+    private function save_confirmation_session_allowlist(int $userid, array $allowlist): void {
+        set_user_preference(self::CONFIRMATION_SESSION_ALLOWLIST_KEY, json_encode($allowlist), $userid);
     }
 
     /**

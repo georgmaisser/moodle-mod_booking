@@ -2164,8 +2164,10 @@ const sendMessage = (message) => {
 
 /**
  * Confirm and submit the pending commands for execution.
+ *
+ * @param {boolean} allowSession Whether to allow confirmation for this thread in this session.
  */
-const confirmRun = () => {
+const confirmRun = (allowSession = false) => {
     if (!pendingCommands) {
         return;
     }
@@ -2179,6 +2181,7 @@ const confirmRun = () => {
             cmid:     currentCmid,
             threadid: currentThreadId,
             commands: JSON.stringify(commandsToSend),
+            allow_session: Boolean(allowSession),
         },
     }])[0].then((resp) => {
         if (resp.success) {
@@ -2473,6 +2476,12 @@ const handleBodyClick = (event) => {
     const confirmBtn = target.closest('#booking-ai-btn-confirm');
     if (confirmBtn instanceof HTMLElement) {
         confirmRun();
+        return;
+    }
+
+    const confirmSessionBtn = target.closest('#booking-ai-btn-confirm-session');
+    if (confirmSessionBtn instanceof HTMLElement) {
+        confirmRun(true);
         return;
     }
 

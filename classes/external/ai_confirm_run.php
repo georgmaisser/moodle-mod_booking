@@ -32,7 +32,6 @@ use external_api;
 use external_function_parameters;
 use external_single_structure;
 use external_value;
-use mod_booking\local\wbagent\confirmation_session_allow_service;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\execution_feedback_service;
@@ -101,11 +100,11 @@ class ai_confirm_run extends external_api {
         $authz->require_use_capability((int)$USER->id, $params['cmid']);
 
         if (!empty($params['allow_session'])) {
-            $allowservice = new confirmation_session_allow_service();
-            $allowservice->allow_thread((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
+            $store = new conversation_store();
+            $store->allow_confirmation_for_thread((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
+        } else {
+            $store = new conversation_store();
         }
-
-        $store = new conversation_store();
         $pendingintent = $store->consume_pending_intent((int)$params['threadid'], (int)$USER->id, (int)$params['cmid']);
         if ($pendingintent === null || empty($pendingintent['commands']) || !is_array($pendingintent['commands'])) {
             return [
