@@ -356,7 +356,10 @@ class orchestrator {
                                     $status['rows'],
                                     $embeddingtopk
                                 );
-                                $subset = $retrieval->build_planner_catalog_subset($toprows);
+                                $subset = $retrieval->build_planner_catalog_subset(
+                                    $toprows,
+                                    $this->registry->get_all_prompt_contracts()
+                                );
                                 if (!empty($subset)) {
                                     $runtimecatalog = $subset;
                                     $catalogselectionmode = 'embed';
@@ -776,7 +779,11 @@ PROMPT;
             return '';
         }
 
-        return $normalized;
+        if (core_text::strlen($normalized) <= 140) {
+            return $normalized;
+        }
+
+        return rtrim(core_text::substr($normalized, 0, 137)) . '...';
     }
 
     /**

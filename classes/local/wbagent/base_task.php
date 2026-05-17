@@ -58,6 +58,18 @@ abstract class base_task implements task_interface {
     }
 
     /**
+     * Default example input.
+     *
+     * Concrete task families can override this to provide centralized example
+     * metadata close to their task implementations.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_example_input(): array {
+        return [];
+    }
+
+    /**
      * Default structural validation — always passes.
      *
      * Override in concrete tasks to check required fields without DB access.

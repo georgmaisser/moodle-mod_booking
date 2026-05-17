@@ -16,7 +16,6 @@
 
 namespace mod_booking\local\wbagent;
 
-use core_component;
 use mod_booking\local\wbagent\interfaces\result_summary_provider_interface;
 use mod_booking\local\wbagent\interfaces\task_interface;
 use mod_booking\local\wbagent\interfaces\task_provider_interface;
@@ -47,27 +46,7 @@ class task_provider implements result_summary_provider_interface, task_provider_
      * @return array
      */
     public function get_tasks(): array {
-        $taskclasses = core_component::get_component_classes_in_namespace('mod_booking', 'local\\wbagent\\booking\\tasks');
-        $tasks = [];
-
-        foreach (array_keys($taskclasses) as $classname) {
-            try {
-                $reflection = new \ReflectionClass($classname);
-                if ($reflection->isAbstract()) {
-                    continue;
-                }
-
-                $task = $reflection->newInstance();
-            } catch (\Throwable $e) {
-                continue;
-            }
-
-            if (!$task instanceof task_interface) {
-                continue;
-            }
-
-            $tasks[] = $task;
-        }
+        $tasks = array_values(task_discovery::get_task_instances());
 
         usort($tasks, static fn(task_interface $a, task_interface $b): int => strcmp($a->get_name(), $b->get_name()));
         return $tasks;

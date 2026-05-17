@@ -213,10 +213,10 @@ class task_registry {
             $anchorfields = $this->extract_anchor_fields($properties);
         }
 
-        $exampleinput = $this->build_example_input($taskname);
+        $exampleinput = $task->get_example_input();
 
         $messagetriggers = [];
-        if (method_exists($task, 'get_message_triggers')) {
+        if ($task instanceof task_trigger_provider_interface) {
             try {
                 $messagetriggers = array_values(array_filter((array)$task->get_message_triggers()));
             } catch (\Throwable $e) {
@@ -234,111 +234,6 @@ class task_registry {
             'example_input' => $exampleinput,
             'message_triggers' => $messagetriggers,
         ];
-    }
-
-    /**
-     * Build one compact example input for prompt routing.
-     *
-     * @param string $taskname
-     * @return array<string,mixed>
-     */
-    private function build_example_input(string $taskname): array {
-        $examples = [
-            'booking.add_price_category' => [
-                'identifier' => 'student',
-                'name' => 'Student',
-            ],
-            'booking.analyze_rules' => [
-                'query' => 'booking confirmation',
-                'active_only' => true,
-            ],
-            'booking.book_users' => [
-                'optionquery' => 'Geburtstag ANON_USER_1',
-                'bookusersquery' => 'ANON_USER_1',
-            ],
-            'booking.bulk_update_options' => [
-                'optionquery' => 'Geburtstag',
-                'changes' => [['field' => 'text', 'value' => 'Updated title']],
-            ],
-            'booking.configure_booking_instance' => [
-                'action' => 'update',
-                'changes' => [['field' => 'limitanswers', 'value' => '1']],
-            ],
-            'booking.create_option' => [
-                'text' => 'Geburtstag ANON_USER_1',
-                'maxanswers' => 30,
-                'coursestarttime' => '2026-12-12T20:00:00',
-                'courseendtime' => '2026-12-12T22:00:00',
-            ],
-            'booking.create_rule_from_template' => [
-                'templatequery' => 'booking confirmation',
-                'rulename' => 'Birthday reminder',
-            ],
-            'booking.create_user' => [
-                'userquery' => 'Anna Example',
-            ],
-            'booking.get_current_user' => [],
-            'booking.recreate_task_catalog' => [
-                'force' => true,
-            ],
-            'booking.update_option' => [
-                'optionquery' => 'Geburtstag ANON_USER_1',
-                'text' => 'Geburtstag ANON_USER_1',
-            ],
-            'booking.update_rule_from_template' => [
-                'rulequery' => 'Birthday reminder',
-                'rulename' => 'Updated reminder',
-            ],
-            'booking.search_options' => [
-                'query' => 'Geburtstag',
-            ],
-            'booking.search_courses' => [
-                'query' => 'Mathematik',
-            ],
-            'booking.search_users' => [
-                'query' => 'ANON_USER_1',
-            ],
-            'booking.diagnose_booking_issue' => [
-                'question' => 'Why can ANON_USER_1 not book Geburtstag ANON_USER_1?',
-                'optionquery' => 'Geburtstag ANON_USER_1',
-                'userquery' => 'ANON_USER_1',
-            ],
-            'booking.diagnose_cancellation_issue' => [
-                'question' => 'Why can I not cancel my booking?',
-                'optionquery' => 'Geburtstag ANON_USER_1',
-            ],
-            'booking.get_option_details' => [
-                'optionquery' => 'Geburtstag ANON_USER_1',
-            ],
-            'booking.list_actions' => [
-                'scope' => 'booking',
-            ],
-            'booking.list_option_properties' => [
-                'scope' => 'booking.create_option',
-            ],
-            'booking.explain_docs_topic' => [
-                'question' => 'How do I create a booking option?',
-                'search_queries' => ['booking option create'],
-            ],
-            'entities.create_entity' => [
-                'name' => 'Sportplatz Nord',
-                'shortname' => 'Sportplatz-N',
-            ],
-            'entities.list_all_entities' => [
-                'limit' => 50,
-            ],
-            'entities.search' => [
-                'query' => 'Sportplatz',
-            ],
-            'shopping_cart.get_items' => [
-                'userid' => 0,
-            ],
-            'shopping_cart.get_totals' => [
-                'userid' => 0,
-            ],
-        ];
-
-        return $examples[$taskname] ?? [];
     }
 
     /**

@@ -198,6 +198,50 @@ final class integration_agent_framework_test extends TestCase {
         $this->assertArrayNotHasKey('example_input', $bytask['booking.search_users']);
 
         $this->assertSame(['action', 'changes'], $bytask['booking.configure_booking_instance']['example_input']);
+
+        $this->assertStringEndsWith('...', $bytask['booking.create_rule_from_template']['description']);
+        $this->assertLessThanOrEqual(140, core_text::strlen($bytask['booking.create_rule_from_template']['description']));
+    }
+
+    /**
+     * Test that embedding-selected planner subsets keep full task descriptions.
+     */
+    public function test_embedding_subset_keeps_full_descriptions(): void {
+        $retrieval = new \mod_booking\local\wbagent\embeddings_retrieval_service();
+        $csvdescription = 'Persisted CSV description that should not win over live task schema metadata.';
+        $livedescription = 'Live task description from get_schema that must win when embed task selection is mapped back to tasks.';
+
+        $subset = $retrieval->build_planner_catalog_subset([
+            [
+                'task' => 'booking.create_rule_from_template',
+                'intent' => 'create',
+                'readonly' => '0',
+                'description' => $csvdescription,
+                'minimal_input_json' => '[]',
+                'example_input_json' => '{"templatequery":"booking confirmation","rulename":"Birthday reminder"}',
+                'message_triggers_json' => '[]',
+                'embedding_model' => 'wunderbyte-embeddings',
+                'embedding_dimensions' => '1536',
+                'content_hash' => 'dummy',
+                'embedding_json' => '[]',
+            ],
+        ], [
+            [
+                'task' => 'booking.create_rule_from_template',
+                'intent' => 'create',
+                'readonly' => false,
+                'description' => $livedescription,
+                'minimal_input' => [],
+                'example_input' => [
+                    'templatequery' => 'booking confirmation',
+                    'rulename' => 'Birthday reminder',
+                ],
+                'message_triggers' => [],
+            ],
+        ]);
+
+        $this->assertCount(1, $subset);
+        $this->assertSame($livedescription, $subset[0]['description']);
     }
 
     /**
@@ -304,6 +348,47 @@ final class integration_agent_framework_test extends TestCase {
         }
 
         $this->assertTrue($bookingTaskFound, 'Should have tasks prefixed with plugin component');
+    }
+
+    /**
+     * Test that task discovery scans all direct task namespaces under local/wbagent.
+     */
+    public function test_task_discovery_scans_all_wbagent_task_namespaces(): void {
+        task_registry_factory::reset();
+
+        $provider = new \mod_booking\local\wbagent\task_provider();
+        $tasknames = array_map(static fn($task): string => $task->get_name(), $provider->get_tasks());
+
+        $this->assertContains('booking.get_current_user', $tasknames);
+        $this->assertContains('booking.create_user', $tasknames);
+        $this->assertContains('booking.recreate_task_catalog', $tasknames);
+    }
+
+    /**
+     * Test that discovery does not expose duplicate task names.
+     */
+    public function test_task_discovery_deduplicates_same_task_name(): void {
+        task_registry_factory::reset();
+
+        $provider = new \mod_booking\local\wbagent\task_provider();
+        $tasknames = array_map(static fn($task): string => $task->get_name(), $provider->get_tasks());
+
+        $this->assertSame($tasknames, array_values(array_unique($tasknames)));
+    }
+
+    /**
+     * Test that trigger-provider discovery ignores non-trigger classes without failing.
+     */
+    public function test_trigger_provider_discovery_ignores_non_trigger_classes(): void {
+        $providers = \mod_booking\local\wbagent\task_discovery::get_trigger_provider_instances('mod_booking');
+
+        $this->assertNotEmpty($providers);
+        foreach ($providers as $provider) {
+            $this->assertInstanceOf(
+                \mod_booking\local\wbagent\interfaces\task_trigger_provider_interface::class,
+                $provider
+            );
+        }
     }
 
     /**

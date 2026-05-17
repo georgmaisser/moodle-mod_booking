@@ -24,21 +24,18 @@
 
 namespace mod_booking\local\wbagent\booking;
 
-use core_component;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\interfaces\task_interface;
+use mod_booking\local\wbagent\task_discovery;
 use mod_booking\local\wbagent\booking\tasks\add_price_category_task;
 use mod_booking\local\wbagent\booking\tasks\booking_task_base;
 use mod_booking\local\wbagent\booking\tasks\create_option_task;
-use mod_booking\local\wbagent\booking\tasks\create_user_task;
 use mod_booking\local\wbagent\booking\tasks\list_actions_task;
 use mod_booking\local\wbagent\booking\tasks\list_option_properties_task;
-use mod_booking\local\wbagent\booking\tasks\recreate_task_catalog_task;
 use mod_booking\local\wbagent\booking\tasks\search_courses_task;
 use mod_booking\local\wbagent\booking\tasks\search_options_task;
 use mod_booking\local\wbagent\booking\tasks\search_users_task;
 use mod_booking\local\wbagent\booking\tasks\update_option_task;
-use mod_booking\local\wbagent\booking\tasks\get_current_user_task;
 use mod_booking\bo_availability\bo_info;
 use mod_booking\booking;
 use mod_booking\booking_bookit;
@@ -164,28 +161,8 @@ class booking_task_support {
             return $this->taskinstancescache;
         }
 
-        $instances = [];
-        $taskclasses = core_component::get_component_classes_in_namespace('mod_booking', 'local\\wbagent\\booking\\tasks');
-        foreach (array_keys($taskclasses) as $classname) {
-            try {
-                $reflection = new \ReflectionClass($classname);
-                if ($reflection->isAbstract()) {
-                    continue;
-                }
-
-                $task = $reflection->newInstance();
-                if (!$task instanceof task_interface) {
-                    continue;
-                }
-
-                $instances[$task->get_name()] = $task;
-            } catch (\Throwable $e) {
-                continue;
-            }
-        }
-
-        $this->taskinstancescache = $instances;
-        return $instances;
+        $this->taskinstancescache = task_discovery::get_task_instances();
+        return $this->taskinstancescache;
     }
 
     /**

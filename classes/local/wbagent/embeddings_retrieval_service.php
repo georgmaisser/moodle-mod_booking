@@ -69,14 +69,21 @@ class embeddings_retrieval_service {
      * Build planner-task contracts from retrieved CSV rows.
      *
      * @param array<int,array<string,string>> $toprows
+     * @param array<int,array<string,mixed>> $livecontracts
      * @return array<int,array<string,mixed>>
      */
-    public function build_planner_catalog_subset(array $toprows): array {
+    public function build_planner_catalog_subset(array $toprows, array $livecontracts = []): array {
         $subset = [];
+        $contractsbytask = $this->build_live_contract_lookup($livecontracts);
 
         foreach ($toprows as $row) {
             $task = trim((string)($row['task'] ?? ''));
             if ($task === '') {
+                continue;
+            }
+
+            if (isset($contractsbytask[$task])) {
+                $subset[] = $contractsbytask[$task];
                 continue;
             }
 
@@ -92,6 +99,48 @@ class embeddings_retrieval_service {
         }
 
         return $subset;
+    }
+
+    /**
+     * Build a task-name keyed lookup of live prompt contracts.
+     *
+     * @param array<int,array<string,mixed>> $livecontracts
+     * @return array<string,array<string,mixed>>
+     */
+    private function build_live_contract_lookup(array $livecontracts): array {
+        $contractsbytask = [];
+
+        $register = static function(array $contract) use (&$contractsbytask): void {
+            $taskname = trim((string)($contract['task'] ?? ''));
+            if ($taskname === '') {
+                return;
+            }
+
+            $contractsbytask[$taskname] = $contract;
+        };
+
+        foreach ($livecontracts as $contract) {
+            if (is_array($contract)) {
+                $register($contract);
+            }
+        }
+
+        if (!empty($contractsbytask)) {
+            return $contractsbytask;
+        }
+
+        try {
+            $registry = task_registry_factory::get_default();
+            foreach ($registry->get_all_prompt_contracts() as $contract) {
+                if (is_array($contract)) {
+                    $register($contract);
+                }
+            }
+        } catch (\Throwable $e) {
+            return $contractsbytask;
+        }
+
+        return $contractsbytask;
     }
 
     /**

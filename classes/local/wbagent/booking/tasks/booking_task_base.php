@@ -44,7 +44,7 @@ abstract class booking_task_base extends base_task {
      *
      * @var array<string,array<string,array<int,string>>>
      */
-    protected static array $prompt_meta_map = [
+    protected static array $promptmeta = [
         'booking.create_option' => [
             'input_fields_for_prompt' => ['text'],
             'anchor_fields' => ['option'],
@@ -116,6 +116,90 @@ abstract class booking_task_base extends base_task {
     ];
 
     /**
+     * Example input map for booking tasks.
+     *
+     * @var array<string,array<string,mixed>>
+     */
+    protected static array $exampleinput = [
+        'booking.add_price_category' => [
+            'identifier' => 'student',
+            'name' => 'Student',
+        ],
+        'booking.analyze_rules' => [
+            'query' => 'booking confirmation',
+            'active_only' => true,
+        ],
+        'booking.book_users' => [
+            'optionquery' => 'Geburtstag ANON_USER_1',
+            'bookusersquery' => 'ANON_USER_1',
+        ],
+        'booking.bulk_update_options' => [
+            'optionquery' => 'Geburtstag',
+            'changes' => [['field' => 'text', 'value' => 'Updated title']],
+        ],
+        'booking.configure_booking_instance' => [
+            'action' => 'update',
+            'changes' => [['field' => 'limitanswers', 'value' => '1']],
+        ],
+        'booking.create_option' => [
+            'text' => 'Geburtstag ANON_USER_1',
+            'maxanswers' => 30,
+            'coursestarttime' => '2026-12-12T20:00:00',
+            'courseendtime' => '2026-12-12T22:00:00',
+        ],
+        'booking.create_rule_from_template' => [
+            'templatequery' => 'booking confirmation',
+            'rulename' => 'Birthday reminder',
+        ],
+        'booking.create_user' => [
+            'userquery' => 'Anna Example',
+        ],
+        'booking.diagnose_booking_issue' => [
+            'question' => 'Why can ANON_USER_1 not book Geburtstag ANON_USER_1?',
+            'optionquery' => 'Geburtstag ANON_USER_1',
+            'userquery' => 'ANON_USER_1',
+        ],
+        'booking.diagnose_cancellation_issue' => [
+            'question' => 'Why can I not cancel my booking?',
+            'optionquery' => 'Geburtstag ANON_USER_1',
+        ],
+        'booking.explain_docs_topic' => [
+            'question' => 'How do I create a booking option?',
+            'search_queries' => ['booking option create'],
+        ],
+        'booking.get_current_user' => [],
+        'booking.get_option_details' => [
+            'optionquery' => 'Geburtstag ANON_USER_1',
+        ],
+        'booking.list_actions' => [
+            'scope' => 'booking',
+        ],
+        'booking.list_option_properties' => [
+            'scope' => 'booking.create_option',
+        ],
+        'booking.recreate_task_catalog' => [
+            'force' => true,
+        ],
+        'booking.search_courses' => [
+            'query' => 'Mathematik',
+        ],
+        'booking.search_users' => [
+            'query' => 'ANON_USER_1',
+        ],
+        'booking.search_options' => [
+            'query' => 'Geburtstag',
+        ],
+        'booking.update_option' => [
+            'optionquery' => 'Geburtstag ANON_USER_1',
+            'text' => 'Geburtstag ANON_USER_1',
+        ],
+        'booking.update_rule_from_template' => [
+            'rulequery' => 'Birthday reminder',
+            'rulename' => 'Updated reminder',
+        ],
+    ];
+
+    /**
      * Constructor.
      *
      * @param bool $readonly
@@ -150,7 +234,17 @@ abstract class booking_task_base extends base_task {
     }
 
     /**
-     * Optionally enrich a schema with prompt_meta if declared in $prompt_meta_map.
+     * Return task-owned example input for prompt routing.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_example_input(): array {
+        $taskname = $this->get_name();
+        return self::$exampleinput[$taskname] ?? [];
+    }
+
+    /**
+     * Optionally enrich a schema with prompt_meta if declared in $promptmeta.
      *
      * Subclasses can call this helper at the end of get_schema() to automatically
      * inject input_fields_for_prompt and anchor_fields without manual duplication:
@@ -160,7 +254,7 @@ abstract class booking_task_base extends base_task {
      *       return $this->enrich_schema_with_prompt_meta($schema);
      *   }
      *
-     * If the task is not in $prompt_meta_map, returns schema unchanged.
+     * If the task is not in $promptmeta, returns schema unchanged.
      * If schema already has prompt_meta, does not override it.
      *
      * @param  array $schema
@@ -172,11 +266,11 @@ abstract class booking_task_base extends base_task {
         }
 
         $taskname = $this->get_name();
-        if (!isset(self::$prompt_meta_map[$taskname])) {
+        if (!isset(self::$promptmeta[$taskname])) {
             return $schema;
         }
 
-        $schema['prompt_meta'] = self::$prompt_meta_map[$taskname];
+        $schema['prompt_meta'] = self::$promptmeta[$taskname];
         return $schema;
     }
 

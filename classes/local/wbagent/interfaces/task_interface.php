@@ -56,6 +56,16 @@ interface task_interface {
     public function get_schema(): array;
 
     /**
+     * Return a compact example input owned by the task itself.
+     *
+     * Used only for prompt routing hints. This must not be synthesized by the
+     * registry so task metadata stays with the task class.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_example_input(): array;
+
+    /**
      * Structural (pure) validation — no DB access, no side-effects.
      *
      * Called by the interpreter immediately after JSON parsing to verify that

@@ -63,7 +63,7 @@ class recreate_task_catalog_task extends \mod_booking\local\wbagent\booking\task
             'properties' => [
                 'force' => [
                     'type' => 'boolean',
-                    'description' => 'If true, force regeneration for all task embeddings (skip incremental reuse).',
+                    'description' => 'If true, force regeneration for all task embeddings (skip incremental reuse). Don\'t set if we talk of update or newly added tasks only.',
                     'required' => false,
                 ],
                 'model' => [
