@@ -25,12 +25,12 @@ use mod_booking\local\wbagent\booking\tasks\bulk_update_options_task;
 use mod_booking\local\wbagent\booking\tasks\diagnose_booking_issue_task;
 use mod_booking\local\wbagent\booking\tasks\diagnose_cancellation_issue_task;
 use mod_booking\local\wbagent\booking\tasks\explain_docs_topic_task;
-use mod_booking\local\wbagent\booking\tasks\get_current_user_task;
 use mod_booking\local\wbagent\booking\tasks\list_actions_task;
 use mod_booking\local\wbagent\booking\tasks\list_option_properties_task;
 use mod_booking\local\wbagent\booking\tasks\search_courses_task;
 use mod_booking\local\wbagent\booking\tasks\search_options_task;
 use mod_booking\local\wbagent\booking\tasks\search_users_task;
+use mod_booking\local\wbagent\core\tasks\get_current_user_task;
 use mod_booking\local\wbagent\task_registry;
 
 /**
@@ -49,7 +49,7 @@ use mod_booking\local\wbagent\task_registry;
  * @covers     \mod_booking\local\wbagent\booking\tasks\explain_docs_topic_task
  * @covers     \mod_booking\local\wbagent\booking\tasks\list_option_properties_task
  * @covers     \mod_booking\local\wbagent\booking\tasks\list_actions_task
- * @covers     \mod_booking\local\wbagent\booking\tasks\get_current_user_task
+ * @covers     \mod_booking\local\wbagent\core\tasks\get_current_user_task
  * @covers     \mod_booking\local\wbagent\booking\tasks\bulk_update_options_task
  */
 final class task_pure_data_contract_test extends abstract_agent_testcase {

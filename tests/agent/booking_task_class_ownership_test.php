@@ -28,13 +28,13 @@ namespace mod_booking;
 use mod_booking\local\testing\booking_advanced_testcase;
 use mod_booking\local\wbagent\booking\tasks\bulk_update_options_task;
 use mod_booking\local\wbagent\booking\tasks\create_option_task;
-use mod_booking\local\wbagent\booking\tasks\get_current_user_task;
 use mod_booking\local\wbagent\booking\tasks\list_actions_task;
 use mod_booking\local\wbagent\booking\tasks\list_option_properties_task;
 use mod_booking\local\wbagent\booking\tasks\search_courses_task;
 use mod_booking\local\wbagent\booking\tasks\search_options_task;
 use mod_booking\local\wbagent\booking\tasks\search_users_task;
 use mod_booking\local\wbagent\booking\tasks\update_option_task;
+use mod_booking\local\wbagent\core\tasks\get_current_user_task;
 
 /**
  * Ensures task classes own schema and validation behavior.

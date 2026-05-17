@@ -57,7 +57,7 @@ use mod_booking\local\wbagent\execution_feedback_service;
  * @covers     \mod_booking\local\wbagent\booking\tasks\search_options_task
  * @covers     \mod_booking\local\wbagent\booking\tasks\search_users_task
  * @covers     \mod_booking\local\wbagent\booking\tasks\search_courses_task
- * @covers     \mod_booking\local\wbagent\booking\tasks\get_current_user_task
+ * @covers     \mod_booking\local\wbagent\core\tasks\get_current_user_task
  * @covers     \mod_booking\local\wbagent\booking\tasks\list_option_properties_task
  * @covers     \mod_booking\local\wbagent\execution_feedback_service
  * @covers     \mod_booking\local\wbagent\aiready
