@@ -117,6 +117,7 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
         $this->gen = $this->getDataGenerator()->get_plugin_generator('mod_booking');
 
         $this->maybe_register_live_ai_provider();
+        $this->maybe_load_embeddings_fixture();
     }
 
     // -------------------------------------------------------------------------
@@ -238,6 +239,29 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
             $actionconfig[$actionkey]['settings']['model'] = $embeddingmodel;
             $provider->actionconfig = json_encode($actionconfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $DB->update_record('ai_providers', $provider);
+        }
+    }
+
+    /**
+     * Load embeddings CSV fixture into temp directory for tests.
+     *
+     * Copies the pre-generated embeddings fixture from the tests/fixtures directory
+     * into the runtime temp directory so that embeddings tests can use consistent,
+     * deterministic data instead of generating embeddings on every test run.
+     *
+     * @return void
+     */
+    protected function maybe_load_embeddings_fixture(): void {
+        $fixturepath = __DIR__ . '/embedded_llm/fixtures/task_catalog_embeddings.csv';
+        if (!file_exists($fixturepath)) {
+            return; // Fixture not available.
+        }
+
+        $runtimedir = make_temp_directory('mod_booking/wbagent');
+        $runtimepath = $runtimedir . '/task_catalog_embeddings.csv';
+
+        if (!copy($fixturepath, $runtimepath)) {
+            throw new \Exception('Failed to copy embeddings fixture to runtime directory');
         }
     }
 
