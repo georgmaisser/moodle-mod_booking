@@ -546,214 +546,53 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
         $title = 'Sonnenfinsternis 5 ' . uniqid('', true);
         $prompt = 'erstelle zuerst eine neue Buchung mit dem Namen "' . $title . '", '
             . 'naechsten dienstag 18h bis 19h, fuer 30 Leute. '
-            . 'Anschliessend buchst du Billy fuer dieses Ereignis.';
+            . 'Anschliessend buchst du den Benutzer mit der E-Mail-Adresse '
+            . (string)$billy->email
+            . ' fuer dieses Ereignis.';
         $attemptlogs = [];
+
+        // Enable session auto-confirmation before the first request so the
+        // live flow exercises the productive auto-execution path immediately.
+        $store = new \mod_booking\local\wbagent\conversation_store();
+        // Get or create thread only when provider is available.
+        $thread = $store->get_or_create_thread($this->teacher->id, $this->booking->cmid, $this->booking->id);
+        $store->allow_confirmation_for_thread((int)$this->teacher->id, (int)$this->booking->cmid, 0);
 
         $_POST['sesskey'] = sesskey();
         $first = ai_send_message::execute((int)$this->booking->cmid, $prompt);
         $threadid = (int)($first['threadid'] ?? 0);
         $this->assertGreaterThan(0, $threadid, 'Thread id must be present.');
 
-        // Pre-enable session auto-confirmation for this booking context so
-        // continuation confirmations can be executed without extra user input.
-        $store = new \mod_booking\local\wbagent\conversation_store();
-        $store->allow_confirmation_for_thread((int)$this->teacher->id, (int)$this->booking->cmid, $threadid);
-
-        $attemptlogs[] = 'first: type=' . (string)($first['response_type'] ?? '')
-            . ', msg=' . trim((string)($first['displaymessage'] ?? ''));
-
-        $firstcommands = $this->decode_json_array((string)($first['commands'] ?? '[]'));
-        $createcommand = $this->find_command($firstcommands, 'booking.create_option');
-
-        if ($createcommand === null) {
-            $nudges = [
-                'Bitte starte jetzt nur mit dem ersten Schritt: bereite eine bestaetigungsfaehige booking.create_option Aktion vor.',
-                'Bitte jetzt exakt den create Schritt bestaetigungsfaehig vorbereiten: booking.create_option fuer "' . $title
-                    . '", naechster Dienstag 18:00 bis 19:00, 30 Teilnehmer.',
-                'Nur erster Schritt jetzt: booking.create_option zur Bestaetigung, danach stoppen.',
-            ];
-
-            foreach ($nudges as $idx => $nudge) {
-                $_POST['sesskey'] = sesskey();
-                $followup = ai_send_message::execute((int)$this->booking->cmid, $nudge, $threadid);
-                $followupcommands = $this->decode_json_array((string)($followup['commands'] ?? '[]'));
-                $attemptlogs[] = 'nudge[' . $idx . ']: type=' . (string)($followup['response_type'] ?? '')
-                    . ', commands=' . (string)count($followupcommands)
-                    . ', msg=' . trim((string)($followup['displaymessage'] ?? ''));
-
-                $createcommand = $this->find_command($followupcommands, 'booking.create_option');
-                if ($createcommand !== null) {
-                    break;
-                }
-            }
-        }
-
-        $this->assertNotNull(
-            $createcommand,
-            'Initial response must expose booking.create_option for the first confirmation stage. Trace: '
-                . implode(' | ', $attemptlogs)
-        );
-
-        $_POST['sesskey'] = sesskey();
-        $confirm1 = ai_confirm_run::execute(
-            (int)$this->booking->cmid,
-            $threadid,
-            json_encode([$createcommand], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            true
-        );
-
-        $confirm1runid = (int)($confirm1['runid'] ?? 0);
-        $confirm1pollstatus = '';
-        $confirm1pollmessage = '';
-        $confirm1pollresults = '[]';
-        if ($confirm1runid > 0) {
-            $_POST['sesskey'] = sesskey();
-            $confirm1poll = ai_poll_run_status::execute((int)$this->booking->cmid, $confirm1runid);
-            $confirm1pollstatus = (string)($confirm1poll['status'] ?? '');
-            $confirm1pollmessage = trim((string)($confirm1poll['displaymessage'] ?? ''));
-            $confirm1pollresults = (string)($confirm1poll['resultsjson'] ?? '[]');
-        }
-
-        $this->assertTrue(
-            (bool)($confirm1['success'] ?? false),
-            (string)($confirm1['message'] ?? '')
-            . ' | first_response_type=' . (string)($first['response_type'] ?? '')
-            . ' | create_command=' . json_encode($createcommand, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-            . ' | first_message=' . trim((string)($first['displaymessage'] ?? ''))
-            . ' | confirm1_runid=' . $confirm1runid
-            . ' | confirm1_poll_status=' . $confirm1pollstatus
-            . ' | confirm1_poll_message=' . $confirm1pollmessage
-            . ' | confirm1_poll_results=' . $confirm1pollresults
-            . ' | trace=' . implode(' | ', $attemptlogs)
-        );
-
         $option = $DB->get_record('booking_options', [
             'bookingid' => (int)$this->booking->id,
-            'text' => $title,
+            'text' => (string)$title,
         ]);
-        $this->assertNotFalse($option, 'Created option must exist after first confirmation.');
 
-        $_POST['sesskey'] = sesskey();
-        $poll = ai_poll_run_status::execute((int)$this->booking->cmid, $confirm1runid);
-        $sinceid = (int)($poll['executionmessageid'] ?? 0);
+        $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
+        $ba = singleton_service::get_instance_of_booking_answers($settings);
+        $status = (int)$ba->user_status((int)$billy->id);
 
-        $_POST['sesskey'] = sesskey();
-        $wait = ai_wait_thread_response::execute((int)$this->booking->cmid, $threadid, $sinceid, 60000);
-
-        $attemptlogs[] = 'wait: found=' . (string)($wait['found'] ?? '')
-            . ', type=' . (string)($wait['responsetype'] ?? '')
-            . ', msg=' . trim((string)($wait['displaymessage'] ?? ''));
-
-        $lastwaitresponsetype = (string)($wait['responsetype'] ?? '');
-        $lastsinceid = $sinceid;
-
-        // Continuation loop: handle whatever the continuation planner produces.
-        // - execution_result  → book_users was executed directly via task_call, done.
-        // - sufficient        → planner declared all done, done.
-        // - confirmation_request → new pending action (book_users, duplicate update, etc.),
-        //                         confirm it with ai_confirm_run then wait for the next step.
-        // - clarification     → planner needs user input, reply with explicit optionid + userid
-        //                         to avoid ambiguity loops (duplicate titles / placeholder-email paths).
-        for ($i = 0; $i < 6; $i++) {
-            if ($lastwaitresponsetype === 'execution_result' || $lastwaitresponsetype === 'sufficient') {
-                // Continuation directly executed a mutation (task_call) — check if booking is done.
-                break;
-            }
-
-            if ($lastwaitresponsetype === 'confirmation_request') {
-                // Confirm the pending continuation action.
-                // Passing '[]' (empty) skips the tamper check and uses the server-side pending intent.
-                $_POST['sesskey'] = sesskey();
-                $confirmcont = ai_confirm_run::execute(
-                    (int)$this->booking->cmid,
-                    $threadid,
-                    '[]'
-                );
-                $confirmcontrunid = (int)($confirmcont['runid'] ?? 0);
-                $attemptlogs[] = 'confirmcont[' . $i . ']: success=' . (string)($confirmcont['success'] ?? '')
-                    . ', runid=' . $confirmcontrunid
-                    . ', msg=' . (string)($confirmcont['message'] ?? '');
-
-                if ($confirmcontrunid > 0) {
-                    $_POST['sesskey'] = sesskey();
-                    $contpoll = ai_poll_run_status::execute((int)$this->booking->cmid, $confirmcontrunid);
-                    $contpollsinceid = (int)($contpoll['executionmessageid'] ?? $lastsinceid);
-                    $attemptlogs[] = 'confirmcont_poll[' . $i . ']: status=' . (string)($contpoll['status'] ?? '');
-
-                    $_POST['sesskey'] = sesskey();
-                    $waitcont = ai_wait_thread_response::execute(
-                        (int)$this->booking->cmid, $threadid, $contpollsinceid, 60000
-                    );
-                    $lastwaitresponsetype = (string)($waitcont['responsetype'] ?? '');
-                    $lastsinceid = $contpollsinceid;
-                    $attemptlogs[] = 'waitcont[' . $i . ']: found=' . (string)($waitcont['found'] ?? '')
-                        . ', type=' . $lastwaitresponsetype
-                        . ', msg=' . trim((string)($waitcont['displaymessage'] ?? ''));
-                    continue;
-                }
-
-                // confirmcont produced no run (pending intent missing or already consumed) — stop.
-                $attemptlogs[] = 'confirmcont[' . $i . ']: no runid, breaking';
-                break;
-            }
-
-            if ($lastwaitresponsetype === 'clarification') {
-                // Reply deterministically with explicit ids so the planner can resolve both
-                // the target option and user even when duplicate option titles exist.
-                $clarificationreply = 'Buche bitte den Benutzer mit userid ' . (int)$billy->id
-                    . ' in optionid ' . (int)$option->id
-                    . ' fuer die Buchung "' . $title . '".';
-                $_POST['sesskey'] = sesskey();
-                $next = ai_send_message::execute((int)$this->booking->cmid, $clarificationreply, $threadid);
-                $nexttype = (string)($next['response_type'] ?? '');
-                $nextcommands = $this->decode_json_array((string)($next['commands'] ?? '[]'));
-                $attemptlogs[] = 'next[' . $i . ']: reply=book_by_ids'
-                    . ', type=' . $nexttype . ', commands=' . (string)count($nextcommands)
-                    . ', msg=' . trim((string)($next['displaymessage'] ?? ''));
-                $lastwaitresponsetype = $nexttype;
-
-                // If the reply already surfaced book_users, confirm it now.
-                $bookcommand = $this->find_command($nextcommands, 'booking.book_users');
-                if ($bookcommand !== null) {
-                    $_POST['sesskey'] = sesskey();
-                    $confirmbook = ai_confirm_run::execute(
-                        (int)$this->booking->cmid,
-                        $threadid,
-                        json_encode([$bookcommand], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-                    );
-                    $attemptlogs[] = 'confirmbook[' . $i . ']: success=' . (string)($confirmbook['success'] ?? '')
-                        . ', msg=' . (string)($confirmbook['message'] ?? '');
-
-                    if (!empty($confirmbook['runid'])) {
-                        $_POST['sesskey'] = sesskey();
-                        $bookpoll = ai_poll_run_status::execute(
-                            (int)$this->booking->cmid, (int)$confirmbook['runid']
-                        );
-                        $attemptlogs[] = 'confirmbook_poll[' . $i . ']: status='
-                            . (string)($bookpoll['status'] ?? '');
-                    }
-
-                    if ((bool)($confirmbook['success'] ?? false)) {
-                        break;
-                    }
-                }
-                continue;
-            }
-
-            // Unknown or empty response type — nothing more to do.
-            break;
+        $pendingafterfirst = $store->get_pending_intent($threadid);
+        $pendingtype = '';
+        $pendingcommandscount = 0;
+        if (is_array($pendingafterfirst)) {
+            $pendingtype = trim((string)($pendingafterfirst['response_type'] ?? ''));
+            $pendingcommandscount = is_array($pendingafterfirst['commands'] ?? null)
+                ? count((array)$pendingafterfirst['commands'])
+                : 0;
         }
 
-        $booked = $DB->record_exists('booking_answers', [
-            'optionid' => (int)$option->id,
-            'userid' => (int)$billy->id,
-        ]);
+        $firstcommands = $this->decode_json_array((string)($first['commands'] ?? '[]'));
+        $firstresults = $this->decode_json_array((string)($first['resultsjson'] ?? '[]'));
+        $debugtrace = 'first_type=' . (string)($first['response_type'] ?? '')
+            . ' | first_message=' . trim((string)($first['displaymessage'] ?? ''))
+            . ' | first_commands=' . count($firstcommands)
+            . ' | first_results=' . count($firstresults)
+            . ' | pending_type=' . $pendingtype
+            . ' | pending_commands=' . $pendingcommandscount
+            . ' | final_status=' . $status;
 
-        $this->assertTrue(
-            $booked,
-            'Expected Billy to be booked after multistep flow. Trace: '
-            . implode(' | ', $attemptlogs)
-        );
+        $this->assertSame(MOD_BOOKING_STATUSPARAM_BOOKED, $status, $debugtrace);
     }
 
     /**

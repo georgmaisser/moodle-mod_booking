@@ -203,14 +203,21 @@ class ai_send_message extends external_api {
             && $store->is_confirmation_allowed_for_thread((int)$USER->id, $cmid, $threadid)
             && !empty($result['commands'])
         ) {
-            $confirmresult = ai_confirm_run::execute(
-                $cmid,
-                $threadid,
-                json_encode($result['commands']),
-                false
-            );
+            // Auto-confirm staged mutations while session allowance is active.
+            // Keep a small hard cap to avoid infinite loops on malformed planner output.
+            for ($i = 0; $i < 5; $i++) {
+                $confirmpayload = $i === 0 ? json_encode($result['commands']) : '[]';
+                $confirmresult = ai_confirm_run::execute(
+                    $cmid,
+                    $threadid,
+                    (string)$confirmpayload,
+                    false
+                );
 
-            if (!empty($confirmresult['success'])) {
+                if (empty($confirmresult['success'])) {
+                    break;
+                }
+
                 $executedmessage = $store->get_latest_execution_result_message_for_run(
                     $threadid,
                     (int)($confirmresult['runid'] ?? 0)
@@ -221,6 +228,15 @@ class ai_send_message extends external_api {
                         $result = $structured;
                         $result['message'] = (string)($executedmessage->content ?? $confirmresult['message'] ?? '');
                     }
+                }
+
+                if (!$store->is_confirmation_allowed_for_thread((int)$USER->id, $cmid, $threadid)) {
+                    break;
+                }
+
+                $pending = $store->get_pending_intent($threadid);
+                if ($pending === null || empty($pending['commands']) || !is_array($pending['commands'])) {
+                    break;
                 }
             }
         }

@@ -851,9 +851,11 @@ class conversation_store implements agent_conversation_store {
             }
 
             $cmid = (int)($entry['cmid'] ?? 0);
-            $threadid = (int)($entry['threadid'] ?? 0);
+            // Thread id is informational only and not part of matching.
+            // Keep 0 for pre-thread allowances created before first message.
+            $threadid = max(0, (int)($entry['threadid'] ?? 0));
             $expiresat = (int)($entry['expiresat'] ?? 0);
-            if ($cmid <= 0 || $threadid <= 0 || $expiresat <= $now) {
+            if ($cmid <= 0 || $expiresat <= $now) {
                 continue;
             }
 
