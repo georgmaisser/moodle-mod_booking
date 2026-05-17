@@ -409,8 +409,8 @@ class conversation_store implements agent_conversation_store {
         if ($query !== '') {
             $like = '%' . $DB->sql_like_escape(\core_text::strtolower($query)) . '%';
             $where .= ' AND (
-                ' . $DB->sql_like('LOWER(' . $DB->sql_cast_char2text('m.content') . ')', ':querylike', false) . '
-                OR ' . $DB->sql_like('LOWER(' . $DB->sql_cast_char2text('m.structuredjson') . ')', ':querylikestruct', false) . '
+                ' . $DB->sql_like('LOWER(' . $DB->sql_cast_to_char('m.content') . ')', ':querylike', false) . '
+                OR ' . $DB->sql_like('LOWER(' . $DB->sql_cast_to_char('m.structuredjson') . ')', ':querylikestruct', false) . '
             )';
             $params['querylike'] = $like;
             $params['querylikestruct'] = $like;

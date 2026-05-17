@@ -206,6 +206,7 @@ class recall_memory_task extends \mod_booking\local\wbagent\booking\tasks\bookin
                 'from_timestamp' => $fromtimestamp,
                 'to_timestamp' => $totimestamp,
                 'messages' => [],
+                'observation_full' => '',
                 'memory_observation_text' => '',
             ];
         }
@@ -236,6 +237,7 @@ class recall_memory_task extends \mod_booking\local\wbagent\booking\tasks\bookin
             'from_timestamp' => $fromtimestamp,
             'to_timestamp' => $totimestamp,
             'messages' => $normalizedmessages,
+            'observation_full' => $observation,
             'memory_observation_text' => $observation,
         ];
     }
@@ -326,7 +328,7 @@ class recall_memory_task extends \mod_booking\local\wbagent\booking\tasks\bookin
      * @return string
      */
     private function build_memory_observation_text(array $messages): string {
-        $lines = [];
+        $lines = ['[MEMORY_CONTEXT] Historical messages from earlier discussion, not the current turn.'];
         $userindex = 1;
         $assistantindex = 1;
 
@@ -338,13 +340,13 @@ class recall_memory_task extends \mod_booking\local\wbagent\booking\tasks\bookin
             }
 
             if ($role === 'user') {
-                $lines[] = 'USER_PREVIOUS_' . $userindex . ': ' . $content;
+                $lines[] = '[USER_PREVIOUS ' . $userindex . '] ' . $content;
                 $userindex++;
                 continue;
             }
 
             if ($role === 'assistant') {
-                $lines[] = 'ASSISTANT_PREVIOUS_' . $assistantindex . ': ' . $content;
+                $lines[] = '[ASSISTANT_PREVIOUS ' . $assistantindex . '] ' . $content;
                 $assistantindex++;
             }
         }

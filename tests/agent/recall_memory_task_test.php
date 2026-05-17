@@ -63,8 +63,13 @@ final class recall_memory_task_test extends abstract_agent_testcase {
 
         $this->assertSame('executed', (string)($result['status'] ?? ''));
         $this->assertNotEmpty((array)($result['messages'] ?? []));
-        $this->assertStringContainsString('USER_PREVIOUS_1', (string)($result['memory_observation_text'] ?? ''));
-        $this->assertStringContainsString('ASSISTANT_PREVIOUS_1', (string)($result['memory_observation_text'] ?? ''));
+        $this->assertStringContainsString('[MEMORY_CONTEXT]', (string)($result['memory_observation_text'] ?? ''));
+        $this->assertStringContainsString('[USER_PREVIOUS 1]', (string)($result['memory_observation_text'] ?? ''));
+        $this->assertStringContainsString('[ASSISTANT_PREVIOUS 1]', (string)($result['memory_observation_text'] ?? ''));
+        $this->assertSame(
+            trim((string)($result['memory_observation_text'] ?? '')),
+            trim((string)($result['observation_full'] ?? ''))
+        );
     }
 
     /**
