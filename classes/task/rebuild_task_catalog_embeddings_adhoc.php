@@ -29,6 +29,7 @@ namespace mod_booking\task;
 use context_system;
 use core\di;
 use core_ai\manager as ai_manager;
+use mod_booking\local\wbagent\embeddings_action_config_resolver;
 use mod_booking\local\wbagent\embeddings_catalog_builder_service;
 use mod_booking\local\wbagent\embeddings_csv_repository;
 use mod_booking\local\wbagent\orchestrator;
@@ -49,12 +50,15 @@ class rebuild_task_catalog_embeddings_adhoc extends \core\task\adhoc_task {
         }
 
         $customdata = (array)$this->get_custom_data();
-        $model = trim((string)($customdata['model'] ?? orchestrator::EMBEDDINGS_DEFAULT_MODEL));
+        $resolvedsettings = (new embeddings_action_config_resolver())->resolve();
+
+        $model = trim((string)($customdata['model'] ?? ($resolvedsettings['model'] ?? orchestrator::EMBEDDINGS_DEFAULT_MODEL)));
         if ($model === '') {
             $model = orchestrator::EMBEDDINGS_DEFAULT_MODEL;
         }
 
-        $dimensions = (int)($customdata['dimensions'] ?? orchestrator::EMBEDDINGS_DEFAULT_DIMENSIONS);
+        $dimensions = (int)($customdata['dimensions']
+            ?? ($resolvedsettings['dimensions'] ?? orchestrator::EMBEDDINGS_DEFAULT_DIMENSIONS));
         if ($dimensions < 1) {
             $dimensions = orchestrator::EMBEDDINGS_DEFAULT_DIMENSIONS;
         }

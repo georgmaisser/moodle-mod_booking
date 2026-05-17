@@ -102,10 +102,15 @@ final class agent_real_llm_test extends booking_advanced_testcase {
     private function maybe_register_live_ai_provider(): void {
         $apikey = trim((string)(getenv('BOOKING_TEST_AI_KEY') ?: ''));
         $model = trim((string)(getenv('BOOKING_TEST_AI_MODEL') ?: ''));
+        $minimodel = trim((string)(getenv('BOOKING_TEST_AI_MODEL_MINI') ?: ''));
         $endpoint = trim((string)(getenv('BOOKING_TEST_AI_ENDPOINT') ?: ''));
 
         if ($apikey === '' || $model === '' || $endpoint === '') {
             return;
+        }
+
+        if ($minimodel === '') {
+            $minimodel = $model;
         }
 
         $endpoint = rtrim($endpoint, '/');
@@ -123,7 +128,7 @@ final class agent_real_llm_test extends booking_advanced_testcase {
                 generate_text::class => [
                     'enabled' => true,
                     'settings' => [
-                        'model' => 'wunderbyte-privat',
+                        'model' => $model,
                         'endpoint' => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -131,7 +136,7 @@ final class agent_real_llm_test extends booking_advanced_testcase {
                 summarise_text::class => [
                     'enabled' => true,
                     'settings' => [
-                        'model' => 'wunderbyte-privat-mini',
+                        'model' => $minimodel,
                         'endpoint' => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -139,7 +144,7 @@ final class agent_real_llm_test extends booking_advanced_testcase {
                 explain_text::class => [
                     'enabled' => true,
                     'settings' => [
-                        'model' => 'wunderbyte-privat-mini',
+                        'model' => $minimodel,
                         'endpoint' => $endpoint,
                         'systeminstruction' => '',
                     ],

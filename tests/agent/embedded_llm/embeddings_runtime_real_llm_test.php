@@ -58,8 +58,50 @@ final class embeddings_runtime_real_llm_test extends abstract_agent_testcase {
             $this->fail('Real-LLM credentials exist, but provider registration is not active.');
         }
 
+        $runtimechatmodel = trim((string)(getenv('BOOKING_TEST_AI_RUNTIME_MODEL') ?: 'wunderbyte-privat'));
+        $runtimeminimodel = trim((string)(getenv('BOOKING_TEST_AI_RUNTIME_MODEL_MINI') ?: 'wunderbyte-privat-mini'));
+        $this->configure_runtime_test_models($runtimechatmodel, $runtimeminimodel);
+
         // This suite validates embeddings telemetry markers, not generate_text routing.
         $this->enforcegeneratetextassertion = false;
+    }
+
+    /**
+     * Force runtime chat models for the temporary OpenAI test provider.
+     *
+     * @param string $chatmodel
+     * @param string $minimodel
+     * @return void
+     */
+    private function configure_runtime_test_models(string $chatmodel, string $minimodel): void {
+        global $DB;
+
+        $provider = $DB->get_record('ai_providers', ['name' => 'booking-test-provider'], '*', IGNORE_MISSING);
+        if (!$provider) {
+            return;
+        }
+
+        $actionconfig = json_decode((string)($provider->actionconfig ?? ''), true);
+        if (!is_array($actionconfig)) {
+            return;
+        }
+
+        $gen = \core_ai\aiactions\generate_text::class;
+        $sum = \core_ai\aiactions\summarise_text::class;
+        $exp = \core_ai\aiactions\explain_text::class;
+
+        foreach ([$gen => $chatmodel, $sum => $minimodel, $exp => $minimodel] as $action => $model) {
+            if (empty($actionconfig[$action]) || !is_array($actionconfig[$action])) {
+                continue;
+            }
+            if (empty($actionconfig[$action]['settings']) || !is_array($actionconfig[$action]['settings'])) {
+                $actionconfig[$action]['settings'] = [];
+            }
+            $actionconfig[$action]['settings']['model'] = $model;
+        }
+
+        $provider->actionconfig = json_encode($actionconfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $DB->update_record('ai_providers', $provider);
     }
 
     /**
@@ -86,7 +128,22 @@ final class embeddings_runtime_real_llm_test extends abstract_agent_testcase {
             $runtime
         );
 
-        $this->assertNotSame('error', (string)($result['response_type'] ?? ''));
+        if ((string)($result['response_type'] ?? '') === 'error') {
+            $result = $this->chat(
+                'Prepare exactly one booking.create_option confirmation_request for title "Embedding Runtime Test", '
+                . 'optiontype normal, maxanswers 10, coursestarttime 2045-12-01T09:00:00, '
+                . 'courseendtime 2045-12-01T11:00:00. Do not execute.',
+                $threadid,
+                $store,
+                $runtime
+            );
+        }
+
+        $this->assertNotSame(
+            'error',
+            (string)($result['response_type'] ?? ''),
+            'Embedded runtime call still returned error: ' . json_encode($result, JSON_UNESCAPED_UNICODE)
+        );
 
         $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => $threadid], 'id ASC');
         $this->assertNotEmpty($entries, 'Expected booking_ai_llm_debug rows for runtime telemetry assertions.');

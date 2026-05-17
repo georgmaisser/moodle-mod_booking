@@ -145,10 +145,16 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
     protected function maybe_register_live_ai_provider(): void {
         $apikey = (string)(getenv('BOOKING_TEST_AI_KEY') ?: '');
         $model = (string)(getenv('BOOKING_TEST_AI_MODEL') ?: '');
+        $minimodel = (string)(getenv('BOOKING_TEST_AI_MODEL_MINI') ?: '');
+        $embeddingmodel = trim((string)(getenv('BOOKING_TEST_AI_EMBEDDING_MODEL') ?: 'wunderbyte-embeddings'));
         $endpoint = trim((string)(getenv('BOOKING_TEST_AI_ENDPOINT') ?: ''));
 
         if ($apikey === '' || $model === '' || $endpoint === '') {
             return;
+        }
+
+        if ($minimodel === '') {
+            $minimodel = $model;
         }
 
         $endpoint = rtrim($endpoint, '/');
@@ -166,7 +172,7 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
                 generate_text::class => [
                     'enabled'  => true,
                     'settings' => [
-                        'model'             => 'wunderbyte-privat',
+                        'model'             => $model,
                         'endpoint'          => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -174,7 +180,7 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
                 summarise_text::class => [
                     'enabled'  => true,
                     'settings' => [
-                        'model'             => 'wunderbyte-privat-mini',
+                        'model'             => $minimodel,
                         'endpoint'          => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -182,7 +188,7 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
                 explain_text::class => [
                     'enabled'  => true,
                     'settings' => [
-                        'model'             => 'wunderbyte-privat-mini',
+                        'model'             => $minimodel,
                         'endpoint'          => $endpoint,
                         'systeminstruction' => '',
                     ],
@@ -190,7 +196,49 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
             ],
         );
 
+        // Keep embeddings tests stable: enforce a dedicated embeddings model on
+        // existing wunderbyte provider instances when present in the test DB.
+        // Chat models like minimax-m2.7 cannot be used for /v1/embeddings.
+        if ($embeddingmodel !== '') {
+            $this->configure_wunderbyte_embeddings_model($embeddingmodel);
+        }
+
         $this->hasliveprovider = true;
+    }
+
+    /**
+     * Update all wunderbyte provider instances to use a working embeddings model.
+     *
+     * @param string $embeddingmodel
+     * @return void
+     */
+    protected function configure_wunderbyte_embeddings_model(string $embeddingmodel): void {
+        global $DB;
+
+        $providers = $DB->get_records('ai_providers', ['provider' => 'aiprovider_wunderbyte\\provider']);
+        if (empty($providers)) {
+            return;
+        }
+
+        $actionkey = 'aiprovider_wunderbyte\\aiactions\\generate_embeddings';
+        foreach ($providers as $provider) {
+            $actionconfig = json_decode((string)($provider->actionconfig ?? ''), true);
+            if (!is_array($actionconfig)) {
+                continue;
+            }
+
+            if (empty($actionconfig[$actionkey]) || !is_array($actionconfig[$actionkey])) {
+                continue;
+            }
+
+            if (empty($actionconfig[$actionkey]['settings']) || !is_array($actionconfig[$actionkey]['settings'])) {
+                $actionconfig[$actionkey]['settings'] = [];
+            }
+
+            $actionconfig[$actionkey]['settings']['model'] = $embeddingmodel;
+            $provider->actionconfig = json_encode($actionconfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $DB->update_record('ai_providers', $provider);
+        }
     }
 
     // -------------------------------------------------------------------------

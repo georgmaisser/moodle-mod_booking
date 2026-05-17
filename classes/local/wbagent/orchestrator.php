@@ -309,17 +309,9 @@ class orchestrator {
 
             if ($iswunderbyteplanner) {
                 $embeddingstatus = 'check';
-                $embeddingmodel = trim((string)(get_config('booking', 'ai_embeddings_model')
-                    ?? self::EMBEDDINGS_DEFAULT_MODEL));
-                if ($embeddingmodel === '') {
-                    $embeddingmodel = self::EMBEDDINGS_DEFAULT_MODEL;
-                }
-
-                $embeddingdimensions = (int)(get_config('booking', 'ai_embeddings_dimensions')
-                    ?? self::EMBEDDINGS_DEFAULT_DIMENSIONS);
-                if ($embeddingdimensions < 1) {
-                    $embeddingdimensions = self::EMBEDDINGS_DEFAULT_DIMENSIONS;
-                }
+                $embeddingsettings = (new embeddings_action_config_resolver())->resolve();
+                $embeddingmodel = (string)($embeddingsettings['model'] ?? self::EMBEDDINGS_DEFAULT_MODEL);
+                $embeddingdimensions = (int)($embeddingsettings['dimensions'] ?? self::EMBEDDINGS_DEFAULT_DIMENSIONS);
 
                 $embeddingtopk = (int)(get_config('booking', 'ai_embeddings_top_k')
                     ?? self::EMBEDDINGS_DEFAULT_TOP_K);
@@ -389,6 +381,7 @@ class orchestrator {
             $actionclass,
             $haseffectiveobservations,
             $adaptivecatalog,
+            $runtimecatalog,
             $isfirstassistantturn,
             $shouldincludetaskcatalog
         );
@@ -545,8 +538,6 @@ SMART INPUT EXTRACTION FOR DIAGNOSTIC QUERIES:
 - Named entities like ANON_USER_1, option titles, or specific references are always extractable.
 - Only ask for clarification if the user explicitly omits both the person AND the option reference.
 
-TASK CATALOG:
-{{taskcatalogjson}}
 PROMPT;
         }
 
@@ -573,8 +564,6 @@ ACTION-SPECIFIC GUIDANCE FOR FINAL REASONING:
 - If observations already include concrete domain-specific configuration fields or labels,
     answer directly and do NOT ask the user to reconfirm intent.
 
-TASK CATALOG:
-{{taskcatalogjson}}
 PROMPT;
         }
 
@@ -646,6 +635,7 @@ PROMPT;
      * @param  string $actionclass
      * @param  bool   $hasobservations
      * @param  array  $adaptivecatalog Optional adaptive task catalog (reduced by recency/tier). If null, uses full catalog.
+     * @param  array  $systemtaskcatalog Optional exact task catalog to embed into SYSTEM placeholders.
      * @param  bool   $isfirstassistantturn True when no assistant message exists yet in this thread.
      * @param  bool   $includetaskcatalog If true, embed task catalog placeholder in SYSTEM block.
      * @return string System prompt text.
@@ -656,13 +646,17 @@ PROMPT;
         string $actionclass = generate_text::class,
         bool $hasobservations = false,
         ?array $adaptivecatalog = null,
+        array $systemtaskcatalog = [],
         bool $isfirstassistantturn = false,
         bool $includetaskcatalog = false
     ): string {
         $schemas = $this->registry->get_all_schemas();
         $taskcatalog = $adaptivecatalog ?? $this->registry->get_all_prompt_contracts();
-        if ($this->normalize_step_type($steptype) === self::STEP_TYPE_TOOL_CALL_PARSE) {
+        if (empty($systemtaskcatalog) && $this->normalize_step_type($steptype) === self::STEP_TYPE_TOOL_CALL_PARSE) {
             $taskcatalog = $this->slim_prompt_catalog_for_planner($taskcatalog);
+        }
+        if (!empty($systemtaskcatalog)) {
+            $taskcatalog = $systemtaskcatalog;
         }
         $tasklist = implode(', ', $this->registry->get_task_names());
         $fullschemajson = json_encode($schemas, JSON_UNESCAPED_UNICODE);
