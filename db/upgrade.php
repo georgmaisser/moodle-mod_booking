@@ -5503,7 +5503,7 @@ function xmldb_booking_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026042204, 'booking');
     }
 
-    if ($oldversion < 2026051700) {
+    if ($oldversion < 2026043004) {
         // Add userid to booking_ai_messages and harden user-isolated message retrieval.
         $table = new xmldb_table('booking_ai_messages');
         $nullablefield = new xmldb_field('userid', XMLDB_TYPE_INTEGER, '10', null, null, null, '0', 'threadid');
@@ -5535,7 +5535,7 @@ function xmldb_booking_upgrade($oldversion) {
             $dbman->add_index($table, $index);
         }
 
-        upgrade_mod_savepoint(true, 2026051700, 'booking');
+        upgrade_mod_savepoint(true, 2026043004, 'booking');
     }
 
     return true;
