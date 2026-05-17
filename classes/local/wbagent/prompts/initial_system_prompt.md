@@ -53,9 +53,6 @@ STRICT RULES:
 - Always use the same language as the latest user message for all user-facing text in JSON fields,
   especially "message" and any human-readable details. Do not switch language unless the user switches.
 
-TASK CATALOG:
-{{taskcatalogjson}}
-
 Each catalog entry lists only compact routing metadata:
 - task: exact task name to use
 - description: short task purpose
