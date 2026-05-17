@@ -35,9 +35,6 @@ class embeddings_readiness_service {
     /** Fully qualified class name of the rebuild adhoc task. */
     private const REBUILD_TASK_CLASS = '\\mod_booking\\task\\rebuild_task_catalog_embeddings_adhoc';
 
-    /** Config key for debounce timestamp. */
-    private const REBUILD_DEBOUNCE_KEY = 'ai_embeddings_rebuild_queued_at';
-
     /**
      * Check if wunderbyte embeddings action can be used.
      *
@@ -119,17 +116,14 @@ class embeddings_readiness_service {
         int $dimensions,
         int $debounceseconds
     ): bool {
+        // Kept for backward-compatible signature; scheduling no longer uses config debounce markers.
+        $debounceseconds = (int)$debounceseconds;
+
         if (!empty($status['ready'])) {
             return false;
         }
 
         if (!class_exists(self::REBUILD_TASK_CLASS)) {
-            return false;
-        }
-
-        $lastqueuedat = (int)(get_config('booking', self::REBUILD_DEBOUNCE_KEY) ?: 0);
-        $now = time();
-        if ($lastqueuedat > 0 && ($now - $lastqueuedat) < $debounceseconds) {
             return false;
         }
 
@@ -139,9 +133,7 @@ class embeddings_readiness_service {
             'model' => $model,
             'dimensions' => $dimensions,
         ]);
-        task_manager::queue_adhoc_task($task);
-
-        set_config(self::REBUILD_DEBOUNCE_KEY, (string)$now, 'booking');
+        task_manager::reschedule_or_queue_adhoc_task($task);
         return true;
     }
 }

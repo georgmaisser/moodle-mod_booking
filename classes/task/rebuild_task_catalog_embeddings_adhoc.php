@@ -62,6 +62,7 @@ class rebuild_task_catalog_embeddings_adhoc extends \core\task\adhoc_task {
         if ($dimensions < 1) {
             $dimensions = orchestrator::EMBEDDINGS_DEFAULT_DIMENSIONS;
         }
+        $forcefullregen = !empty($customdata['force']);
 
         $registry = task_registry_factory::get_default();
         $builder = new embeddings_catalog_builder_service();
@@ -72,13 +73,71 @@ class rebuild_task_catalog_embeddings_adhoc extends \core\task\adhoc_task {
             return;
         }
 
+        $existingrows = $repo->read_rows();
+        $existingbytask = [];
+        if ($repo->is_valid_schema($existingrows)) {
+            foreach ($existingrows as $existingrow) {
+                $taskname = trim((string)($existingrow['task'] ?? ''));
+                if ($taskname !== '') {
+                    $existingbytask[$taskname] = $existingrow;
+                }
+            }
+        }
+
+        $currenttasknames = [];
+        $taskstates = [];
+        foreach ($rows as $row) {
+            $taskname = trim((string)($row['task'] ?? ''));
+            if ($taskname !== '') {
+                $currenttasknames[] = $taskname;
+                if (!isset($existingbytask[$taskname])) {
+                    $taskstates[$taskname] = 'created';
+                } else if (
+                    trim((string)($existingbytask[$taskname]['content_hash'] ?? ''))
+                    === trim((string)($row['content_hash'] ?? ''))
+                ) {
+                    $taskstates[$taskname] = 'untouched';
+                } else {
+                    $taskstates[$taskname] = 'updated';
+                }
+            }
+        }
+        $currenttasknames = array_values(array_unique($currenttasknames));
+        sort($currenttasknames);
+        $removedtasks = array_values(array_diff(array_keys($existingbytask), $currenttasknames));
+        sort($removedtasks);
+        foreach ($removedtasks as $taskname) {
+            $taskstates[$taskname] = 'deleted';
+        }
+
         $context = context_system::instance();
         $admin = get_admin();
         $userid = !empty($admin->id) ? (int)$admin->id : 2;
         $embeddedtasks = [];
+        $reusedtasks = [];
 
         $manager = di::get(ai_manager::class);
         foreach ($rows as $idx => $row) {
+            $taskname = trim((string)($row['task'] ?? ''));
+            $contenthash = trim((string)($row['content_hash'] ?? ''));
+            $existingrow = ($taskname !== '' && isset($existingbytask[$taskname])) ? $existingbytask[$taskname] : null;
+
+            // Reuse unchanged embeddings from current CSV to avoid unnecessary API calls.
+            if (
+                !$forcefullregen
+                &&
+                is_array($existingrow)
+                && trim((string)($existingrow['content_hash'] ?? '')) === $contenthash
+                && trim((string)($existingrow['embedding_json'] ?? '')) !== ''
+            ) {
+                $rows[$idx]['embedding_json'] = (string)$existingrow['embedding_json'];
+                if ($taskname !== '') {
+                    $reusedtasks[] = $taskname;
+                }
+                unset($rows[$idx]['_embedding_input']);
+                continue;
+            }
+
             $inputtext = (string)($row['_embedding_input'] ?? '');
             if ($inputtext === '') {
                 continue;
@@ -104,7 +163,6 @@ class rebuild_task_catalog_embeddings_adhoc extends \core\task\adhoc_task {
             }
 
             $rows[$idx]['embedding_json'] = json_encode($embedding, JSON_UNESCAPED_UNICODE);
-            $taskname = trim((string)($row['task'] ?? ''));
             if ($taskname !== '') {
                 $embeddedtasks[] = $taskname;
             }
@@ -119,11 +177,57 @@ class rebuild_task_catalog_embeddings_adhoc extends \core\task\adhoc_task {
 
         $embeddedtasks = array_values(array_unique($embeddedtasks));
         sort($embeddedtasks);
+        $reusedtasks = array_values(array_unique($reusedtasks));
+        sort($reusedtasks);
 
         mtrace('mod_booking embeddings rebuild: generated embeddings for '
             . count($embeddedtasks) . ' tasks.');
+        mtrace('mod_booking embeddings rebuild: reused embeddings for '
+            . count($reusedtasks) . ' tasks.');
+        mtrace('mod_booking embeddings rebuild: removed stale tasks from CSV: '
+            . count($removedtasks) . '.');
+
+        $statecounts = [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+            'untouched' => 0,
+        ];
+        foreach ($taskstates as $state) {
+            if (isset($statecounts[$state])) {
+                $statecounts[$state]++;
+            }
+        }
+        mtrace('mod_booking embeddings rebuild states summary: '
+            . 'created=' . $statecounts['created']
+            . ', updated=' . $statecounts['updated']
+            . ', deleted=' . $statecounts['deleted']
+            . ', untouched=' . $statecounts['untouched']);
         if (!empty($embeddedtasks)) {
-            mtrace('mod_booking embeddings rebuild tasks: ' . implode(', ', $embeddedtasks));
+            mtrace('mod_booking embeddings rebuild generated tasks:');
+            foreach ($embeddedtasks as $taskname) {
+                mtrace(' - ' . $taskname);
+            }
+        }
+        if (!empty($reusedtasks)) {
+            mtrace('mod_booking embeddings rebuild reused tasks:');
+            foreach ($reusedtasks as $taskname) {
+                mtrace(' - ' . $taskname);
+            }
+        }
+        if (!empty($removedtasks)) {
+            mtrace('mod_booking embeddings rebuild removed tasks:');
+            foreach ($removedtasks as $taskname) {
+                mtrace(' - ' . $taskname);
+            }
+        }
+
+        if (!empty($taskstates)) {
+            ksort($taskstates);
+            mtrace('mod_booking embeddings rebuild task states:');
+            foreach ($taskstates as $taskname => $state) {
+                mtrace(' - ' . $taskname . ': ' . $state);
+            }
         }
     }
 }

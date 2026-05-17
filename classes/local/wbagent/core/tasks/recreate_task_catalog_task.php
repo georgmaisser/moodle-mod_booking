@@ -63,7 +63,7 @@ class recreate_task_catalog_task extends \mod_booking\local\wbagent\booking\task
             'properties' => [
                 'force' => [
                     'type' => 'boolean',
-                    'description' => 'If true, reset debounce marker before queuing rebuild.',
+                    'description' => 'If true, force regeneration for all task embeddings (skip incremental reuse).',
                     'required' => false,
                 ],
                 'model' => [
@@ -133,17 +133,14 @@ class recreate_task_catalog_task extends \mod_booking\local\wbagent\booking\task
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
-        global $DB;
-
         $force = !empty($input['force']);
         $model = trim((string)($input['model'] ?? ''));
         $dimensions = isset($input['dimensions']) ? (int)$input['dimensions'] : 0;
 
-        if ($force) {
-            $DB->delete_records('config', ['name' => 'booking_embeddings_rebuild_debounce']);
-        }
-
         $customdata = [];
+        if ($force) {
+            $customdata['force'] = true;
+        }
         if ($model !== '') {
             $customdata['model'] = $model;
         }
@@ -156,7 +153,7 @@ class recreate_task_catalog_task extends \mod_booking\local\wbagent\booking\task
             $task->set_custom_data($customdata);
         }
 
-        manager::queue_adhoc_task($task);
+        manager::reschedule_or_queue_adhoc_task($task);
 
         return [
             'status' => 'executed',
