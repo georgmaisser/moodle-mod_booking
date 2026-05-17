@@ -32,6 +32,7 @@ use external_function_parameters;
 use external_single_structure;
 use external_value;
 use mod_booking\local\wbagent\agent_runtime;
+use mod_booking\local\wbagent\confirmation_session_allow_service;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\interpreter;
@@ -197,6 +198,34 @@ class ai_send_message extends external_api {
         // response (clarification, confirmation_request, error) is persisted.
         $runtime = new agent_runtime($registry, $orchestrator, $store, $authz);
         $result = $runtime->run_loop($threadid, $cmid, (int)$USER->id);
+
+        $allowservice = new confirmation_session_allow_service();
+        if (
+            (string)($result['response_type'] ?? '') === 'confirmation_request'
+            && $allowservice->is_thread_allowed((int)$USER->id, $cmid, $threadid)
+            && !empty($result['commands'])
+        ) {
+            $confirmresult = ai_confirm_run::execute(
+                $cmid,
+                $threadid,
+                json_encode($result['commands']),
+                false
+            );
+
+            if (!empty($confirmresult['success'])) {
+                $executedmessage = $store->get_latest_execution_result_message_for_run(
+                    $threadid,
+                    (int)($confirmresult['runid'] ?? 0)
+                );
+                if ($executedmessage !== null) {
+                    $structured = json_decode((string)($executedmessage->structuredjson ?? ''), true);
+                    if (is_array($structured)) {
+                        $result = $structured;
+                        $result['message'] = (string)($executedmessage->content ?? $confirmresult['message'] ?? '');
+                    }
+                }
+            }
+        }
 
         // Display-side privacy deanonymisation (presentation concern, stays here).
         $displaymessage = (string)($result['message'] ?? '');

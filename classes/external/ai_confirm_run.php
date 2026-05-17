@@ -32,6 +32,7 @@ use external_api;
 use external_function_parameters;
 use external_single_structure;
 use external_value;
+use mod_booking\local\wbagent\confirmation_session_allow_service;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\execution_feedback_service;
@@ -61,18 +62,25 @@ class ai_confirm_run extends external_api {
             'cmid'     => new external_value(PARAM_INT, 'Course-module id.'),
             'threadid' => new external_value(PARAM_INT, 'Thread id.'),
             'commands' => new external_value(PARAM_RAW, 'JSON-encoded commands to confirm.'),
+            'allow_session' => new external_value(
+                PARAM_BOOL,
+                'Allow confirmations for this thread in the current session.',
+                VALUE_DEFAULT,
+                false
+            ),
         ]);
     }
 
-    /**
-     * Create a run and execute it (direct by default, queue optional).
-     *
-     * @param int    $cmid
-     * @param int    $threadid
-     * @param string $commands JSON-encoded commands array.
-     * @return array
-     */
-    public static function execute(int $cmid, int $threadid, string $commands): array {
+     /**
+      * Create a run and execute it (direct by default, queue optional).
+      *
+      * @param int    $cmid
+      * @param int    $threadid
+      * @param string $commands JSON-encoded commands array.
+      * @param bool $allowsession
+      * @return array
+      */
+    public static function execute(int $cmid, int $threadid, string $commands, bool $allowsession = false): array {
         global $USER;
 
         require_sesskey();
@@ -81,6 +89,7 @@ class ai_confirm_run extends external_api {
             'cmid'     => $cmid,
             'threadid' => $threadid,
             'commands' => $commands,
+            'allow_session' => $allowsession,
         ]);
 
         require_sesskey();
@@ -90,6 +99,11 @@ class ai_confirm_run extends external_api {
         $context = context_module::instance($params['cmid']);
         self::validate_context($context);
         $authz->require_use_capability((int)$USER->id, $params['cmid']);
+
+        if (!empty($params['allow_session'])) {
+            $allowservice = new confirmation_session_allow_service();
+            $allowservice->allow_thread((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
+        }
 
         $store = new conversation_store();
         $pendingintent = $store->consume_pending_intent((int)$params['threadid'], (int)$USER->id, (int)$params['cmid']);
