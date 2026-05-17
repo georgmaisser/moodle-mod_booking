@@ -1,0 +1,63 @@
+<?php
+
+namespace mod_booking\local\wbagent\core\tasks;
+
+use mod_booking\local\wbagent\interfaces\task_trigger_provider_interface;
+
+class core_list_user_calendar_events_task extends core_task_base implements task_trigger_provider_interface {
+    public const TASK_NAME = 'booking.core_list_user_calendar_events';
+
+    public function __construct() { parent::__construct(true); }
+    public function get_name(): string { return self::TASK_NAME; }
+
+    public function get_schema(): array {
+        return $this->enrich_schema_with_prompt_meta([
+            'version' => 1,
+            'description' => 'List personal calendar events for current or target user.',
+            'readonly' => $this->is_read_only(),
+            'properties' => [
+                'userquery' => ['type' => 'string', 'required' => false, 'description' => 'Optional target user query.'],
+                'timestart' => ['type' => 'integer', 'required' => false, 'description' => 'Start unix timestamp filter.'],
+                'timeend' => ['type' => 'integer', 'required' => false, 'description' => 'End unix timestamp filter.'],
+                'outputlang' => ['type' => 'string', 'required' => false, 'description' => 'Optional language code.'],
+            ],
+        ]);
+    }
+
+    public function validate(array $input, int $cmid): array {
+        $errors = [];
+        if (!empty($input['timestart']) && !empty($input['timeend']) && (int)$input['timestart'] > (int)$input['timeend']) { $errors[] = get_string('agent_booking_core_time_range_invalid', 'mod_booking'); }
+        return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => []];
+    }
+
+    public function execute(array $input, int $cmid, int $userid): array {
+        global $DB;
+
+        $lang = $this->get_output_language($input);
+        $targetid = $this->resolve_userid($input, $userid);
+        if ($targetid <= 0) { return ['status' => 'error', 'detail' => $this->localized_string('agent_booking_core_user_not_found', null, $lang), 'resultid' => null]; }
+        if (!$this->can_access_user($userid, $targetid)) { return ['status' => 'error', 'detail' => $this->localized_string('agent_booking_core_user_permission_denied', null, $lang), 'resultid' => null]; }
+
+        $events = $DB->get_records('event', ['userid' => $targetid], 'timestart ASC');
+        $start = !empty($input['timestart']) ? (int)$input['timestart'] : null;
+        $end = !empty($input['timeend']) ? (int)$input['timeend'] : null;
+
+        $items = [];
+        foreach ($events as $event) {
+            $timestart = (int)$event->timestart;
+            if ($start !== null && $timestart < $start) { continue; }
+            if ($end !== null && $timestart > $end) { continue; }
+            $items[] = ['id' => (int)$event->id, 'name' => (string)$event->name, 'courseid' => (int)$event->courseid, 'timestart' => $timestart, 'timeduration' => (int)$event->timeduration];
+        }
+
+        return ['status' => 'executed', 'detail' => $this->localized_string('agent_booking_core_calendar_events_loaded', count($items), $lang), 'resultid' => $targetid, 'userid' => $targetid, 'events' => $items, 'count' => count($items)];
+    }
+
+    public function get_message_triggers(): array {
+        return [[
+            'id' => 'booking.core_list_user_calendar_events_request',
+            'description' => 'User asks for personal calendar events.',
+            'examples' => ['List my calendar events', 'Zeige meine Kalendereinträge', 'Show events for user 12 this week'],
+        ]];
+    }
+}

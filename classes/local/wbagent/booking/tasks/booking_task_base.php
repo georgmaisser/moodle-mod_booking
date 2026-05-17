@@ -117,6 +117,126 @@ abstract class booking_task_base extends base_task {
             'input_fields_for_prompt' => ['bookusersquery'],
             'anchor_fields' => ['option', 'user'],
         ],
+        'booking.core_get_user_profile' => [
+            'input_fields_for_prompt' => ['userquery'],
+            'anchor_fields' => ['user'],
+        ],
+        'booking.core_get_user_preferences' => [
+            'input_fields_for_prompt' => ['userquery', 'prefkeys'],
+            'anchor_fields' => ['user'],
+        ],
+        'booking.core_set_user_preference' => [
+            'input_fields_for_prompt' => ['name', 'value'],
+            'anchor_fields' => ['user'],
+        ],
+        'booking.core_get_user_enrolments' => [
+            'input_fields_for_prompt' => ['userquery'],
+            'anchor_fields' => ['user', 'course'],
+        ],
+        'booking.core_get_current_user' => [
+            'input_fields_for_prompt' => [],
+            'anchor_fields' => ['user'],
+        ],
+        'booking.core_enrol_user_manual' => [
+            'input_fields_for_prompt' => ['userquery', 'coursequery', 'role'],
+            'anchor_fields' => ['user', 'course'],
+        ],
+        'booking.core_unenrol_user_manual' => [
+            'input_fields_for_prompt' => ['userquery', 'coursequery'],
+            'anchor_fields' => ['user', 'course'],
+        ],
+        'booking.core_list_course_participants' => [
+            'input_fields_for_prompt' => ['coursequery'],
+            'anchor_fields' => ['course', 'user'],
+        ],
+        'booking.core_get_user_roles_in_course' => [
+            'input_fields_for_prompt' => ['coursequery', 'userquery'],
+            'anchor_fields' => ['course', 'user'],
+        ],
+        'booking.core_search_course_enrolments' => [
+            'input_fields_for_prompt' => ['coursequery', 'query'],
+            'anchor_fields' => ['course', 'user'],
+        ],
+        'booking.core_list_course_groups' => [
+            'input_fields_for_prompt' => ['coursequery'],
+            'anchor_fields' => ['course', 'group'],
+        ],
+        'booking.core_get_group_members' => [
+            'input_fields_for_prompt' => ['coursequery', 'groupquery'],
+            'anchor_fields' => ['course', 'group', 'user'],
+        ],
+        'booking.core_create_group' => [
+            'input_fields_for_prompt' => ['coursequery', 'name'],
+            'anchor_fields' => ['course', 'group'],
+        ],
+        'booking.core_update_group' => [
+            'input_fields_for_prompt' => ['coursequery', 'groupquery'],
+            'anchor_fields' => ['course', 'group'],
+        ],
+        'booking.core_delete_group' => [
+            'input_fields_for_prompt' => ['coursequery', 'groupquery'],
+            'anchor_fields' => ['course', 'group'],
+        ],
+        'booking.core_get_course_overview' => [
+            'input_fields_for_prompt' => ['coursequery'],
+            'anchor_fields' => ['course'],
+        ],
+        'booking.core_list_course_sections' => [
+            'input_fields_for_prompt' => ['coursequery'],
+            'anchor_fields' => ['course'],
+        ],
+        'booking.core_list_course_modules' => [
+            'input_fields_for_prompt' => ['coursequery', 'section'],
+            'anchor_fields' => ['course', 'module'],
+        ],
+        'booking.core_get_module_details' => [
+            'input_fields_for_prompt' => ['cmid', 'coursequery', 'modulequery'],
+            'anchor_fields' => ['course', 'module'],
+        ],
+        'booking.core_get_activity_completion_status' => [
+            'input_fields_for_prompt' => ['coursequery', 'cmid', 'userquery'],
+            'anchor_fields' => ['course', 'module', 'user'],
+        ],
+        'booking.core_get_user_completion_report' => [
+            'input_fields_for_prompt' => ['coursequery', 'userquery'],
+            'anchor_fields' => ['course', 'user'],
+        ],
+        'booking.core_list_course_calendar_events' => [
+            'input_fields_for_prompt' => ['coursequery', 'timestart', 'timeend'],
+            'anchor_fields' => ['course', 'event'],
+        ],
+        'booking.core_list_user_calendar_events' => [
+            'input_fields_for_prompt' => ['userquery', 'timestart', 'timeend'],
+            'anchor_fields' => ['user', 'event'],
+        ],
+        'booking.core_create_calendar_event' => [
+            'input_fields_for_prompt' => ['title', 'timestart', 'timeend', 'coursequery'],
+            'anchor_fields' => ['course', 'event'],
+        ],
+        'booking.core_update_calendar_event' => [
+            'input_fields_for_prompt' => ['eventid'],
+            'anchor_fields' => ['event'],
+        ],
+        'booking.core_delete_calendar_event' => [
+            'input_fields_for_prompt' => ['eventid'],
+            'anchor_fields' => ['event'],
+        ],
+        'booking.core_list_grade_items' => [
+            'input_fields_for_prompt' => ['coursequery'],
+            'anchor_fields' => ['course', 'grade'],
+        ],
+        'booking.core_get_user_grades_for_course' => [
+            'input_fields_for_prompt' => ['coursequery', 'userquery'],
+            'anchor_fields' => ['course', 'user', 'grade'],
+        ],
+        'booking.core_send_user_message' => [
+            'input_fields_for_prompt' => ['recipient', 'message'],
+            'anchor_fields' => ['user'],
+        ],
+        'booking.core_get_site_summary' => [
+            'input_fields_for_prompt' => [],
+            'anchor_fields' => ['site'],
+        ],
     ];
 
     /**
@@ -207,6 +327,123 @@ abstract class booking_task_base extends base_task {
             'rulequery' => 'Birthday reminder',
             'rulename' => 'Updated reminder',
         ],
+        'booking.core_get_user_profile' => [
+            'userquery' => 'current',
+        ],
+        'booking.core_get_user_preferences' => [
+            'userquery' => 'current',
+            'prefkeys' => ['bookanyone'],
+        ],
+        'booking.core_set_user_preference' => [
+            'name' => 'bookanyone',
+            'value' => '1',
+            'confirmed' => true,
+        ],
+        'booking.core_get_user_enrolments' => [
+            'userquery' => 'current',
+        ],
+        'booking.core_get_current_user' => [],
+        'booking.core_enrol_user_manual' => [
+            'userquery' => 'ANON_USER_1',
+            'coursequery' => 'Mathematik',
+            'role' => 'student',
+            'confirmed' => true,
+        ],
+        'booking.core_unenrol_user_manual' => [
+            'userquery' => 'ANON_USER_1',
+            'coursequery' => 'Mathematik',
+            'confirmed' => true,
+        ],
+        'booking.core_list_course_participants' => [
+            'coursequery' => 'Mathematik',
+        ],
+        'booking.core_get_user_roles_in_course' => [
+            'coursequery' => 'Mathematik',
+            'userquery' => 'ANON_USER_1',
+        ],
+        'booking.core_search_course_enrolments' => [
+            'coursequery' => 'Mathematik',
+            'query' => 'anon',
+        ],
+        'booking.core_list_course_groups' => [
+            'coursequery' => 'Mathematik',
+        ],
+        'booking.core_get_group_members' => [
+            'coursequery' => 'Mathematik',
+            'groupquery' => 'Gruppe A',
+        ],
+        'booking.core_create_group' => [
+            'coursequery' => 'Mathematik',
+            'name' => 'Gruppe A',
+            'confirmed' => true,
+        ],
+        'booking.core_update_group' => [
+            'coursequery' => 'Mathematik',
+            'groupquery' => 'Gruppe A',
+            'name' => 'Gruppe B',
+            'confirmed' => true,
+        ],
+        'booking.core_delete_group' => [
+            'coursequery' => 'Mathematik',
+            'groupquery' => 'Gruppe B',
+            'confirmed' => true,
+        ],
+        'booking.core_get_course_overview' => [
+            'coursequery' => 'Mathematik',
+        ],
+        'booking.core_list_course_sections' => [
+            'coursequery' => 'Mathematik',
+        ],
+        'booking.core_list_course_modules' => [
+            'coursequery' => 'Mathematik',
+            'section' => 1,
+        ],
+        'booking.core_get_module_details' => [
+            'cmid' => 1,
+        ],
+        'booking.core_get_activity_completion_status' => [
+            'coursequery' => 'Mathematik',
+            'cmid' => 1,
+            'userquery' => 'current',
+        ],
+        'booking.core_get_user_completion_report' => [
+            'coursequery' => 'Mathematik',
+            'userquery' => 'current',
+        ],
+        'booking.core_list_course_calendar_events' => [
+            'coursequery' => 'Mathematik',
+        ],
+        'booking.core_list_user_calendar_events' => [
+            'userquery' => 'current',
+        ],
+        'booking.core_create_calendar_event' => [
+            'title' => 'Team Meeting',
+            'timestart' => 1767225600,
+            'timeend' => 1767229200,
+            'confirmed' => true,
+        ],
+        'booking.core_update_calendar_event' => [
+            'eventid' => 1,
+            'title' => 'Updated Team Meeting',
+            'confirmed' => true,
+        ],
+        'booking.core_delete_calendar_event' => [
+            'eventid' => 1,
+            'confirmed' => true,
+        ],
+        'booking.core_list_grade_items' => [
+            'coursequery' => 'Mathematik',
+        ],
+        'booking.core_get_user_grades_for_course' => [
+            'coursequery' => 'Mathematik',
+            'userquery' => 'current',
+        ],
+        'booking.core_send_user_message' => [
+            'recipient' => 'ANON_USER_1',
+            'message' => 'Hallo aus dem Agenten',
+            'confirmed' => true,
+        ],
+        'booking.core_get_site_summary' => [],
     ];
 
     /**
