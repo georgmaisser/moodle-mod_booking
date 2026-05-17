@@ -135,6 +135,7 @@ final class message_trigger_registry_test extends booking_advanced_testcase {
         }
 
         $this->assertContains('booking.force_create_duplicate_title', $allids);
+        $this->assertContains('booking.create_booking_request', $allids);
         $this->assertContains('booking.use_preview_context_for_update', $allids);
         $this->assertContains('booking.bulk_update_apply_to_all_confirmed', $allids);
         $this->assertContains('booking.confirm_duplicate_price_category', $allids);

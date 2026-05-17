@@ -78,7 +78,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         $schema = [
             'version' => 1,
             'description' => 'Create a new booking option inside the current booking instance. '
-                . 'New options are always created as invisible.',
+                . 'Use this for natural booking requests that specify a date/time, duration, capacity, '
+                . 'participant count, or similar scheduling details. New options are always created as invisible.',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_create_option',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_create_option',
@@ -95,6 +96,17 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      */
     public function get_message_triggers(): array {
         return [
+            [
+                'id' => 'booking.create_booking_request',
+                'description' => 'User wants to create a booking or booking option
+                    and includes scheduling details like date, time, duration, or participant count.
+                    Treat booking/event/course/meeting synonymously.',
+                'examples' => [
+                    'I want a booking next Friday at 12h for one hour and eight people.',
+                    'Create a booking for next Friday, 12:00 to 13:00, with 8 seats.',
+                    'Eine Buchung nächsten Freitag um 12 Uhr, eine Stunde lang, für acht Leute.',
+                ],
+            ],
             [
                 'id' => 'booking.force_create_duplicate_title',
                 'description' => 'User explicitly confirms creating a new option although a duplicate title exists.',
