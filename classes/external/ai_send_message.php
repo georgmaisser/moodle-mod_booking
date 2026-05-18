@@ -33,6 +33,7 @@ use external_single_structure;
 use external_value;
 use mod_booking\local\wbagent\agent_runtime;
 use mod_booking\local\wbagent\authorization_service;
+use mod_booking\local\wbagent\booking\booking_task_support;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\interpreter;
 use mod_booking\local\wbagent\orchestrator;
@@ -211,6 +212,14 @@ class ai_send_message extends external_api {
 
         $formattedmessage = self::format_ws_message((string)($result['message'] ?? ''), $context);
         $formatteddisplaymessage = self::format_ws_message($displaymessage, $context);
+        $issuecodes = self::normalize_string_list($result['issue_codes'] ?? []);
+        $errors = self::normalize_string_list($result['errors'] ?? []);
+        $autoconfirmblocked = !empty($issuecodes) || !empty($errors);
+        $previewoptionid = self::resolve_preview_option_id_for_response(
+            $cmid,
+            (int)$USER->id,
+            (array)($result['results'] ?? [])
+        );
 
         return [
             'response_type'         => $result['response_type'] ?? 'error',
@@ -220,18 +229,24 @@ class ai_send_message extends external_api {
             'autoconfirm'           => (int)(
                 (string)($result['response_type'] ?? '') === 'confirmation_request'
                 && $store->is_confirmation_allowed_for_thread((int)$USER->id, $cmid, $threadid)
+                && !$autoconfirmblocked
             ),
             'commands'              => json_encode($result['commands'] ?? []),
             'ambiguities'           => json_encode($result['ambiguities'] ?? []),
             'ambiguityoptionsjson'  => json_encode($result['ambiguity_options'] ?? []),
-            'errorsjson'            => json_encode($result['errors'] ?? []),
+            'errorsjson'            => json_encode($errors),
             'attemptedtasksjson'    => json_encode($result['attempted_tasks'] ?? []),
-            'issuecodesjson'        => json_encode($result['issue_codes'] ?? []),
+            'issuecodesjson'        => json_encode($issuecodes),
             'pendingconfirmationcode' => (string)($result['pending_confirmation_code'] ?? ''),
             'threadid'              => $threadid,
             'runid'                 => (int)($result['runid'] ?? 0),
             'resultsjson'           => json_encode($result['results'] ?? []),
-            'previewoptionid'       => 0,
+            'previewoptionid'       => $previewoptionid,
+            'previewoptionidsjson'  => self::resolve_preview_option_ids_json_for_response(
+                $cmid,
+                (int)$USER->id,
+                (array)($result['results'] ?? [])
+            ),
         ];
     }
 
@@ -252,6 +267,102 @@ class ai_send_message extends external_api {
             'context' => $context,
             'para' => false,
         ]);
+    }
+
+    /**
+     * Normalize any list-like value into a compact non-empty string list.
+     *
+     * @param mixed $value
+     * @return array<int,string>
+     */
+    private static function normalize_string_list($value): array {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($value as $entry) {
+            $text = trim((string)$entry);
+            if ($text !== '') {
+                $normalized[] = $text;
+            }
+        }
+
+        return array_values($normalized);
+    }
+
+    /**
+     * Resolve all preview option ids for WS responses as a JSON-encoded array.
+     *
+     * @param int $cmid
+     * @param int $userid
+     * @param array $results
+     * @return string JSON-encoded int array
+     */
+    private static function resolve_preview_option_ids_json_for_response(int $cmid, int $userid, array $results): string {
+        $ids = [];
+        foreach ($results as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $previewids = is_array($entry['previewoptionids'] ?? null) ? (array)$entry['previewoptionids'] : [];
+            foreach ($previewids as $id) {
+                $normalized = (int)$id;
+                if ($normalized > 0) {
+                    $ids[] = $normalized;
+                }
+            }
+            $resultid = (int)($entry['resultid'] ?? 0);
+            if ($resultid > 0 && !in_array($resultid, $ids, true)) {
+                $ids[] = $resultid;
+            }
+        }
+        if (empty($ids)) {
+            $ids = array_values(array_filter(
+                array_map('intval', booking_task_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid))
+            ));
+        }
+        return json_encode(array_values(array_unique($ids)));
+    }
+
+    /**
+     * Resolve preview option id for WS responses.
+     *
+     * @param int $cmid
+     * @param int $userid
+     * @param array $results
+     * @return int
+     */
+    private static function resolve_preview_option_id_for_response(int $cmid, int $userid, array $results): int {
+        foreach ($results as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $resultid = (int)($entry['resultid'] ?? 0);
+            if ($resultid > 0) {
+                return $resultid;
+            }
+
+            $previewids = is_array($entry['previewoptionids'] ?? null) ? (array)$entry['previewoptionids'] : [];
+            foreach ($previewids as $id) {
+                $optionid = (int)$id;
+                if ($optionid > 0) {
+                    return $optionid;
+                }
+            }
+        }
+
+        $storedpreviewids = booking_task_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
+        foreach ($storedpreviewids as $id) {
+            $optionid = (int)$id;
+            if ($optionid > 0) {
+                return $optionid;
+            }
+        }
+
+        $lastworked = booking_task_support::resolve_last_option_for_user_for_execute($cmid, $userid);
+        return $lastworked ? (int)$lastworked : 0;
     }
 
     /**
@@ -280,6 +391,7 @@ class ai_send_message extends external_api {
             'runid'         => new external_value(PARAM_INT, 'Run id (0 if not yet created).'),
             'resultsjson'   => new external_value(PARAM_RAW, 'JSON-encoded execution results (if available).'),
             'previewoptionid' => new external_value(PARAM_INT, 'Latest option id to preview directly, if available.'),
+            'previewoptionidsjson' => new external_value(PARAM_RAW, 'JSON-encoded array of all preview option ids.', VALUE_DEFAULT, '[]'),
         ]);
     }
 }

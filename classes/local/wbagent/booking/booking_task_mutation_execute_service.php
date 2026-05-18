@@ -725,10 +725,17 @@ class booking_task_mutation_execute_service {
                 );
             }
 
-            $detail = 'Booking option ' . ($taskname === create_option_task::TASK_NAME ? 'created' : 'updated')
-                . ' (id=' . (int)$newoptionid . ', link='
-                . booking_task_support::build_option_link_for_output($cmid, (int)$newoptionid)
-                . ').';
+            $createdtitle = trim((string)($data->text ?? $input['text'] ?? ''));
+            if ($taskname === create_option_task::TASK_NAME && $createdtitle !== '') {
+                $detail = 'Booking option created (title="' . $createdtitle . '", id=' . (int)$newoptionid . ', link='
+                    . booking_task_support::build_option_link_for_output($cmid, (int)$newoptionid)
+                    . ').';
+            } else {
+                $detail = 'Booking option ' . ($taskname === create_option_task::TASK_NAME ? 'created' : 'updated')
+                    . ' (id=' . (int)$newoptionid . ', link='
+                    . booking_task_support::build_option_link_for_output($cmid, (int)$newoptionid)
+                    . ').';
+            }
 
             $verificationwarnings = booking_task_support::verify_persisted_option_state_for_task_for_execute(
                 $taskname,

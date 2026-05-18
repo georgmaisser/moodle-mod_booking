@@ -804,6 +804,14 @@ class execution_feedback_service {
                 $entry['task'] = trim($result['task']);
             }
 
+            // Keep executor-provided input payload for planner runtime memory.
+            // This is consumed by orchestrator SYSTEM_RUNTIME.completed_commands.
+            if (isset($result['executed_input']) && is_array($result['executed_input'])) {
+                $entry['executed_input'] = $result['executed_input'];
+            } else if (isset($result['input']) && is_array($result['input'])) {
+                $entry['executed_input'] = $result['input'];
+            }
+
             // Only pass task-authored user text through directly when no explicit output language
             // was requested (legacy/internal paths). Otherwise, frontend should use the normalized
             // top-level completion message to preserve language consistency.

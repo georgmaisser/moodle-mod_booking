@@ -74,6 +74,7 @@ final class ai_confirm_run_internal_test extends booking_advanced_testcase {
             'issuecodesjson',
             'errorsjson',
             'pendingconfirmationcode',
+            'previewoptionid',
         ];
 
         foreach ($expectedkeys as $key) {

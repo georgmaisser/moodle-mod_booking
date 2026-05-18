@@ -608,6 +608,7 @@ $string['ai_preview_not_supported_task'] =
     'Eine Zeilenvorschau ist nur fuer Befehle zum Erstellen/Aktualisieren von Optionen verfuegbar.';
 $string['ai_privacy_check_running'] = 'Datenschutzpruefung laeuft...';
 $string['ai_step_planning'] = 'Planung...';
+$string['ai_step_executing'] = 'Ausfuehrung...';
 $string['ai_privacy_precheck_summary'] = '{$a->count} Eintraege in der Anfrage anonymisiert ({$a->names} Namen, {$a->emails} E-Mails).';
 $string['ai_privacy_precheck_summary_none'] = 'Datenschutzpruefung abgeschlossen: keine personenbezogenen Eintraege gefunden.';
 $string['ai_privacy_response_note'] = 'Datenschutzhinweis: Personenbezogene Daten in dieser Antwort wurden fuer die Anzeige deanonymisiert.';

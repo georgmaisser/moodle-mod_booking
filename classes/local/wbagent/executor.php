@@ -147,6 +147,11 @@ class executor implements agent_executor {
             if (is_array($result) && !isset($result['task'])) {
                 $result['task'] = $taskname;
             }
+            if (is_array($result) && !isset($result['executed_input']) && is_array($input)) {
+                // Keep normalized executed input in loop results so follow-up planner turns
+                // can deterministically avoid repeating already completed commands.
+                $result['executed_input'] = $input;
+            }
             if (!empty($result['previewoptionids']) && is_array($result['previewoptionids'])) {
                 booking_task_support::remember_last_preview_options_for_user_for_execute(
                     $userid,

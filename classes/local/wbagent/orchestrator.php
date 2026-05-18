@@ -390,7 +390,8 @@ class orchestrator {
             $normalizedsteptype,
             $isfirstassistantturn,
             $hasanyobservations,
-            $runtimecatalog
+            $runtimecatalog,
+            $messages
         );
         $autoconfirmmode = $this->store->is_confirmation_allowed_for_thread($userid, $cmid, $threadid);
         $prompt = $this->build_prompt(
@@ -998,13 +999,15 @@ PROMPT;
             'Allowed response_type: task_call, confirmation_request, confirm_pending, clarification, sufficient, error.',
             'For task_call/confirmation_request: commands must be a non-empty array.',
             'For clarification/confirm_pending/sufficient/error: commands must be [].',
+            '- response_type for ALL mutating actions: always "confirmation_request" (never "task_call"). This does NOT change.',
         ];
 
         if ($autoconfirmmode) {
             $lines[] = 'Auto-confirm mode is active.';
-            $lines[] = 'If you return response_type="confirmation_request", do not ask the user for permission.';
-            $lines[] = 'Do not phrase the message as a question or request approval.';
-            $lines[] = 'Instead, write a concise informational message that clearly states which action will now be executed.';
+            $lines[] = 'Do NOT ask permission or phrase messages as questions. Instead: write a short statement announcing what will be executed.';
+            $lines[] = 'Treat recent ASSISTANT/ASSISTANT_STATE execution evidence as authoritative. Never re-emit an already-executed action (same task+input signature).';
+            $lines[] = 'If action already executed: report completion or skip to next unexecuted action.';
+            $lines[] = 'Next unexecuted mutation → response_type="confirmation_request".';
         }
 
         return implode("\n", $lines);
@@ -1090,7 +1093,8 @@ PROMPT;
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
         bool $isfirstassistantturn = false,
         bool $hasobservations = false,
-        array $taskcatalog = []
+        array $taskcatalog = [],
+        array $messages = []
     ): string {
         $timezonename = (string)(get_config('core', 'timezone') ?? '');
         if ($timezonename === '' || $timezonename === '99') {
@@ -1135,7 +1139,157 @@ PROMPT;
             }
         }
 
+        $completedcommands = $this->extract_completed_commands_from_messages($messages);
+        if (!empty($completedcommands)) {
+            $lines[] = '';
+            $lines[] = 'completed_commands:';
+            foreach ($completedcommands as $command) {
+                $json = json_encode($command, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if (!is_string($json) || $json === '') {
+                    continue;
+                }
+                $lines[] = '  - ' . $json;
+            }
+        }
+
         return implode("\n", $lines);
+    }
+
+    /**
+     * Extract recently completed commands (task + executed input) from assistant state.
+     *
+     * @param array $messages
+     * @return array<int,array<string,mixed>>
+     */
+    private function extract_completed_commands_from_messages(array $messages): array {
+        $completed = [];
+
+        foreach ($messages as $msg) {
+            if ((string)($msg->role ?? '') !== 'assistant') {
+                continue;
+            }
+
+            $structured = json_decode((string)($msg->structuredjson ?? ''), true);
+            if (!is_array($structured) || empty($structured)) {
+                continue;
+            }
+
+            $results = (array)($structured['loop_results'] ?? []);
+            if (empty($results)) {
+                $results = (array)($structured['results'] ?? []);
+            }
+
+            foreach ($results as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+
+                $status = trim((string)($entry['status'] ?? ''));
+                if ($status !== 'executed') {
+                    continue;
+                }
+
+                $task = trim((string)($entry['task'] ?? ''));
+                if ($task === '') {
+                    continue;
+                }
+
+                $input = (array)($entry['executed_input'] ?? $entry['input'] ?? []);
+                $compact = ['task' => $task];
+                $normalizedinput = $this->normalize_completed_command_input($input);
+                if (!empty($normalizedinput)) {
+                    $compact['input'] = $normalizedinput;
+                }
+                $completed[] = $compact;
+            }
+        }
+
+        if (count($completed) > 12) {
+            $completed = array_slice($completed, -12);
+        }
+
+        return $completed;
+    }
+
+    /**
+     * Normalize executed input for SYSTEM_RUNTIME.completed_commands.
+     *
+     * Keeps stable planner-relevant parameters while trimming noisy payloads.
+     *
+     * @param array $input
+     * @return array<string,mixed>
+     */
+    private function normalize_completed_command_input(array $input): array {
+        $dropkeys = [
+            'confirmed',
+            'outputlang',
+            'lang',
+            'user_lang',
+            'sessiontoken',
+            'sesskey',
+        ];
+
+        $normalized = [];
+        foreach ($input as $key => $value) {
+            if (!is_string($key) || $key === '' || in_array($key, $dropkeys, true)) {
+                continue;
+            }
+
+            $cleanvalue = $this->normalize_completed_command_value($value);
+            if ($cleanvalue === null) {
+                continue;
+            }
+
+            $normalized[$key] = $cleanvalue;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Normalize one completed command value recursively.
+     *
+     * @param mixed $value
+     * @return mixed|null
+     */
+    private function normalize_completed_command_value($value) {
+        if (is_null($value) || is_bool($value) || is_int($value) || is_float($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '') {
+                return null;
+            }
+            return core_text::substr($trimmed, 0, 160);
+        }
+
+        if (is_array($value)) {
+            $out = [];
+            $count = 0;
+            foreach ($value as $k => $v) {
+                if ($count >= 20) {
+                    break;
+                }
+
+                $normalized = $this->normalize_completed_command_value($v);
+                if ($normalized === null) {
+                    continue;
+                }
+
+                if (is_string($k)) {
+                    $out[$k] = $normalized;
+                } else {
+                    $out[] = $normalized;
+                }
+                $count++;
+            }
+
+            return empty($out) ? null : $out;
+        }
+
+        return null;
     }
 
     /**

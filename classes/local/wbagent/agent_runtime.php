@@ -28,6 +28,7 @@ namespace mod_booking\local\wbagent;
 
 use core_text;
 use mod_booking\local\wbagent\agent_state;
+use mod_booking\local\wbagent\booking\booking_task_support;
 use mod_booking\local\wbagent\result_payload_summarizer;
 use mod_booking\local\wbagent\interfaces\issue_code_provider_interface;
 
@@ -409,9 +410,12 @@ class agent_runtime {
                 }
             }
 
-            // Confirmation path should also expose a visible step label so the
-            // frontend progress stream is consistent with readonly execution steps.
-            if ((string)($result['response_type'] ?? '') === 'confirmation_request') {
+            // Write step progress for all response types that reach here.
+            // Steps should always be visible to the user, whether it's planning, confirmation,
+            // clarification, or final result. The step label reflects the response type and content.
+            $responsetype = (string)($result['response_type'] ?? '');
+            if ($responsetype !== 'execution_result') {
+                // Execution_result steps were already written above; write for all other types.
                 $this->write_step_progress_message($threadid, $step + 1, $result, $anonymizer);
             }
 
@@ -1380,7 +1384,9 @@ class agent_runtime {
             $intent = $this->extract_next_step_intent($results);
         }
         if ($intent !== '') {
-            return 'Step ' . $stepnum . ': ' . $intent;
+            // Keep planner phrasing unchanged so frontend step bubbles mirror
+            // the exact next_step_intent message from planner JSON.
+            return $intent;
         }
 
         $descriptions = [];
@@ -1649,7 +1655,7 @@ class agent_runtime {
         array $observations,
         ?agent_state $state = null
     ): array {
-        $previewoptionid = $this->resolve_preview_option_id($threadid, $cmid);
+        $previewoptionid = $this->resolve_preview_option_id($threadid, $cmid, $userid);
         $triggerregistry = new message_trigger_registry($this->registry);
 
         $optiontypeshortcut = $this->build_option_type_explanation_shortcut($threadid);
@@ -2729,24 +2735,30 @@ class agent_runtime {
      *
      * @param  int $threadid
      * @param  int $cmid
+     * @param int $userid
      * @return int
      */
-    private function resolve_preview_option_id(int $threadid, int $cmid): int {
+    private function resolve_preview_option_id(int $threadid, int $cmid, int $userid): int {
         global $DB;
 
         $optionid = (int)($this->store->get_thread_metadata_value($threadid, 'lastworkedoptionid') ?? 0);
-        if ($optionid <= 0) {
-            return 0;
+        if ($optionid > 0) {
+            $cm = get_coursemodule_from_id('booking', $cmid, 0, false, IGNORE_MISSING);
+            if ($cm && $DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])) {
+                return $optionid;
+            }
         }
 
-        $cm = get_coursemodule_from_id('booking', $cmid, 0, false, IGNORE_MISSING);
-        if (!$cm) {
-            return 0;
+        // Read-only discovery flows typically persist preview ids (not lastworkedoptionid).
+        $previewids = booking_task_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
+        foreach ($previewids as $id) {
+            $candidate = (int)$id;
+            if ($candidate > 0) {
+                return $candidate;
+            }
         }
 
-        return $DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])
-            ? $optionid
-            : 0;
+        return 0;
     }
 
     // -------------------------------------------------------------------------

@@ -211,7 +211,6 @@ class prompt_policy_builder {
     private static function build_step_intent_policy(string $steptype): string {
         if (self::is_planner_step_type($steptype)) {
             return "NON-OPTIONAL STEP INTENT POLICY:\n"
-                . "- Planner outputs may omit next_step_intent entirely.\n"
                 . "- If present, keep it short and aligned with the user language.";
         }
 

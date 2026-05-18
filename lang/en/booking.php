@@ -605,6 +605,7 @@ $string['ai_preview_no_matching_option'] = 'No existing option could be identifi
 $string['ai_preview_not_supported_task'] = 'A row preview is only available for create/update option commands.';
 $string['ai_privacy_check_running'] = 'Privacy check running...';
 $string['ai_step_planning'] = 'Planning...';
+$string['ai_step_executing'] = 'Executing...';
 $string['ai_privacy_precheck_summary'] = '{$a->count} entries anonymized in your request ({$a->names} names, {$a->emails} e-mails).';
 $string['ai_privacy_precheck_summary_none'] = 'Privacy check complete: no personal entries needed anonymization.';
 $string['ai_privacy_response_note'] = 'Privacy note: personal data in this response was de-anonymized for display.';

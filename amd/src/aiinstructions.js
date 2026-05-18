@@ -35,6 +35,7 @@ let sessionAutoConfirmEnabled = false;
 let privacyCheckRunningLabel = 'Privacy check running...';
 let privacyAnswerNoteLabel = 'Privacy note: personal data in this response was de-anonymized for display.';
 let stepPlanningLabel = 'Planning...';
+let stepExecutingLabel = 'Executing...';
 let defaultThinkingLabel = '';
 let forceNewThreadOnFirstMessage = true;
 let trialTokenInvalidMessageLabel = '';
@@ -1698,6 +1699,44 @@ const extractPreviewOptionIds = (results) => {
 };
 
 /**
+ * Collect all preview option ids from a WS response.
+ *
+ * Prefers the dedicated previewoptionidsjson field (populated server-side from
+ * the full task result), then merges with extractPreviewOptionIds(results) as
+ * a fallback, and finally falls back to the scalar previewoptionid.
+ *
+ * @param {Object} resp     WS response object.
+ * @param {Array}  results  Parsed resultsjson array (may be empty).
+ * @returns {Array<number>}
+ */
+const collectPreviewOptionIds = (resp, results = []) => {
+    const ids = [];
+    try {
+        const fromJson = JSON.parse(String(resp.previewoptionidsjson || '[]'));
+        if (Array.isArray(fromJson)) {
+            fromJson.forEach((id) => {
+                const n = Number(id || 0);
+                if (n > 0) {
+                    ids.push(n);
+                }
+            });
+        }
+    } catch (e) {
+        // Ignore parse errors — fall through to other sources.
+    }
+    extractPreviewOptionIds(results).forEach((id) => {
+        if (!ids.includes(id)) {
+            ids.push(id);
+        }
+    });
+    const scalar = Number(resp.previewoptionid || 0);
+    if (scalar > 0 && !ids.includes(scalar)) {
+        ids.push(scalar);
+    }
+    return ids;
+};
+
+/**
  * Append an ephemeral step-progress bubble to the message list.
  *
  * These bubbles are shown during the agentic loop and removed (with a short
@@ -1998,11 +2037,17 @@ const sendMessage = (message) => {
             currentThreadId = resp.threadid;
         }
 
-        if (Number(resp.previewoptionid || 0) > 0) {
-            renderOptionPreviewsInline(currentCmid, [Number(resp.previewoptionid)]);
+        // Trigger option preview for all non-command response types.
+        // previewoptionidsjson carries the full id list; falls back to scalar + results.
+        const earlyPreviewIds = collectPreviewOptionIds(resp, []);
+        if (earlyPreviewIds.length > 0) {
+            renderOptionPreviewsInline(currentCmid, earlyPreviewIds);
         }
 
         if (resp.response_type === 'clarification' || resp.response_type === 'sufficient' || resp.response_type === 'error') {
+            // Steps are ephemeral loading indicators — clear them when any response arrives.
+            stopStepPolling();
+            clearStepBubbles();
             appendAssistantPrivacyNote(resp, 'ai_send_message');
             const attemptedTasks = parseJsonList(resp.attemptedtasksjson);
             const errors = parseJsonList(resp.errorsjson);
@@ -2059,10 +2104,6 @@ const sendMessage = (message) => {
                     });
                 }
 
-                const optionIds = extractPreviewOptionIds(results);
-                if (optionIds.length > 0) {
-                    renderOptionPreviewsInline(currentCmid, optionIds);
-                }
                 return resp;
             }
 
@@ -2122,11 +2163,6 @@ const sendMessage = (message) => {
                 });
             }
 
-            const optionIds = extractPreviewOptionIds(results);
-            if (optionIds.length > 0) {
-                renderOptionPreviewsInline(currentCmid, optionIds);
-            }
-
             // Auto-load the first doc from explain_docs_topic results into the side preview.
             const firstDoc = extractFirstDoc(results);
             if (firstDoc.path !== '' || firstDoc.url !== '') {
@@ -2141,11 +2177,6 @@ const sendMessage = (message) => {
                 // Keep empty results on parse errors.
             }
             showRunStatus(resp.status || 'completed', resp.displaymessage || resp.message || '', results);
-
-            const optionIds = extractPreviewOptionIds(results);
-            if (optionIds.length > 0) {
-                renderOptionPreviewsInline(currentCmid, optionIds);
-            }
 
             resumeStepPolling();
         } else if (resp.response_type === 'confirmation_request' || resp.response_type === 'task_call') {
@@ -2200,6 +2231,9 @@ const confirmRun = (allowSession = false) => {
         return;
     }
 
+    clearStepBubbles();
+    appendStepBubble(stepExecutingLabel, 0);
+
     const commandsToSend = pendingCommands;
     const effectiveAllowSession = Boolean(allowSession || sessionAutoConfirmEnabled);
     if (effectiveAllowSession) {
@@ -2217,7 +2251,20 @@ const confirmRun = (allowSession = false) => {
         },
     }])[0].then((resp) => {
         if (resp.success) {
-            resumeStepPolling();
+            const responseType = String(resp.response_type || '');
+            // Steps are ephemeral loading indicators. Clear them and stop polling when response arrives.
+            stopStepPolling();
+            clearStepBubbles();
+            // After confirmation, resume polling only if agent loop continues (execution_result, task_call).
+            // For final responses (sufficient, error) or clarification, polling already stopped above.
+            if (responseType === 'execution_result' || responseType === 'task_call') {
+                appendStepBubble(stepExecutingLabel, 0);
+                resumeStepPolling();
+            }
+            const confirmPreviewIds = collectPreviewOptionIds(resp, []);
+            if (confirmPreviewIds.length > 0) {
+                renderOptionPreviewsInline(currentCmid, confirmPreviewIds);
+            }
             handleConfirmationResponse(resp, 'ai_confirm_run');
         } else {
             clearActivePlanBubble();
@@ -2668,6 +2715,7 @@ export const init = (config = null) => {
             ),
             trial_token_invalid_message: String(wrapper.dataset.aiTrialTokenInvalidMessage || ''),
             step_planning_label: String(wrapper.dataset.stepPlanningLabel || ''),
+            step_executing_label: String(wrapper.dataset.stepExecutingLabel || ''),
         };
     }
 
@@ -2678,6 +2726,7 @@ export const init = (config = null) => {
     privacyAnswerNoteLabel = String(runtimeConfig.privacy_answer_note || privacyAnswerNoteLabel);
     trialTokenInvalidMessageLabel = String(runtimeConfig.trial_token_invalid_message || '');
     stepPlanningLabel = String(runtimeConfig.step_planning_label || stepPlanningLabel);
+    stepExecutingLabel = String(runtimeConfig.step_executing_label || stepExecutingLabel);
 
     const thinking = document.getElementById('booking-ai-thinking');
     if (thinking) {

@@ -34,6 +34,7 @@ use external_single_structure;
 use external_value;
 use mod_booking\local\wbagent\agent_runtime;
 use mod_booking\local\wbagent\authorization_service;
+use mod_booking\local\wbagent\booking\booking_task_support;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\execution_feedback_service;
 use mod_booking\local\wbagent\executor;
@@ -104,6 +105,7 @@ class ai_confirm_run extends external_api {
         $authz->require_use_capability((int)$USER->id, $params['cmid']);
 
         $store = new conversation_store();
+        $previewoptionid = self::resolve_preview_option_id_for_response($params['cmid'], (int)$USER->id, []);
         if (!empty($params['allow_session'])) {
             $store->allow_confirmation_for_thread((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
         }
@@ -124,6 +126,10 @@ class ai_confirm_run extends external_api {
                 'issuecodesjson' => '[]',
                 'errorsjson' => '[]',
                 'pendingconfirmationcode' => '',
+                'previewoptionid' => $previewoptionid,
+                'previewoptionidsjson' => self::resolve_preview_option_ids_json_for_response(
+                    $params['cmid'], (int)$USER->id, []
+                ),
             ];
         }
 
@@ -155,6 +161,10 @@ class ai_confirm_run extends external_api {
                     'issuecodesjson' => '[]',
                     'errorsjson' => '[]',
                     'pendingconfirmationcode' => '',
+                    'previewoptionid' => $previewoptionid,
+                    'previewoptionidsjson' => self::resolve_preview_option_ids_json_for_response(
+                        $params['cmid'], (int)$USER->id, []
+                    ),
                 ];
             }
         }
@@ -204,8 +214,16 @@ class ai_confirm_run extends external_api {
                 'issuecodesjson' => '[]',
                 'errorsjson' => '[]',
                 'pendingconfirmationcode' => '',
+                'previewoptionid' => $previewoptionid,
+                'previewoptionidsjson' => self::resolve_preview_option_ids_json_for_response(
+                    $params['cmid'], (int)$USER->id, []
+                ),
             ];
         }
+
+        // Release the session lock before long-running command execution and
+        // runtime loop calls so concurrent poll requests are not blocked.
+        \core\session\manager::write_close();
 
         $store->update_run_status($runid, 'running');
         try {
@@ -254,8 +272,16 @@ class ai_confirm_run extends external_api {
             }
 
             $responsetype = (string)($finalresult['response_type'] ?? 'sufficient');
+            $issuecodes = self::normalize_string_list($finalresult['issue_codes'] ?? []);
+            $errors = self::normalize_string_list($finalresult['errors'] ?? []);
+            $autoconfirmblocked = !empty($issuecodes) || !empty($errors);
             $formattedmessage = self::format_ws_message((string)($finalresult['message'] ?? ''), $context);
             $formatteddisplaymessage = self::format_ws_message($displaymessage, $context);
+            $previewoptionid = self::resolve_preview_option_id_for_response(
+                $params['cmid'],
+                (int)$USER->id,
+                (array)($finalresult['results'] ?? [])
+            );
 
             return [
                 'success' => true,
@@ -268,13 +294,18 @@ class ai_confirm_run extends external_api {
                 'autoconfirm' => (int)(
                     $responsetype === 'confirmation_request'
                     && $store->is_confirmation_allowed_for_thread((int)$USER->id, $params['cmid'], (int)$params['threadid'])
+                    && !$autoconfirmblocked
                 ),
                 'commands' => json_encode($finalresult['commands'] ?? []),
                 'resultsjson' => json_encode($finalresult['results'] ?? []),
                 'attemptedtasksjson' => json_encode($finalresult['attempted_tasks'] ?? []),
-                'issuecodesjson' => json_encode($finalresult['issue_codes'] ?? []),
-                'errorsjson' => json_encode($finalresult['errors'] ?? []),
+                'issuecodesjson' => json_encode($issuecodes),
+                'errorsjson' => json_encode($errors),
                 'pendingconfirmationcode' => (string)($finalresult['pending_confirmation_code'] ?? ''),
+                'previewoptionid' => $previewoptionid,
+                'previewoptionidsjson' => self::resolve_preview_option_ids_json_for_response(
+                    $params['cmid'], (int)$USER->id, $results
+                ),
             ];
         } catch (\Throwable $e) {
             $rawresults = [['status' => 'error', 'detail' => $e->getMessage(), 'resultid' => null]];
@@ -309,6 +340,14 @@ class ai_confirm_run extends external_api {
                 'issuecodesjson' => '[]',
                 'errorsjson' => '[]',
                 'pendingconfirmationcode' => '',
+                'previewoptionid' => self::resolve_preview_option_id_for_response(
+                    $params['cmid'],
+                    (int)$USER->id,
+                    (array)($feedback['results'] ?? [])
+                ),
+                'previewoptionidsjson' => self::resolve_preview_option_ids_json_for_response(
+                    $params['cmid'], (int)$USER->id, (array)($feedback['results'] ?? [])
+                ),
             ];
         }
     }
@@ -334,7 +373,86 @@ class ai_confirm_run extends external_api {
             'issuecodesjson' => new external_value(PARAM_RAW, 'JSON-encoded issue codes.'),
             'errorsjson' => new external_value(PARAM_RAW, 'JSON-encoded errors.'),
             'pendingconfirmationcode' => new external_value(PARAM_TEXT, 'One-time pending confirmation code for debug.'),
+            'previewoptionid' => new external_value(PARAM_INT, 'Latest option id to preview directly, if available.'),
+            'previewoptionidsjson' => new external_value(PARAM_RAW, 'JSON-encoded array of all preview option ids.', VALUE_DEFAULT, '[]'),
         ]);
+    }
+
+    /**
+     * Resolve all preview option ids for WS responses as a JSON-encoded array.
+     *
+     * Prefers ids explicitly set in task results (previewoptionids), then
+     * falls back to the per-user cache written by executor.php at run time.
+     *
+     * @param int $cmid
+     * @param int $userid
+     * @param array $results  Sanitized feedback results from executor (not finalresult).
+     * @return string JSON-encoded int array, e.g. "[123,456]"
+     */
+    private static function resolve_preview_option_ids_json_for_response(int $cmid, int $userid, array $results): string {
+        $ids = [];
+        foreach ($results as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $previewids = is_array($entry['previewoptionids'] ?? null) ? (array)$entry['previewoptionids'] : [];
+            foreach ($previewids as $id) {
+                $normalized = (int)$id;
+                if ($normalized > 0) {
+                    $ids[] = $normalized;
+                }
+            }
+            $resultid = (int)($entry['resultid'] ?? 0);
+            if ($resultid > 0 && !in_array($resultid, $ids, true)) {
+                $ids[] = $resultid;
+            }
+        }
+        if (empty($ids)) {
+            $ids = array_values(array_filter(
+                array_map('intval', booking_task_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid))
+            ));
+        }
+        return json_encode(array_values(array_unique($ids)));
+    }
+
+    /**
+     * Resolve preview option id for WS responses.
+     *
+     * @param int $cmid
+     * @param int $userid
+     * @param array $results
+     * @return int
+     */
+    private static function resolve_preview_option_id_for_response(int $cmid, int $userid, array $results): int {
+        foreach ($results as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $resultid = (int)($entry['resultid'] ?? 0);
+            if ($resultid > 0) {
+                return $resultid;
+            }
+
+            $previewids = is_array($entry['previewoptionids'] ?? null) ? (array)$entry['previewoptionids'] : [];
+            foreach ($previewids as $id) {
+                $optionid = (int)$id;
+                if ($optionid > 0) {
+                    return $optionid;
+                }
+            }
+        }
+
+        $storedpreviewids = booking_task_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
+        foreach ($storedpreviewids as $id) {
+            $optionid = (int)$id;
+            if ($optionid > 0) {
+                return $optionid;
+            }
+        }
+
+        $lastworked = booking_task_support::resolve_last_option_for_user_for_execute($cmid, $userid);
+        return $lastworked ? (int)$lastworked : 0;
     }
 
     /**
@@ -354,6 +472,28 @@ class ai_confirm_run extends external_api {
             'context' => $context,
             'para' => false,
         ]);
+    }
+
+    /**
+     * Normalize any list-like value into a compact non-empty string list.
+     *
+     * @param mixed $value
+     * @return array<int,string>
+     */
+    private static function normalize_string_list($value): array {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($value as $entry) {
+            $text = trim((string)$entry);
+            if ($text !== '') {
+                $normalized[] = $text;
+            }
+        }
+
+        return array_values($normalized);
     }
 
     /**
