@@ -34,6 +34,8 @@ class core_get_site_summary_task extends core_task_base implements task_result_s
         $lang = $this->get_output_language($input);
         $site = get_site();
         $timezone = !empty($CFG->timezone) ? (string)$CFG->timezone : (string)get_config('core', 'timezone');
+        $activelang = current_language();
+        $defaultlang = (string)(get_config('core', 'lang') ?? ($CFG->lang ?? ''));
 
         return [
             'status' => 'executed',
@@ -43,7 +45,8 @@ class core_get_site_summary_task extends core_task_base implements task_result_s
                 'id' => (int)$site->id,
                 'fullname' => format_string($site->fullname),
                 'shortname' => format_string($site->shortname),
-                'lang' => current_language(),
+                'lang' => $activelang,
+                'default_lang' => $defaultlang,
                 'timezone' => $timezone,
                 'release' => (string)($CFG->release ?? ''),
                 'wwwroot' => (string)$CFG->wwwroot,
@@ -52,7 +55,8 @@ class core_get_site_summary_task extends core_task_base implements task_result_s
                 'id' => (int)$site->id,
                 'fullname' => format_string($site->fullname),
                 'shortname' => format_string($site->shortname),
-                'lang' => current_language(),
+                'lang' => $activelang,
+                'default_lang' => $defaultlang,
                 'timezone' => $timezone,
                 'release' => (string)($CFG->release ?? ''),
                 'wwwroot' => (string)$CFG->wwwroot,
@@ -84,31 +88,35 @@ class core_get_site_summary_task extends core_task_base implements task_result_s
         $fullname = trim((string)($site['fullname'] ?? ''));
         $shortname = trim((string)($site['shortname'] ?? ''));
         $lang = trim((string)($site['lang'] ?? ''));
+        $defaultlang = trim((string)($site['default_lang'] ?? ''));
         $timezone = trim((string)($site['timezone'] ?? ''));
         $release = trim((string)($site['release'] ?? ''));
 
         $parts = [];
         if ($fullname !== '') {
-            $parts[] = 'name=' . $fullname;
+            $parts[] = 'site name "' . $fullname . '"';
         }
         if ($shortname !== '') {
-            $parts[] = 'shortname=' . $shortname;
+            $parts[] = 'short name "' . $shortname . '"';
         }
         if ($lang !== '') {
-            $parts[] = 'lang=' . $lang;
+            $parts[] = 'active language code "' . $lang . '"';
+        }
+        if ($defaultlang !== '') {
+            $parts[] = 'default language code "' . $defaultlang . '"';
         }
         if ($timezone !== '') {
-            $parts[] = 'timezone=' . $timezone;
+            $parts[] = 'timezone "' . $timezone . '"';
         }
         if ($release !== '') {
-            $parts[] = 'release=' . $release;
+            $parts[] = 'release "' . $release . '"';
         }
 
         if (empty($parts)) {
-            return 'Loaded Moodle site summary.';
+            return 'Loaded Moodle site snapshot.';
         }
 
-        return 'Loaded Moodle site summary: ' . implode(', ', $parts) . '.';
+        return 'Loaded Moodle site snapshot with ' . implode(', ', $parts) . '.';
     }
 
     /**
@@ -118,22 +126,45 @@ class core_get_site_summary_task extends core_task_base implements task_result_s
      * @return string
      */
     private function build_site_observation_full(array $site): string {
-        $parts = [];
-        foreach (['id', 'fullname', 'shortname', 'lang', 'timezone', 'release', 'wwwroot'] as $field) {
-            if (!array_key_exists($field, $site)) {
-                continue;
-            }
-            $value = trim((string)$site[$field]);
-            if ($value === '') {
-                continue;
-            }
-            $parts[] = $field . '=' . $value;
+        $id = trim((string)($site['id'] ?? ''));
+        $fullname = trim((string)($site['fullname'] ?? ''));
+        $shortname = trim((string)($site['shortname'] ?? ''));
+        $language = trim((string)($site['lang'] ?? ''));
+        $defaultlang = trim((string)($site['default_lang'] ?? ''));
+        $timezone = trim((string)($site['timezone'] ?? ''));
+        $release = trim((string)($site['release'] ?? ''));
+        $wwwroot = trim((string)($site['wwwroot'] ?? ''));
+
+        $lines = ['Moodle site snapshot (authoritative environment facts):'];
+        if ($fullname !== '') {
+            $lines[] = '- Site name: ' . $fullname;
+        }
+        if ($shortname !== '') {
+            $lines[] = '- Site short name: ' . $shortname;
+        }
+        if ($language !== '') {
+            $lines[] = '- Active language code: ' . $language;
+        }
+        if ($defaultlang !== '') {
+            $lines[] = '- Default language code: ' . $defaultlang;
+        }
+        if ($timezone !== '') {
+            $lines[] = '- Site timezone: ' . $timezone;
+        }
+        if ($release !== '') {
+            $lines[] = '- Moodle release: ' . $release;
+        }
+        if ($wwwroot !== '') {
+            $lines[] = '- Base URL: ' . $wwwroot;
+        }
+        if ($id !== '') {
+            $lines[] = '- Site id: ' . $id;
         }
 
-        if (empty($parts)) {
-            return 'Moodle site summary loaded.';
+        if (count($lines) === 1) {
+            return 'Moodle site snapshot loaded.';
         }
 
-        return 'Moodle site summary: ' . implode(', ', $parts) . '.';
+        return implode("\n", $lines);
     }
 }
