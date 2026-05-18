@@ -828,7 +828,7 @@ class agent_runtime {
                 if ($candidate !== '') {
                     $resultsummary = $candidate;
                 } else {
-                    $resultsummary = result_payload_summarizer::describe_entry($entry);
+                    $resultsummary = result_payload_summarizer::describe_entry($entry, 0, 'client_fallback');
                 }
             }
 
@@ -907,7 +907,7 @@ class agent_runtime {
             }
             $candidate = trim((string)($entry['usermessage'] ?? $entry['detail'] ?? $entry['summary'] ?? ''));
             if ($candidate === '') {
-                $candidate = result_payload_summarizer::describe_entry($entry);
+                $candidate = result_payload_summarizer::describe_entry($entry, 0, 'client_fallback');
             }
             if ($candidate !== '') {
                 $summary = $candidate;

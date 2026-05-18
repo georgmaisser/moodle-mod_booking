@@ -16,12 +16,15 @@
 
 namespace mod_booking\local\wbagent;
 
+require_once(__DIR__ . '/summarizer/single_object_result_summary_contributor.php');
+
 use mod_booking\local\wbagent\interfaces\result_summary_provider_interface;
 use mod_booking\local\wbagent\interfaces\task_interface;
 use mod_booking\local\wbagent\interfaces\task_provider_interface;
 use mod_booking\local\wbagent\summarizer\basic_collection_result_summary_contributor;
 use mod_booking\local\wbagent\summarizer\diagnosis_result_summary_contributor;
 use mod_booking\local\wbagent\summarizer\docs_result_summary_contributor;
+use mod_booking\local\wbagent\summarizer\single_object_result_summary_contributor;
 
 /**
  * mod_booking task provider entrypoint.
@@ -115,6 +118,7 @@ class task_provider implements result_summary_provider_interface, task_provider_
     public function get_result_summary_contributors(): array {
         return [
             new basic_collection_result_summary_contributor(),
+            new single_object_result_summary_contributor(),
             new docs_result_summary_contributor(),
             new diagnosis_result_summary_contributor(),
         ];

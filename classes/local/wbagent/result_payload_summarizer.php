@@ -26,6 +26,8 @@ declare(strict_types=1);
 
 namespace mod_booking\local\wbagent;
 
+use mod_booking\local\wbagent\interfaces\task_result_summary_provider_interface;
+
 /**
  * Converts raw task result payloads into human-readable summary strings.
  *
@@ -80,7 +82,7 @@ class result_payload_summarizer {
             }
 
             $summary = self::compact_text(
-                self::describe_entry($entry, $step),
+                self::describe_entry($entry, $step, 'observation'),
                 self::MAX_SUMMARY_FRAGMENT_CHARS
             );
             if ($summary !== '') {
@@ -123,7 +125,7 @@ class result_payload_summarizer {
      * @return string         Empty string when nothing meaningful is available.
      */
     public static function describe_result_for_state(array $entry): string {
-        return self::compact_text(self::describe_entry($entry, 0), self::MAX_SUMMARY_FRAGMENT_CHARS);
+        return self::compact_text(self::describe_entry($entry, 0, 'state'), self::MAX_SUMMARY_FRAGMENT_CHARS);
     }
 
     /**
@@ -183,10 +185,18 @@ class result_payload_summarizer {
      *
      * @param  array $entry
      * @param  int   $step
+     * @param  string $mode
      * @return string
      */
-    public static function describe_entry(array $entry, int $step = 0): string {
+    public static function describe_entry(array $entry, int $step = 0, string $mode = 'observation'): string {
         $category = self::detect_result_category($entry);
+        $context = self::build_summary_context($entry, $category, $step, $mode);
+
+        // Highest-priority escape hatch: task-authored summary method.
+        $tasksummary = self::summarize_with_task_provider($entry, $context);
+        if ($tasksummary !== '') {
+            return self::compact_text($tasksummary, self::MAX_SUMMARY_FRAGMENT_CHARS);
+        }
 
         $contributed = self::summarize_with_contributors($category, $entry, $step);
         if ($contributed !== '') {
@@ -391,5 +401,55 @@ class result_payload_summarizer {
         }
 
         return '';
+    }
+
+    /**
+     * Build normalized summary context for task-level summarizers.
+     *
+     * @param array $entry
+     * @param string $category
+     * @param int $step
+     * @param string $mode
+     * @return array<string,mixed>
+     */
+    private static function build_summary_context(array $entry, string $category, int $step, string $mode): array {
+        $taskname = trim((string)($entry['task'] ?? ''));
+        $component = trim((string)($entry['result_component'] ?? ''));
+        if ($component === '' && $taskname !== '' && strpos($taskname, '.') !== false) {
+            $prefix = explode('.', $taskname)[0] ?? '';
+            if ($prefix !== '') {
+                $component = $prefix === 'booking' ? 'mod_booking' : $prefix;
+            }
+        }
+
+        return [
+            'mode' => $mode,
+            'step' => $step,
+            'task' => $taskname,
+            'component' => $component,
+            'category' => $category,
+        ];
+    }
+
+    /**
+     * Try task-authored summary providers first.
+     *
+     * @param array $entry
+     * @param array<string,mixed> $context
+     * @return string
+     */
+    private static function summarize_with_task_provider(array $entry, array $context): string {
+        $taskname = trim((string)($context['task'] ?? ''));
+        if ($taskname === '') {
+            return '';
+        }
+
+        $task = task_registry_factory::get_default()->get_task($taskname);
+        if (!$task instanceof task_result_summary_provider_interface) {
+            return '';
+        }
+
+        $summary = trim($task->summarize_task_result($entry, $context));
+        return $summary;
     }
 }

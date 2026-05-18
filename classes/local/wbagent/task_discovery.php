@@ -144,6 +144,8 @@ class task_discovery {
      * @return object|null
      */
     private static function instantiate_if_supported(string $classname, string $interfacename): ?object {
+        self::ensure_class_loaded($classname);
+
         try {
             $reflection = new \ReflectionClass($classname);
             if ($reflection->isAbstract()) {
@@ -156,6 +158,48 @@ class task_discovery {
         }
 
         return $instance instanceof $interfacename ? $instance : null;
+    }
+
+    /**
+     * Ensure a discovered class file is loaded even when classloader caches are stale.
+     *
+     * New classes can be visible in filesystem discovery before Moodle's runtime
+     * class map notices them. Resolve the expected file path from the component
+     * namespace and include it directly as a safe fallback.
+     *
+     * @param string $classname
+     * @return void
+     */
+    private static function ensure_class_loaded(string $classname): void {
+        if (class_exists($classname, false)) {
+            return;
+        }
+
+        $parts = explode('\\', $classname);
+        if (count($parts) < 3) {
+            return;
+        }
+
+        $component = $parts[0] . '_' . $parts[1];
+        [$plugintype, $pluginname] = core_component::normalize_component($component);
+        if ($plugintype === 'core' || empty($pluginname)) {
+            return;
+        }
+
+        $plugindir = core_component::get_plugin_directory($plugintype, $pluginname);
+        if (empty($plugindir)) {
+            return;
+        }
+
+        $relativeparts = array_slice($parts, 2);
+        if (empty($relativeparts)) {
+            return;
+        }
+
+        $file = $plugindir . '/classes/' . implode('/', $relativeparts) . '.php';
+        if (is_file($file)) {
+            require_once($file);
+        }
     }
 
     /**

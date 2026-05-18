@@ -197,7 +197,7 @@ class loop_finalizer {
             }
             $candidate = trim((string)($entry['usermessage'] ?? $entry['detail'] ?? $entry['summary'] ?? ''));
             if ($candidate === '') {
-                $candidate = result_payload_summarizer::describe_entry($entry);
+                $candidate = result_payload_summarizer::describe_entry($entry, 0, 'client_fallback');
             }
             if ($candidate !== '') {
                 $summary = $candidate;

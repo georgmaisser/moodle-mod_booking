@@ -998,7 +998,7 @@ class execution_feedback_service {
         }
 
         if ($category === 'option_details') {
-            return result_payload_summarizer::describe_entry($result);
+            return result_payload_summarizer::describe_entry($result, 0, 'client_fallback');
         }
 
         if ($category === 'current_user') {
