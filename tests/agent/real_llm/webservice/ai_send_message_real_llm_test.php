@@ -102,7 +102,10 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
         $_POST['sesskey'] = sesskey();
         $response = ai_send_message::execute((int)$this->booking->cmid, (string)$case['prompt']);
 
-        $expectedresponses = array_map(static fn($value): string => (string)$value, (array)($case['expected_response_types'] ?? [$case['expected_response_type']]));
+        $expectedresponses = array_map(
+            static fn($value): string => (string)$value,
+            (array)($case['expected_response_types'] ?? [$case['expected_response_type']])
+        );
         $this->assertContains(
             (string)($response['response_type'] ?? ''),
             $expectedresponses,
@@ -113,6 +116,7 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
                 (string)($response['errorsjson'] ?? '')
             )
         );
+        $this->assertArrayHasKey('autoconfirm', $response);
         $this->assertGreaterThan(0, (int)($response['threadid'] ?? 0));
 
         $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => (int)$response['threadid']], 'id ASC');
@@ -586,13 +590,6 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
             . ' fuer dieses Ereignis.';
         $attemptlogs = [];
 
-        // Pre-thread allowance: AI can auto-confirm staged mutations for this booking context.
-        // This is NOT a direct confirm call in the test, but allows ai_send_message to
-        // auto-execute the first confirmation when appropriate.
-        $store = new \mod_booking\local\wbagent\conversation_store();
-        // NOTE: expiresat must be an absolute timestamp (time() + seconds), not just seconds
-        $store->allow_confirmation_for_thread((int)$USER->id, (int)$this->booking->cmid, 0, time() + 3600);
-
         // Step 1: Send initial message.
         $_POST['sesskey'] = sesskey();
         $first = ai_send_message::execute((int)$this->booking->cmid, $prompt);
@@ -600,6 +597,7 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
         $this->assertGreaterThan(0, $threadid, 'Thread id must be present.');
 
         $attemptlogs[] = 'send[0]: type=' . (string)($first['response_type'] ?? '')
+            . ' | autoconfirm=' . (string)($first['autoconfirm'] ?? 0)
             . ' | msg=' . trim((string)($first['displaymessage'] ?? ''));
 
         $firstrunid = (int)($first['runid'] ?? 0);
@@ -641,6 +639,7 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
                     '[]',
                     false
                 );
+                $this->assertCount(3, $confirmresult, 'Confirm response should stay compact.');
                 $confirmrunid = (int)($confirmresult['runid'] ?? 0);
 
                 $attemptlogs[] = 'confirm[' . $i . ']: success=' . (string)($confirmresult['success'] ?? 0)
@@ -657,7 +656,10 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
 
                 $_POST['sesskey'] = sesskey();
                 $confirmwait = ai_wait_thread_response::execute(
-                    (int)$this->booking->cmid, $threadid, $confirmsinceid, 60000
+                    (int)$this->booking->cmid,
+                    $threadid,
+                    $confirmsinceid,
+                    60000
                 );
                 $responsetype = (string)($confirmwait['responsetype'] ?? '');
 
@@ -689,7 +691,10 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
 
                 $_POST['sesskey'] = sesskey();
                 $followupwait = ai_wait_thread_response::execute(
-                    (int)$this->booking->cmid, $threadid, $followupsinceid, 60000
+                    (int)$this->booking->cmid,
+                    $threadid,
+                    $followupsinceid,
+                    60000
                 );
                 $responsetype = (string)($followupwait['responsetype'] ?? '');
 
@@ -711,10 +716,12 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
 
         $booked = false;
         foreach ($matchingoptions as $option) {
-            if ($DB->record_exists('booking_answers', [
-                'optionid' => (int)$option->id,
-                'userid' => (int)$billy->id,
-            ])) {
+            if (
+                $DB->record_exists('booking_answers', [
+                    'optionid' => (int)$option->id,
+                    'userid' => (int)$billy->id,
+                ])
+            ) {
                 $booked = true;
                 break;
             }

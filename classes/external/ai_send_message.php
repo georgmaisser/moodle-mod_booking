@@ -110,6 +110,7 @@ class ai_send_message extends external_api {
                 'message'               => $emptymsg,
                 'displaymessage'        => $emptymsg,
                 'privacyapplied'        => 0,
+                'autoconfirm'           => 0,
                 'commands'              => '[]',
                 'ambiguities'           => '[]',
                 'ambiguityoptionsjson'  => '[]',
@@ -143,6 +144,7 @@ class ai_send_message extends external_api {
                 'message'               => $errormessage,
                 'displaymessage'        => $errormessage,
                 'privacyapplied'        => 0,
+                'autoconfirm'           => 0,
                 'commands'              => '[]',
                 'ambiguities'           => '[]',
                 'ambiguityoptionsjson'  => '[]',
@@ -198,44 +200,6 @@ class ai_send_message extends external_api {
         $runtime = new agent_runtime($registry, $orchestrator, $store, $authz);
         $result = $runtime->run_loop($threadid, $cmid, (int)$USER->id);
 
-        if (
-            (string)($result['response_type'] ?? '') === 'confirmation_request'
-            && $store->is_confirmation_allowed_for_thread((int)$USER->id, $cmid, $threadid)
-            && !empty($result['commands'])
-        ) {
-            try {
-                $confirmresult = ai_confirm_run::execute(
-                    $cmid,
-                    $threadid,
-                    json_encode($result['commands']),
-                    false
-                );
-
-                if (!empty($confirmresult['success'])) {
-                    // Auto-confirm succeeded. Update response with the execution result.
-                    $executedmessage = $store->get_latest_execution_result_message_for_run(
-                        $threadid,
-                        (int)($confirmresult['runid'] ?? 0)
-                    );
-                    if ($executedmessage !== null) {
-                        $structured = json_decode((string)($executedmessage->structuredjson ?? ''), true);
-                        if (is_array($structured)) {
-                            $result = $structured;
-                            $result['message'] = (string)($executedmessage->content ?? $confirmresult['message'] ?? '');
-                        }
-                    } else {
-                        // No execution message found yet, but confirm succeeded - copy important fields
-                        $result['runid'] = (int)($confirmresult['runid'] ?? 0);
-                        $result['response_type'] = 'execution_result';
-                        $result['message'] = (string)($confirmresult['message'] ?? 'Auto-confirm executed.');
-                    }
-                }
-            } catch (Throwable $e) {
-                error_log("DEBUG: Auto-confirm FAILED with exception: " . $e->getMessage() . "\nTrace: " . $e->getTraceAsString());
-                // If auto-confirm fails, keep the confirmation_request response
-            }
-        }
-
         // Display-side privacy deanonymisation (presentation concern, stays here).
         $displaymessage = (string)($result['message'] ?? '');
         $privacyapplied = 0;
@@ -253,6 +217,10 @@ class ai_send_message extends external_api {
             'message'               => $formattedmessage,
             'displaymessage'        => $formatteddisplaymessage,
             'privacyapplied'        => $privacyapplied,
+            'autoconfirm'           => (int)(
+                (string)($result['response_type'] ?? '') === 'confirmation_request'
+                && $store->is_confirmation_allowed_for_thread((int)$USER->id, $cmid, $threadid)
+            ),
             'commands'              => json_encode($result['commands'] ?? []),
             'ambiguities'           => json_encode($result['ambiguities'] ?? []),
             'ambiguityoptionsjson'  => json_encode($result['ambiguity_options'] ?? []),
@@ -297,6 +265,7 @@ class ai_send_message extends external_api {
             'message'       => new external_value(PARAM_RAW, 'AI message / summary for the user.'),
             'displaymessage' => new external_value(PARAM_RAW, 'Display message for user UI (de-masked if privacy mode applies).'),
             'privacyapplied' => new external_value(PARAM_INT, '1 if display masking indicator applied, otherwise 0.'),
+            'autoconfirm'    => new external_value(PARAM_INT, '1 if the UI should auto-trigger confirmation, otherwise 0.'),
             'commands'      => new external_value(PARAM_RAW, 'JSON-encoded array of proposed commands.'),
             'ambiguities'   => new external_value(PARAM_RAW, 'JSON-encoded array of ambiguity questions.'),
             'ambiguityoptionsjson' => new external_value(

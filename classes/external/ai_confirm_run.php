@@ -34,7 +34,6 @@ use external_single_structure;
 use external_value;
 use mod_booking\local\wbagent\agent_runtime;
 use mod_booking\local\wbagent\authorization_service;
-use mod_booking\local\wbagent\continuation_wait_state;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\execution_feedback_service;
 use mod_booking\local\wbagent\executor;
@@ -198,35 +197,16 @@ class ai_confirm_run extends external_api {
             );
             $results = $feedback['results'];
             $store->update_run_status($runid, 'completed', $results);
-            $executionmessageid = $store->add_message((int)$params['threadid'], 'assistant', (string)$feedback['message'], [
+            $store->add_message((int)$params['threadid'], 'assistant', (string)$feedback['message'], [
                 'response_type' => 'execution_result',
                 'runid' => (int)$runid,
                 'status' => 'completed',
                 'results' => $results,
             ]);
 
-            // Continue multistep plans in the same thread after a successful confirmation execution.
-            // This starts a new planner turn from conversation history (fresh task-catalog + embeddings path).
-            $waitstate = new continuation_wait_state();
-            $waitstate->clear_mailbox((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
-            $waitstate->set_blocker((int)$USER->id, (int)$params['cmid'], (int)$params['threadid'], (int)$runid, 60);
             $orchestrator = new orchestrator($registry, new interpreter($registry), $store);
             $runtime = new agent_runtime($registry, $orchestrator, $store, $authz);
-            try {
-                $runtime->run_loop((int)$params['threadid'], (int)$params['cmid'], (int)$USER->id);
-                $candidate = self::find_latest_wait_candidate($store, (int)$params['threadid'], (int)$executionmessageid);
-                if ($candidate !== null) {
-                    $waitstate->set_mailbox((int)$USER->id, (int)$params['cmid'], (int)$params['threadid'], [
-                        'messageid' => (int)$candidate['messageid'],
-                        'responsetype' => (string)$candidate['responsetype'],
-                        'message' => (string)$candidate['message'],
-                        'commands' => (array)($candidate['commands'] ?? []),
-                        'runid' => (int)$runid,
-                    ], 60);
-                }
-            } finally {
-                $waitstate->clear_blocker((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
-            }
+            $runtime->run_loop((int)$params['threadid'], (int)$params['cmid'], (int)$USER->id);
 
             return [
                 'success' => true,
@@ -275,9 +255,6 @@ class ai_confirm_run extends external_api {
     /**
      * Execute at most one command per explicit confirmation interaction.
      *
-     * Multi-command mutation plans are continued by a follow-up planner turn
-     * after this first command finishes.
-     *
      * @param array $commands
      * @return array
      */
@@ -288,52 +265,5 @@ class ai_confirm_run extends external_api {
         }
 
         return [$commands[0]];
-    }
-
-    /**
-     * Find the latest assistant continuation candidate after a given message id.
-     *
-     * @param conversation_store $store
-     * @param int $threadid
-     * @param int $sinceid
-     * @return array<string,mixed>|null
-     */
-    private static function find_latest_wait_candidate(conversation_store $store, int $threadid, int $sinceid): ?array {
-        $messages = $store->get_messages_since($threadid, max(0, $sinceid));
-        for ($i = count($messages) - 1; $i >= 0; $i--) {
-            $msg = $messages[$i] ?? null;
-            if (!is_object($msg) || (string)($msg->role ?? '') !== 'assistant') {
-                continue;
-            }
-
-            $structured = json_decode((string)($msg->structuredjson ?? ''), true);
-            $responsetype = trim((string)($structured['response_type'] ?? ''));
-            // Accept any known response type from continuation, including execution_result.
-            // This ensures that when the continuation planner executes a mutation directly
-            // (e.g. booking.book_users via task_call), the resulting execution_result is
-            // surfaced to the frontend rather than being silently dropped.
-            if ($responsetype === '') {
-                continue;
-            }
-
-            $message = trim((string)($msg->content ?? ''));
-            if ($message === '') {
-                continue;
-            }
-
-            $commands = [];
-            if (!empty($structured['commands']) && is_array($structured['commands'])) {
-                $commands = array_values($structured['commands']);
-            }
-
-            return [
-                'messageid' => (int)($msg->id ?? 0),
-                'responsetype' => $responsetype,
-                'message' => $message,
-                'commands' => $commands,
-            ];
-        }
-
-        return null;
     }
 }

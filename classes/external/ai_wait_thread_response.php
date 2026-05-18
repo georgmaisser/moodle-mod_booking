@@ -32,7 +32,6 @@ use external_function_parameters;
 use external_single_structure;
 use external_value;
 use mod_booking\local\wbagent\authorization_service;
-use mod_booking\local\wbagent\continuation_wait_state;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\privacy_anonymizer;
 
@@ -44,7 +43,7 @@ require_once($CFG->libdir . '/externallib.php');
  * Wait for the next assistant continuation message in a thread.
  *
  * This endpoint does not create a new user message or planner step. It only
- * waits for server-side continuation output already being produced.
+ * waits for assistant output already stored in the conversation history.
  *
  * @package    mod_booking
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
@@ -121,40 +120,8 @@ class ai_wait_thread_response extends external_api {
         $deadline = $start + ((float)$timeout / 1000.0);
         $since = max(0, (int)$params['sinceid']);
         $anonymizer = new privacy_anonymizer($store);
-        $waitstate = new continuation_wait_state();
-        $sawactiveblocker = false;
 
         while (microtime(true) < $deadline) {
-            $mailbox = $waitstate->get_mailbox((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
-            if (is_array($mailbox) && (int)($mailbox['messageid'] ?? 0) > $since) {
-                $mailboxmessage = trim((string)($mailbox['message'] ?? ''));
-                $mailboxresponsetype = trim((string)($mailbox['responsetype'] ?? ''));
-                // Accept execution_result from continuation (e.g. directly executed book_users).
-                if ($mailboxmessage !== '' && $mailboxresponsetype !== '') {
-                    $display = $anonymizer->deanonymize_message_for_display((int)$params['threadid'], $mailboxmessage);
-                    $displaymessage = (string)($display['message'] ?? $mailboxmessage);
-                    $privacyapplied = (int)(!empty($display['replacedcount']));
-
-                    return [
-                        'found' => 1,
-                        'messageid' => (int)($mailbox['messageid'] ?? 0),
-                        'responsetype' => $mailboxresponsetype,
-                        'message' => self::format_ws_message($mailboxmessage, $context),
-                        'displaymessage' => self::format_ws_message($displaymessage, $context),
-                        'privacyapplied' => $privacyapplied,
-                                'commands' => json_encode(array_values((array)($mailbox['commands'] ?? []))),
-                        'waitedms' => (int)round((microtime(true) - $start) * 1000),
-                    ];
-                }
-            }
-
-            $blocker = $waitstate->get_blocker((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
-            if (is_array($blocker)) {
-                $sawactiveblocker = true;
-                usleep(200000);
-                continue;
-            }
-
             $messages = $store->get_messages_since((int)$params['threadid'], $since);
             $candidate = self::find_latest_wait_candidate($messages);
             if (is_array($candidate)) {
@@ -163,13 +130,6 @@ class ai_wait_thread_response extends external_api {
                 $displaymessage = (string)($display['message'] ?? $message);
                 $privacyapplied = (int)(!empty($display['replacedcount']));
 
-                $waitstate->set_mailbox((int)$USER->id, (int)$params['cmid'], (int)$params['threadid'], [
-                    'messageid' => (int)$candidate['messageid'],
-                    'responsetype' => (string)$candidate['responsetype'],
-                    'message' => $message,
-                                'commands' => (array)($candidate['commands'] ?? []),
-                ], 60);
-
                 return [
                     'found' => 1,
                     'messageid' => (int)$candidate['messageid'],
@@ -177,26 +137,12 @@ class ai_wait_thread_response extends external_api {
                     'message' => self::format_ws_message($message, $context),
                     'displaymessage' => self::format_ws_message($displaymessage, $context),
                     'privacyapplied' => $privacyapplied,
-                                'commands' => json_encode(array_values((array)($candidate['commands'] ?? []))),
+                    'commands' => json_encode(array_values((array)($candidate['commands'] ?? []))),
                     'waitedms' => (int)round((microtime(true) - $start) * 1000),
                 ];
             }
 
             usleep(200000);
-        }
-
-        if ($sawactiveblocker) {
-            $timeoutmessage = get_string('ai_wait_thread_timeout_message', 'mod_booking');
-            return [
-                'found' => 1,
-                'messageid' => 0,
-                'responsetype' => 'error',
-                'message' => self::format_ws_message($timeoutmessage, $context),
-                'displaymessage' => self::format_ws_message($timeoutmessage, $context),
-                'privacyapplied' => 0,
-                            'commands' => '[]',
-                'waitedms' => (int)round((microtime(true) - $start) * 1000),
-            ];
         }
 
         return [
@@ -206,7 +152,7 @@ class ai_wait_thread_response extends external_api {
             'message' => '',
             'displaymessage' => '',
             'privacyapplied' => 0,
-                        'commands' => '[]',
+            'commands' => '[]',
             'waitedms' => (int)round((microtime(true) - $start) * 1000),
         ];
     }

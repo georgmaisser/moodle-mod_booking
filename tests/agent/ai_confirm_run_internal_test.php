@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Contract tests for ai_send_message external API schema.
+ * Contract tests for ai_confirm_run external API schema.
  *
  * @package    mod_booking
  * @category   test
@@ -29,11 +29,11 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once(__DIR__ . '/../../classes/local/testing/booking_advanced_testcase.php');
 
+use mod_booking\external\ai_confirm_run;
 use mod_booking\local\testing\booking_advanced_testcase;
-use mod_booking\external\ai_send_message;
 
 /**
- * Keep the ai_send_message external contract stable.
+ * Keep the ai_confirm_run external contract stable.
  *
  * @runTestsInSeparateProcesses
  * @coversNothing
@@ -41,39 +41,28 @@ use mod_booking\external\ai_send_message;
  * @package    mod_booking
  * @category   test
  */
-final class ai_send_message_internal_test extends booking_advanced_testcase {
+final class ai_confirm_run_internal_test extends booking_advanced_testcase {
     /**
      * execute_parameters exposes the required input fields.
      */
     public function test_execute_parameters_exposes_required_fields(): void {
-        $params = ai_send_message::execute_parameters();
+        $params = ai_confirm_run::execute_parameters();
         $this->assertNotNull($params->keys['cmid'] ?? null);
-        $this->assertNotNull($params->keys['message'] ?? null);
+        $this->assertNotNull($params->keys['threadid'] ?? null);
+        $this->assertNotNull($params->keys['commands'] ?? null);
+        $this->assertNotNull($params->keys['allow_session'] ?? null);
     }
 
     /**
-     * execute_returns keeps all API payload keys expected by the frontend.
+     * execute_returns keeps the compact API payload stable.
      */
     public function test_execute_returns_exposes_expected_fields(): void {
-        $returns = ai_send_message::execute_returns();
+        $returns = ai_confirm_run::execute_returns();
 
         $expectedkeys = [
-            'response_type',
-            'message',
-            'displaymessage',
-            'privacyapplied',
-            'autoconfirm',
-            'commands',
-            'ambiguities',
-            'ambiguityoptionsjson',
-            'errorsjson',
-            'attemptedtasksjson',
-            'issuecodesjson',
-            'pendingconfirmationcode',
-            'threadid',
+            'success',
             'runid',
-            'resultsjson',
-            'previewoptionid',
+            'message',
         ];
 
         foreach ($expectedkeys as $key) {
