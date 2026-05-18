@@ -31,6 +31,7 @@ let pendingCommands = null;
 let currentThreadId = 0;
 let currentCmid = 0;
 let debugModeEnabled = false;
+let sessionAutoConfirmEnabled = false;
 let privacyCheckRunningLabel = 'Privacy check running...';
 let privacyAnswerNoteLabel = 'Privacy note: personal data in this response was de-anonymized for display.';
 let stepPlanningLabel = 'Planning...';
@@ -306,6 +307,27 @@ const parseJsonObjectList = (raw) => {
             return [];
         }
         return parsed.filter((entry) => entry && typeof entry === 'object');
+    } catch (e) {
+        return [];
+    }
+};
+
+/**
+ * Parse a command payload that may be a JSON array or a single command object.
+ *
+ * @param {string} raw
+ * @returns {Array}
+ */
+const parseCommandPayload = (raw) => {
+    try {
+        const parsed = JSON.parse(String(raw || '[]'));
+        if (Array.isArray(parsed)) {
+            return parsed;
+        }
+        if (parsed && typeof parsed === 'object' && parsed.task) {
+            return [parsed];
+        }
+        return [];
     } catch (e) {
         return [];
     }
@@ -1277,6 +1299,60 @@ const appendFriendlyAssistantMessage = (content) => {
 };
 
 /**
+ * Handle a confirmation response by either auto-confirming or showing the panel.
+ *
+ * @param {Object} resp
+ * @returns {void}
+ */
+const handleConfirmationResponse = (resp) => {
+    const cmds = parseCommandPayload(resp.commands || '[]');
+    const attemptedTasks = parseJsonList(resp.attemptedtasksjson);
+    const errors = parseJsonList(resp.errorsjson);
+    const issueCodes = parseJsonList(resp.issuecodesjson);
+
+    appendAssistantPrivacyNote(resp, 'ai_send_message');
+    const planBubble = appendMessage('assistant', resp.displaymessage || resp.message, {
+        response_type: resp.response_type || '',
+        threadid: Number(resp.threadid || currentThreadId || 0),
+        runid: Number(resp.runid || 0),
+        commands_count: Array.isArray(cmds) ? cmds.length : 0,
+        llm_commands_json: String(resp.commands || ''),
+        attempted_tasks: attemptedTasks.join(', '),
+        issue_codes: issueCodes.join(', '),
+        pending_confirmation_code: String(resp.pendingconfirmationcode || ''),
+        errors: errors.join(' || '),
+        source: 'ai_send_message',
+        time: (new Date()).toISOString(),
+    });
+
+    if (cmds.length === 0) {
+        return;
+    }
+
+    activePlanBubble = planBubble;
+
+    const responseType = String(resp.response_type || '');
+    const autoconfirm = Number(resp.autoconfirm || 0) === 1;
+    if (autoconfirm) {
+        sessionAutoConfirmEnabled = true;
+    }
+
+    if (responseType === 'confirmation_request' && (autoconfirm || sessionAutoConfirmEnabled)) {
+        pendingCommands = cmds;
+        confirmRun(true);
+        return;
+    }
+
+    if (responseType === 'task_call' && shouldAutoExecuteReadOnly(cmds)) {
+        pendingCommands = cmds;
+        confirmRun(sessionAutoConfirmEnabled);
+        return;
+    }
+
+    showConfirmPanel(resp.displaymessage || resp.message || '', cmds);
+};
+
+/**
  * Show the confirmation panel with a preview of the proposed commands.
  *
  * @param {string} message   AI summary message.
@@ -1305,25 +1381,25 @@ const showConfirmPanel = (message, commands) => {
         previewHtml += '</ul>';
         preview.innerHTML = previewHtml;
         setSidePreviewHtml(previewHtml);
-
-        Ajax.call([{
-            methodname: 'mod_booking_ai_render_command_preview',
-            args: {
-                cmid: currentCmid,
-                commands: JSON.stringify(commands),
-            },
-        }])[0].then((resp) => {
-            if (resp && resp.success && resp.html && resp.html.trim() !== '') {
-                setSidePreviewHtml(resp.html);
-                runCollectedJavascript(resp.javascript);
-            } else if (resp && resp.message) {
-                setSidePreviewHtml(`<div class="text-muted small">${escapeHtml(String(resp.message))}</div>`);
-            }
-            return resp;
-        }).catch((err) => {
-            setSidePreviewHtml(`<div class="text-danger small">${escapeHtml(String(err.message || ''))}</div>`);
-        });
     }
+
+    Ajax.call([{
+        methodname: 'mod_booking_ai_render_command_preview',
+        args: {
+            cmid: currentCmid,
+            commands: JSON.stringify(commands),
+        },
+    }])[0].then((resp) => {
+        if (resp && resp.success && resp.html && resp.html.trim() !== '') {
+            setSidePreviewHtml(resp.html);
+            runCollectedJavascript(resp.javascript);
+        } else if (resp && resp.message) {
+            setSidePreviewHtml(`<div class="text-muted small">${escapeHtml(String(resp.message))}</div>`);
+        }
+        return resp;
+    }).catch((err) => {
+        setSidePreviewHtml(`<div class="text-danger small">${escapeHtml(String(err.message || ''))}</div>`);
+    });
 
     panel.classList.remove('d-none');
 };
@@ -1656,7 +1732,15 @@ const waitForContinuationMessage = (threadid, cmid, sinceMessageId, runid) => {
             (resp.responsetype === 'confirmation_request' || resp.responsetype === 'task_call')
             && waitCommands.length > 0
         ) {
-            showConfirmPanel(String(resp.displaymessage || resp.message || ''), waitCommands);
+            if (resp.responsetype === 'confirmation_request' && sessionAutoConfirmEnabled) {
+                pendingCommands = waitCommands;
+                confirmRun(true);
+            } else if (resp.responsetype === 'task_call' && shouldAutoExecuteReadOnly(waitCommands)) {
+                pendingCommands = waitCommands;
+                confirmRun(sessionAutoConfirmEnabled);
+            } else {
+                showConfirmPanel(String(resp.displaymessage || resp.message || ''), waitCommands);
+            }
         }
 
         return resp;
@@ -1713,53 +1797,16 @@ const pollRunStatus = (runid, cmid) => {
                     }
                 }
 
-                if (Number(resp.followupconfirmation || 0) === 1) {
-                    let followupCommands = [];
-                    try {
-                        const parsedFollowup = JSON.parse(resp.followupcommandsjson || '[]');
-                        followupCommands = Array.isArray(parsedFollowup) ? parsedFollowup : [];
-                    } catch (e) {
-                        followupCommands = [];
-                    }
-
-                    const followupMessage = String(resp.followupdisplaymessage || resp.followupmessage || '').trim();
-                    if (followupCommands.length > 0) {
-                        if (Number(resp.sessionallowactive || 0) === 1) {
-                            pendingCommands = followupCommands;
-                            confirmRun(true);
-                        } else {
-                            showConfirmPanel(followupMessage || 'Please confirm the updated command plan.', followupCommands);
-                        }
-                    }
-                }
-
-                const continuationType = String(resp.continuationresponsetype || '').trim();
-                const continuationText = String(
-                    resp.continuationdisplaymessage || resp.continuationmessage || ''
-                ).trim();
-                const continuationMessageId = Number(resp.continuationmessageid || 0);
-                if (continuationText !== '' && continuationType !== '') {
-                    appendContinuationMessageIfNew(
-                        continuationMessageId,
-                        continuationText,
-                        continuationType,
-                        Number(resp.runid || 0),
-                        'ai_poll_run_status.continuation'
-                    );
-                }
-
                 const executionMessageId = Number(resp.executionmessageid || 0);
-                if (continuationMessageId <= 0) {
-                    const sinceMessageId = executionMessageId > 0
-                        ? executionMessageId
-                        : Number(lastSeenAssistantMessageId || 0);
-                    waitForContinuationMessage(
-                        Number(currentThreadId || 0),
-                        Number(cmid || 0),
-                        sinceMessageId,
-                        Number(resp.runid || 0)
-                    );
-                }
+                const sinceMessageId = executionMessageId > 0
+                    ? executionMessageId
+                    : Number(lastSeenAssistantMessageId || 0);
+                waitForContinuationMessage(
+                    Number(currentThreadId || 0),
+                    Number(cmid || 0),
+                    sinceMessageId,
+                    Number(resp.runid || 0)
+                );
 
                 if (resp.status === 'completed') {
                     const optionIds = extractPreviewOptionIds(results);
@@ -2227,59 +2274,25 @@ const sendMessage = (message) => {
                 renderOptionPreviewsInline(currentCmid, optionIds);
             }
 
-            const continuationMessageId = Number(resp.continuationmessageid || 0);
-            if (continuationMessageId <= 0) {
-                const executionMessageId = Number(resp.executionmessageid || resp.messageid || 0);
-                const sinceMessageId = executionMessageId > 0
-                    ? executionMessageId
-                    : Number(lastSeenAssistantMessageId || 0);
-                window.setTimeout(() => {
-                    waitForContinuationMessage(
-                        Number(currentThreadId || 0),
-                        Number(currentCmid || 0),
-                        sinceMessageId,
-                        Number(resp.runid || 0)
-                    );
-                }, 500);
-            }
+            const executionMessageId = Number(resp.executionmessageid || resp.messageid || 0);
+            const sinceMessageId = executionMessageId > 0
+                ? executionMessageId
+                : Number(lastSeenAssistantMessageId || 0);
+            window.setTimeout(() => {
+                waitForContinuationMessage(
+                    Number(currentThreadId || 0),
+                    Number(currentCmid || 0),
+                    sinceMessageId,
+                    Number(resp.runid || 0)
+                );
+            }, 500);
 
             // Keep the thread poller alive so additional step bubbles from the same
             // conversation thread still appear after the execution result is rendered.
             resumeStepPolling();
         } else if (resp.response_type === 'confirmation_request' || resp.response_type === 'task_call') {
             try {
-                const parsedCommands = JSON.parse(resp.commands || '[]');
-                const cmds = Array.isArray(parsedCommands)
-                    ? parsedCommands
-                    : (parsedCommands && typeof parsedCommands === 'object' && parsedCommands.task
-                        ? [parsedCommands]
-                        : []);
-                const attemptedTasks = parseJsonList(resp.attemptedtasksjson);
-                const errors = parseJsonList(resp.errorsjson);
-                const issueCodes = parseJsonList(resp.issuecodesjson);
-                appendAssistantPrivacyNote(resp, 'ai_send_message');
-                const planBubble = appendMessage('assistant', resp.displaymessage || resp.message, {
-                    response_type: resp.response_type || '',
-                    threadid: Number(resp.threadid || currentThreadId || 0),
-                    runid: Number(resp.runid || 0),
-                    commands_count: Array.isArray(cmds) ? cmds.length : 0,
-                    llm_commands_json: String(resp.commands || ''),
-                    attempted_tasks: attemptedTasks.join(', '),
-                    issue_codes: issueCodes.join(', '),
-                    pending_confirmation_code: String(resp.pendingconfirmationcode || ''),
-                    errors: errors.join(' || '),
-                    source: 'ai_send_message',
-                    time: (new Date()).toISOString(),
-                });
-                if (cmds.length > 0) {
-                    activePlanBubble = planBubble;
-                    if (shouldAutoExecuteReadOnly(cmds)) {
-                        pendingCommands = cmds;
-                        confirmRun();
-                    } else {
-                        showConfirmPanel(resp.message, cmds);
-                    }
-                }
+                handleConfirmationResponse(resp);
             } catch (e) {
                 appendAssistantPrivacyNote(resp, 'ai_send_message');
                 appendMessage('assistant', resp.commands || '', {
@@ -2330,6 +2343,10 @@ const confirmRun = (allowSession = false) => {
     }
 
     const commandsToSend = pendingCommands;
+    const effectiveAllowSession = Boolean(allowSession || sessionAutoConfirmEnabled);
+    if (effectiveAllowSession) {
+        sessionAutoConfirmEnabled = true;
+    }
     hideConfirmPanel();
 
     Ajax.call([{
@@ -2338,7 +2355,7 @@ const confirmRun = (allowSession = false) => {
             cmid:     currentCmid,
             threadid: currentThreadId,
             commands: JSON.stringify(commandsToSend),
-            allow_session: Boolean(allowSession),
+            allow_session: effectiveAllowSession,
         },
     }])[0].then((resp) => {
         if (resp.success) {
