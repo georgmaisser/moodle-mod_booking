@@ -141,6 +141,10 @@ class message_trigger_registry {
         $allowed = array_flip($this->get_available_trigger_ids());
         $normalized = [];
         foreach ($usedtriggers as $triggerid) {
+            if (!is_string($triggerid) && !is_int($triggerid)) {
+                // Skip nested arrays or objects the LLM may return in malformed responses.
+                continue;
+            }
             $id = trim((string)$triggerid);
             if ($id === '' || !isset($allowed[$id])) {
                 continue;

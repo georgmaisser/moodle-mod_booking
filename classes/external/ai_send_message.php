@@ -203,41 +203,36 @@ class ai_send_message extends external_api {
             && $store->is_confirmation_allowed_for_thread((int)$USER->id, $cmid, $threadid)
             && !empty($result['commands'])
         ) {
-            // Auto-confirm staged mutations while session allowance is active.
-            // Keep a small hard cap to avoid infinite loops on malformed planner output.
-            for ($i = 0; $i < 5; $i++) {
-                $confirmpayload = $i === 0 ? json_encode($result['commands']) : '[]';
+            try {
                 $confirmresult = ai_confirm_run::execute(
                     $cmid,
                     $threadid,
-                    (string)$confirmpayload,
+                    json_encode($result['commands']),
                     false
                 );
 
-                if (empty($confirmresult['success'])) {
-                    break;
-                }
-
-                $executedmessage = $store->get_latest_execution_result_message_for_run(
-                    $threadid,
-                    (int)($confirmresult['runid'] ?? 0)
-                );
-                if ($executedmessage !== null) {
-                    $structured = json_decode((string)($executedmessage->structuredjson ?? ''), true);
-                    if (is_array($structured)) {
-                        $result = $structured;
-                        $result['message'] = (string)($executedmessage->content ?? $confirmresult['message'] ?? '');
+                if (!empty($confirmresult['success'])) {
+                    // Auto-confirm succeeded. Update response with the execution result.
+                    $executedmessage = $store->get_latest_execution_result_message_for_run(
+                        $threadid,
+                        (int)($confirmresult['runid'] ?? 0)
+                    );
+                    if ($executedmessage !== null) {
+                        $structured = json_decode((string)($executedmessage->structuredjson ?? ''), true);
+                        if (is_array($structured)) {
+                            $result = $structured;
+                            $result['message'] = (string)($executedmessage->content ?? $confirmresult['message'] ?? '');
+                        }
+                    } else {
+                        // No execution message found yet, but confirm succeeded - copy important fields
+                        $result['runid'] = (int)($confirmresult['runid'] ?? 0);
+                        $result['response_type'] = 'execution_result';
+                        $result['message'] = (string)($confirmresult['message'] ?? 'Auto-confirm executed.');
                     }
                 }
-
-                if (!$store->is_confirmation_allowed_for_thread((int)$USER->id, $cmid, $threadid)) {
-                    break;
-                }
-
-                $pending = $store->get_pending_intent($threadid);
-                if ($pending === null || empty($pending['commands']) || !is_array($pending['commands'])) {
-                    break;
-                }
+            } catch (Throwable $e) {
+                error_log("DEBUG: Auto-confirm FAILED with exception: " . $e->getMessage() . "\nTrace: " . $e->getTraceAsString());
+                // If auto-confirm fails, keep the confirmation_request response
             }
         }
 
