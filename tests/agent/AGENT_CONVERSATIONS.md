@@ -129,7 +129,7 @@ Run all per-task files:
 
 These tests live in **`real_llm/agent_real_llm_test.php`** and test a **different layer** from the
 AgentRuntime tests above. They call the Moodle webservice endpoints directly
-(`ai_send_message`, `ai_confirm_run`, `ai_poll_run_status`) and verify that the HTTP layer
+(`ai_send_message`, `ai_confirm_run`) and verify that the HTTP layer
 routes, serialises, and responds correctly.
 
 They are intentionally **not** merged into the per-task files: they don't test conversation

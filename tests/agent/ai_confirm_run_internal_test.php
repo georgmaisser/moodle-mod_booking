@@ -62,7 +62,18 @@ final class ai_confirm_run_internal_test extends booking_advanced_testcase {
         $expectedkeys = [
             'success',
             'runid',
+            'threadid',
+            'response_type',
             'message',
+            'displaymessage',
+            'privacyapplied',
+            'autoconfirm',
+            'commands',
+            'resultsjson',
+            'attemptedtasksjson',
+            'issuecodesjson',
+            'errorsjson',
+            'pendingconfirmationcode',
         ];
 
         foreach ($expectedkeys as $key) {

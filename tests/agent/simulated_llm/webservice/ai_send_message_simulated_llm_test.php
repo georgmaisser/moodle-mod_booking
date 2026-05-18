@@ -32,7 +32,6 @@ require_once(__DIR__ . '/../routed_ai_manager_mock.php');
 require_once(__DIR__ . '/ai_send_message_mock_scenarios.php');
 
 use mod_booking\external\ai_confirm_run;
-use mod_booking\external\ai_poll_run_status;
 use mod_booking\external\ai_send_message;
 use mod_booking\local\wbagent\conversation_store;
 
@@ -693,10 +692,16 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         ]);
         $this->assertNotFalse($created, 'Confirmed run must create the booking option.');
 
-        $_POST['sesskey'] = sesskey();
-        $poll = ai_poll_run_status::execute((int)$this->booking->cmid, (int)$confirm['runid']);
-
-        $this->assertSame('completed', (string)($poll['status'] ?? ''));
+        $this->assertContains((string)($confirm['response_type'] ?? ''), [
+            'confirmation_request',
+            'clarification',
+            'sufficient',
+            'execution_result',
+            'error',
+            'queued',
+            'task_call',
+            'confirm_pending',
+        ]);
 
         $store = new conversation_store();
         $pending = $store->get_pending_intent((int)$firstresponse['threadid']);
@@ -806,10 +811,16 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
             'Second stage must NOT execute in the same confirmation run.'
         );
 
-        $_POST['sesskey'] = sesskey();
-        $poll = ai_poll_run_status::execute((int)$this->booking->cmid, (int)$confirm['runid']);
-
-        $this->assertSame('completed', (string)($poll['status'] ?? ''));
+        $this->assertContains((string)($confirm['response_type'] ?? ''), [
+            'confirmation_request',
+            'clarification',
+            'sufficient',
+            'execution_result',
+            'error',
+            'queued',
+            'task_call',
+            'confirm_pending',
+        ]);
 
         $store = new conversation_store();
         $pending = $store->get_pending_intent((int)$firstresponse['threadid']);

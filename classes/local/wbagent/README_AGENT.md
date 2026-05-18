@@ -52,9 +52,8 @@ flowchart TD
     U4 --> V
     N --> W[WS mod_booking_ai_render_command_preview]
     W --> V
-    O --> X[WS mod_booking_ai_poll_run_status]
-    X --> V
-    V --> Y[WS mod_booking_ai_poll_thread fuer Historie]
+    O --> V
+    V --> Y[WS mod_booking_ai_poll_thread fuer Planner-Schritte]
 ```
 
 ## Wie fuehrt der Agent Aufgaben aus?
@@ -72,14 +71,15 @@ flowchart TD
 7. Die Ausfuehrung passiert im Executor ueber task_registry auf konkrete Tasks.
 8. Nach Execute kann optional ein Repair-Plan erzeugt werden (execution_repair_service).
 9. Wenn Repair moeglich ist, wird ein neues pending intent + confirmation_request gespeichert (zweite Confirmation).
-10. Tasks delegieren Fachlogik (z.B. booking_task_support / mutation services), schreiben Resultate, und das UI pollt den Status.
+10. Tasks delegieren Fachlogik (z.B. booking_task_support / mutation services), schreiben Resultate,
+    und der naechste sichtbare Schritt kommt direkt aus dem API-Response.
 
 ## Zweite Confirmation nach Ausfuehrungsfehler
 
 - Die zweite Confirmation entsteht nicht im Erst-Interpreterlauf, sondern nach einem Execute-Fehler in mod_booking_ai_confirm_run.
 - Voraussetzung: execution_repair_service liefert can_repair=true und repaired_commands.
-- ai_poll_run_status liefert dann followupconfirmation/followupcommandsjson.
-- aiinstructions.js zeigt daraus ein zweites showConfirmPanel.
+- ai_confirm_run liefert den naechsten Agent-Status direkt zurueck (z.B. confirmation_request/sufficient).
+- aiinstructions.js zeigt daraus direkt das naechste showConfirmPanel (oder den Abschluss).
 - Wenn dieser Repair-Zweig entfernt wird, gibt es trotz Fehlerausgabe keine zweite Confirmation mehr.
 
 ## Erste Confirmation: Soft-Override-Bedingungen
@@ -107,7 +107,6 @@ Details und Erweiterungsanleitung: `booking/tasks/README_AGENT_TASKS.md` (Abschn
 - mod_booking_ai_send_message
 - mod_booking_ai_confirm_run
 - mod_booking_ai_poll_thread
-- mod_booking_ai_poll_run_status
 - mod_booking_ai_render_command_preview
 - mod_booking_ai_list_candidate_options
 

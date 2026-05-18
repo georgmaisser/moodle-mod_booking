@@ -257,22 +257,6 @@ $functions = [
         'capabilities' => 'mod/booking:useaiinstructions',
         'ajax'        => 1,
     ],
-    'mod_booking_ai_poll_run_status' => [
-        'classname'   => 'mod_booking\\external\\ai_poll_run_status',
-        'methodname'  => 'execute',
-        'description' => 'Return the current status and results of an AI execution run.',
-        'type'        => 'read',
-        'capabilities' => 'mod/booking:useaiinstructions',
-        'ajax'        => 1,
-    ],
-    'mod_booking_ai_wait_thread_response' => [
-        'classname'   => 'mod_booking\\external\\ai_wait_thread_response',
-        'methodname'  => 'execute',
-        'description' => 'Wait for the next assistant continuation message in an AI thread.',
-        'type'        => 'read',
-        'capabilities' => 'mod/booking:useaiinstructions',
-        'ajax'        => 1,
-    ],
     'mod_booking_ai_get_thread_debug_logs' => [
         'classname'   => 'mod_booking\\external\\ai_get_thread_debug_logs',
         'methodname'  => 'execute',

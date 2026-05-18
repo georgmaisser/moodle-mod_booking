@@ -160,7 +160,7 @@ Legende:
 - Bei Fehlern kann optional ein LLM-basierter Repair-Plan erzeugt werden (`execution_repair_service`).
 - Jeder geaenderte Plan benoetigt zwingend eine neue Bestaetigung durch den User.
 - In der Reparaturphase werden keine schreibenden Tasks ohne erneute Confirmation ausgefuehrt.
-- Follow-up Confirmation wird ueber `ai_poll_run_status` an das UI geliefert (`followupconfirmation`, `followupcommandsjson`).
+- Follow-up Confirmation kommt direkt aus dem naechsten `ai_confirm_run`-Response.
 - Der Workflow kann mehrfach neu berechnet werden, solange jeder neue Plan erneut bestaetigt wird.
 - Terminierung erfolgt, wenn: Erfolg erreicht, Fehler nicht auto-korrigierbar, User nicht bestaetigt, oder kein valider Repair-Plan erzeugt werden kann.
 

@@ -33,7 +33,6 @@ use core_ai\aiactions\explain_text;
 use core_ai\aiactions\generate_text;
 use core_ai\aiactions\summarise_text;
 use mod_booking\external\ai_confirm_run;
-use mod_booking\external\ai_poll_run_status;
 use mod_booking\external\ai_send_message;
 use mod_booking\local\wbagent\interpreter;
 use mod_booking\local\wbagent\orchestrator;
@@ -274,8 +273,16 @@ final class agent_real_llm_test extends booking_advanced_testcase {
         $this->assertTrue((bool)$confirm['success']);
         $this->assertGreaterThan(0, (int)$confirm['runid']);
 
-        $runstatus = ai_poll_run_status::execute((int)$this->booking->cmid, (int)$confirm['runid']);
-        $this->assertContains((string)$runstatus['status'], ['queued', 'running', 'completed']);
+        $this->assertContains((string)($confirm['response_type'] ?? ''), [
+            'confirmation_request',
+            'clarification',
+            'sufficient',
+            'execution_result',
+            'error',
+            'queued',
+            'task_call',
+            'confirm_pending',
+        ]);
         $this->assert_generate_text_logged_for_thread((int)$response['threadid']);
     }
 

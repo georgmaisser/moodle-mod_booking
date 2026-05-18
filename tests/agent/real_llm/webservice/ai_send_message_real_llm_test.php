@@ -34,9 +34,7 @@ require_once(__DIR__ . '/../../abstract_agent_testcase.php');
 require_once(__DIR__ . '/../../simulated_llm/webservice/ai_send_message_mock_scenarios.php');
 
 use mod_booking\external\ai_confirm_run;
-use mod_booking\external\ai_poll_run_status;
 use mod_booking\external\ai_send_message;
-use mod_booking\external\ai_wait_thread_response;
 
 /**
  * Whole-agent ai_send_message tests with a live provider.
@@ -563,15 +561,14 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
      * Real-LLM multistep flow: create option first, then book Billy for it.
      *
      * Mimics the exact webservice flow:
-     * 1. ai_send_message (initial prompt) with auto-confirmation allowance
-     * 2. ai_poll_run_status (wait for runid to complete)
-     * 3. ai_wait_thread_response (check for continuation message)
-     * 4. Repeat as needed for follow-up steps.
+     * 1. ai_send_message for the first planner step
+     * 2. ai_confirm_run for each further confirmation step
+     * 3. ai_poll_thread remains responsible for planner step progress in the UI
      *
      * @return void
      */
     public function test_multistep_create_option_then_book_billy(): void {
-        global $DB, $USER;
+        global $DB;
 
         $this->setUser($this->teacher);
 
@@ -600,37 +597,16 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
             . ' | autoconfirm=' . (string)($first['autoconfirm'] ?? 0)
             . ' | msg=' . trim((string)($first['displaymessage'] ?? ''));
 
-        $firstrunid = (int)($first['runid'] ?? 0);
-        if ($firstrunid <= 0) {
-            $debugfirst = json_encode($first, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-            $this->fail('First response must include a runid. Response: ' . $debugfirst);
-        }
+        $responsetype = (string)($first['response_type'] ?? '');
 
-        // Step 2: Poll the first run until completion.
-        $_POST['sesskey'] = sesskey();
-        $poll = ai_poll_run_status::execute((int)$this->booking->cmid, $firstrunid);
-        $sinceid = (int)($poll['executionmessageid'] ?? 0);
-        $attemptlogs[] = 'poll[0]: status=' . (string)($poll['status'] ?? '')
-            . ' | sinceid=' . $sinceid;
-
-        // Step 3: Wait for continuation message (could be confirmation_request, clarification, sufficient, etc).
-        $_POST['sesskey'] = sesskey();
-        $wait = ai_wait_thread_response::execute((int)$this->booking->cmid, $threadid, $sinceid, 60000);
-        $responsetype = (string)($wait['responsetype'] ?? '');
-        $lastsinceid = $sinceid;
-
-        $attemptlogs[] = 'wait[0]: found=' . (string)($wait['found'] ?? '')
-            . ' | type=' . $responsetype
-            . ' | msg=' . trim((string)($wait['displaymessage'] ?? ''));
-
-        // Step 4: Handle continuation loop (follow-up messages, clarifications, confirmations, etc).
+        // Step 2+: Handle follow-up loop (clarifications, confirmations, completion).
         for ($i = 0; $i < 8; $i++) {
             if ($responsetype === 'sufficient' || $responsetype === 'execution_result') {
                 // Flow complete.
                 break;
             }
 
-            if ($responsetype === 'confirmation_request') {
+            if ($responsetype === 'confirmation_request' || $responsetype === 'task_call') {
                 // Frontend would show a confirm button — simulate by calling ai_confirm_run.
                 $_POST['sesskey'] = sesskey();
                 $confirmresult = ai_confirm_run::execute(
@@ -639,32 +615,17 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
                     '[]',
                     false
                 );
-                $this->assertCount(3, $confirmresult, 'Confirm response should stay compact.');
                 $confirmrunid = (int)($confirmresult['runid'] ?? 0);
+                $responsetype = (string)($confirmresult['response_type'] ?? '');
 
                 $attemptlogs[] = 'confirm[' . $i . ']: success=' . (string)($confirmresult['success'] ?? 0)
                     . ' | runid=' . $confirmrunid
+                    . ' | type=' . $responsetype
                     . ' | msg=' . trim((string)($confirmresult['message'] ?? ''));
 
                 if (empty($confirmresult['success']) || $confirmrunid <= 0) {
                     break;
                 }
-
-                $_POST['sesskey'] = sesskey();
-                $confirmpoll = ai_poll_run_status::execute((int)$this->booking->cmid, $confirmrunid);
-                $confirmsinceid = (int)($confirmpoll['executionmessageid'] ?? 0);
-
-                $_POST['sesskey'] = sesskey();
-                $confirmwait = ai_wait_thread_response::execute(
-                    (int)$this->booking->cmid,
-                    $threadid,
-                    $confirmsinceid,
-                    60000
-                );
-                $responsetype = (string)($confirmwait['responsetype'] ?? '');
-
-                $attemptlogs[] = 'wait_after_confirm[' . $i . ']: type=' . $responsetype
-                    . ' | msg=' . trim((string)($confirmwait['displaymessage'] ?? ''));
                 continue;
             }
 
@@ -675,31 +636,10 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
 
                 $_POST['sesskey'] = sesskey();
                 $followup = ai_send_message::execute((int)$this->booking->cmid, $clarificationreply, $threadid);
-                $followuprunid = (int)($followup['runid'] ?? 0);
+                $responsetype = (string)($followup['response_type'] ?? '');
 
                 $attemptlogs[] = 'send[' . ($i + 1) . ']: reply=clarification_follow_up'
-                    . ' | type=' . (string)($followup['response_type'] ?? '')
-                    . ' | runid=' . $followuprunid;
-
-                if ($followuprunid <= 0) {
-                    break;
-                }
-
-                $_POST['sesskey'] = sesskey();
-                $followuppoll = ai_poll_run_status::execute((int)$this->booking->cmid, $followuprunid);
-                $followupsinceid = (int)($followuppoll['executionmessageid'] ?? 0);
-
-                $_POST['sesskey'] = sesskey();
-                $followupwait = ai_wait_thread_response::execute(
-                    (int)$this->booking->cmid,
-                    $threadid,
-                    $followupsinceid,
-                    60000
-                );
-                $responsetype = (string)($followupwait['responsetype'] ?? '');
-
-                $attemptlogs[] = 'wait[' . ($i + 1) . ']: type=' . $responsetype
-                    . ' | msg=' . trim((string)($followupwait['displaymessage'] ?? ''));
+                    . ' | type=' . $responsetype;
                 continue;
             }
 

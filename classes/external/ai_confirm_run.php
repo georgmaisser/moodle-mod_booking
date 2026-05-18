@@ -39,6 +39,7 @@ use mod_booking\local\wbagent\execution_feedback_service;
 use mod_booking\local\wbagent\executor;
 use mod_booking\local\wbagent\interpreter;
 use mod_booking\local\wbagent\orchestrator;
+use mod_booking\local\wbagent\privacy_anonymizer;
 use mod_booking\local\wbagent\task_registry;
 use mod_booking\task\execute_ai_run_adhoc;
 
@@ -102,18 +103,27 @@ class ai_confirm_run extends external_api {
         self::validate_context($context);
         $authz->require_use_capability((int)$USER->id, $params['cmid']);
 
+        $store = new conversation_store();
         if (!empty($params['allow_session'])) {
-            $store = new conversation_store();
             $store->allow_confirmation_for_thread((int)$USER->id, (int)$params['cmid'], (int)$params['threadid']);
-        } else {
-            $store = new conversation_store();
         }
         $pendingintent = $store->consume_pending_intent((int)$params['threadid'], (int)$USER->id, (int)$params['cmid']);
         if ($pendingintent === null || empty($pendingintent['commands']) || !is_array($pendingintent['commands'])) {
             return [
                 'success' => false,
                 'runid' => 0,
+                'threadid' => (int)$params['threadid'],
+                'response_type' => 'error',
                 'message' => 'No pending confirmation is available for this action. Please ask the assistant again.',
+                'displaymessage' => 'No pending confirmation is available for this action. Please ask the assistant again.',
+                'privacyapplied' => 0,
+                'autoconfirm' => 0,
+                'commands' => '[]',
+                'resultsjson' => '[]',
+                'attemptedtasksjson' => '[]',
+                'issuecodesjson' => '[]',
+                'errorsjson' => '[]',
+                'pendingconfirmationcode' => '',
             ];
         }
 
@@ -133,7 +143,18 @@ class ai_confirm_run extends external_api {
                 return [
                     'success' => false,
                     'runid' => 0,
+                    'threadid' => (int)$params['threadid'],
+                    'response_type' => 'error',
                     'message' => 'Confirmation payload mismatch. Please confirm the latest assistant proposal.',
+                    'displaymessage' => 'Confirmation payload mismatch. Please confirm the latest assistant proposal.',
+                    'privacyapplied' => 0,
+                    'autoconfirm' => 0,
+                    'commands' => '[]',
+                    'resultsjson' => '[]',
+                    'attemptedtasksjson' => '[]',
+                    'issuecodesjson' => '[]',
+                    'errorsjson' => '[]',
+                    'pendingconfirmationcode' => '',
                 ];
             }
         }
@@ -171,7 +192,18 @@ class ai_confirm_run extends external_api {
             return [
                 'success' => true,
                 'runid'   => $runid,
+                'threadid' => (int)$params['threadid'],
+                'response_type' => 'queued',
                 'message' => get_string('ai_run_queued', 'mod_booking'),
+                'displaymessage' => get_string('ai_run_queued', 'mod_booking'),
+                'privacyapplied' => 0,
+                'autoconfirm' => 0,
+                'commands' => json_encode($commandsforrun),
+                'resultsjson' => '[]',
+                'attemptedtasksjson' => '[]',
+                'issuecodesjson' => '[]',
+                'errorsjson' => '[]',
+                'pendingconfirmationcode' => '',
             ];
         }
 
@@ -206,12 +238,43 @@ class ai_confirm_run extends external_api {
 
             $orchestrator = new orchestrator($registry, new interpreter($registry), $store);
             $runtime = new agent_runtime($registry, $orchestrator, $store, $authz);
-            $runtime->run_loop((int)$params['threadid'], (int)$params['cmid'], (int)$USER->id);
+            $finalresult = $runtime->run_loop((int)$params['threadid'], (int)$params['cmid'], (int)$USER->id);
+
+            if (!is_array($finalresult)) {
+                $finalresult = [];
+            }
+
+            $displaymessage = (string)($finalresult['message'] ?? '');
+            $privacyapplied = 0;
+            $anonymizer = new privacy_anonymizer($store);
+            $displayresult = $anonymizer->deanonymize_message_for_display((int)$params['threadid'], $displaymessage);
+            $displaymessage = (string)($displayresult['message'] ?? $displaymessage);
+            if ((int)($displayresult['replacedcount'] ?? 0) > 0) {
+                $privacyapplied = 1;
+            }
+
+            $responsetype = (string)($finalresult['response_type'] ?? 'sufficient');
+            $formattedmessage = self::format_ws_message((string)($finalresult['message'] ?? ''), $context);
+            $formatteddisplaymessage = self::format_ws_message($displaymessage, $context);
 
             return [
                 'success' => true,
                 'runid'   => $runid,
-                'message' => get_string('ai_run_executed', 'mod_booking'),
+                'threadid' => (int)$params['threadid'],
+                'response_type' => $responsetype,
+                'message' => $formattedmessage,
+                'displaymessage' => $formatteddisplaymessage,
+                'privacyapplied' => $privacyapplied,
+                'autoconfirm' => (int)(
+                    $responsetype === 'confirmation_request'
+                    && $store->is_confirmation_allowed_for_thread((int)$USER->id, $params['cmid'], (int)$params['threadid'])
+                ),
+                'commands' => json_encode($finalresult['commands'] ?? []),
+                'resultsjson' => json_encode($finalresult['results'] ?? []),
+                'attemptedtasksjson' => json_encode($finalresult['attempted_tasks'] ?? []),
+                'issuecodesjson' => json_encode($finalresult['issue_codes'] ?? []),
+                'errorsjson' => json_encode($finalresult['errors'] ?? []),
+                'pendingconfirmationcode' => (string)($finalresult['pending_confirmation_code'] ?? ''),
             ];
         } catch (\Throwable $e) {
             $rawresults = [['status' => 'error', 'detail' => $e->getMessage(), 'resultid' => null]];
@@ -234,7 +297,18 @@ class ai_confirm_run extends external_api {
             return [
                 'success' => false,
                 'runid'   => $runid,
+                'threadid' => (int)$params['threadid'],
+                'response_type' => 'error',
                 'message' => (string)$feedback['message'],
+                'displaymessage' => (string)$feedback['message'],
+                'privacyapplied' => 0,
+                'autoconfirm' => 0,
+                'commands' => '[]',
+                'resultsjson' => json_encode($feedback['results'] ?? []),
+                'attemptedtasksjson' => '[]',
+                'issuecodesjson' => '[]',
+                'errorsjson' => '[]',
+                'pendingconfirmationcode' => '',
             ];
         }
     }
@@ -248,7 +322,37 @@ class ai_confirm_run extends external_api {
         return new external_single_structure([
             'success' => new external_value(PARAM_BOOL, 'Whether the run was successfully queued.'),
             'runid'   => new external_value(PARAM_INT, 'The id of the created run.'),
-            'message' => new external_value(PARAM_TEXT, 'Status message.'),
+            'threadid' => new external_value(PARAM_INT, 'Thread id.'),
+            'response_type' => new external_value(PARAM_TEXT, 'Final response type from the runtime.'),
+            'message' => new external_value(PARAM_RAW, 'Status message.'),
+            'displaymessage' => new external_value(PARAM_RAW, 'Display message for the user.'),
+            'privacyapplied' => new external_value(PARAM_INT, 'Whether display deanonymization was applied.'),
+            'autoconfirm' => new external_value(PARAM_INT, 'Whether the UI should auto-trigger confirmation.'),
+            'commands' => new external_value(PARAM_RAW, 'JSON-encoded command list.'),
+            'resultsjson' => new external_value(PARAM_RAW, 'JSON-encoded execution results.'),
+            'attemptedtasksjson' => new external_value(PARAM_RAW, 'JSON-encoded attempted tasks.'),
+            'issuecodesjson' => new external_value(PARAM_RAW, 'JSON-encoded issue codes.'),
+            'errorsjson' => new external_value(PARAM_RAW, 'JSON-encoded errors.'),
+            'pendingconfirmationcode' => new external_value(PARAM_TEXT, 'One-time pending confirmation code for debug.'),
+        ]);
+    }
+
+    /**
+     * Format a markdown-like assistant message as HTML for WS output.
+     *
+     * @param string $message
+     * @param context_module $context
+     * @return string
+     */
+    private static function format_ws_message(string $message, context_module $context): string {
+        $message = trim($message);
+        if ($message === '') {
+            return '';
+        }
+
+        return format_text(\markdown_to_html($message), 1, [
+            'context' => $context,
+            'para' => false,
         ]);
     }
 

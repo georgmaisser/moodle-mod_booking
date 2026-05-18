@@ -10,7 +10,7 @@ Ziel dieser Datei:
 2. Nicht aendern ohne expliziten Auftrag:
    - external/ai_send_message.php
    - external/ai_confirm_run.php
-   - external/ai_poll_run_status.php
+   - external/ai_poll_thread.php
    - amd/src/aiinstructions.js
    - local/wbagent/orchestrator.php
    - local/wbagent/interpreter.php
@@ -41,8 +41,8 @@ Typische Beispiele:
 
 Dann muessen die drei Ebenen konsistent sein:
 1. Producer: external/ai_confirm_run.php (setzt pending intent nach Repair).
-2. Transport: external/ai_poll_run_status.php (liefert followup*-Felder).
-3. Consumer: amd/src/aiinstructions.js (zeigt showConfirmPanel fuer Follow-up).
+2. Consumer: amd/src/aiinstructions.js (zeigt showConfirmPanel fuer Follow-up).
+3. Planner-Step-Progress: external/ai_poll_thread.php (nur UI-Step-Bubbles).
 
 Hinweis: issue_codes bleiben task-nahe und in ai_send_message relevant, steuern aber die zweite Confirmation nach Execute-Fehler nicht alleine.
 

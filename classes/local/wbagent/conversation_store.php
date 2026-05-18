@@ -223,29 +223,6 @@ class conversation_store implements agent_conversation_store {
     }
 
     /**
-     * Return non-step messages written after a given message id.
-     *
-     * Used by continuation wait/poll endpoints to fetch only fresh messages.
-     *
-     * @param int $threadid
-     * @param int $sinceid Return only messages with id > $sinceid (0 = all).
-     * @return stdClass[]
-     */
-    public function get_messages_since(int $threadid, int $sinceid): array {
-        global $DB;
-        $sql = 'SELECT * FROM {booking_ai_messages}
-                 WHERE threadid = :threadid
-                   AND role    <> :steprole
-                   AND id       > :sinceid
-                 ORDER BY id ASC';
-        return array_values($DB->get_records_sql($sql, [
-            'threadid' => $threadid,
-            'steprole' => 'step',
-            'sinceid'  => $sinceid,
-        ]));
-    }
-
-    /**
      * Return all messages for a thread ordered by timecreated ASC.
      *
      * @param int $threadid
@@ -464,38 +441,6 @@ class conversation_store implements agent_conversation_store {
                  WHERE ' . $where . '
               ORDER BY m.timecreated ASC, m.id ASC';
         return array_values($DB->get_records_sql($sql, $params));
-    }
-
-    /**
-     * Return the latest assistant execution_result message for a specific run.
-     *
-     * @param int $threadid
-     * @param int $runid
-     * @return stdClass|null
-     */
-    public function get_latest_execution_result_message_for_run(int $threadid, int $runid): ?stdClass {
-        $messages = $this->get_recent_messages($threadid, 50);
-        for ($i = count($messages) - 1; $i >= 0; $i--) {
-            $message = $messages[$i];
-            if (($message->role ?? '') !== 'assistant') {
-                continue;
-            }
-
-            $structured = json_decode((string)($message->structuredjson ?? ''), true);
-            if (!is_array($structured)) {
-                continue;
-            }
-            if ((string)($structured['response_type'] ?? '') !== 'execution_result') {
-                continue;
-            }
-            if ((int)($structured['runid'] ?? 0) !== $runid) {
-                continue;
-            }
-
-            return $message;
-        }
-
-        return null;
     }
 
     /**

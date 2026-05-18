@@ -9,7 +9,6 @@
             direction TB
             SEND["ai_send_message"]
             CONFIRM["ai_confirm_run"]
-            POLL["ai_poll_run_status"]
             THREAD["ai_poll_thread"]
             PREVIEW["ai_render_command_preview"]
             CAND["ai_list_candidate_options"]
