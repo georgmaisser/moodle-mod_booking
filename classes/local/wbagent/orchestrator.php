@@ -392,13 +392,15 @@ class orchestrator {
             $hasanyobservations,
             $runtimecatalog
         );
+        $autoconfirmmode = $this->store->is_confirmation_allowed_for_thread($userid, $cmid, $threadid);
         $prompt = $this->build_prompt(
             $systemprompt,
             $messages,
             $observations,
             $normalizedsteptype,
             $runtimecontext,
-            $plannertracehistory
+            $plannertracehistory,
+            $autoconfirmmode
         );
         $historycount = count(array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype)));
         $observationcount = count($observations);
@@ -917,6 +919,7 @@ PROMPT;
      * @param  string[]    $observations  Structured observation strings (may be empty).
      * @param  string      $runtimecontext Dynamic per-request context appended after static system prompt.
      * @param  string[]    $plannertracehistory Full planner trace history from thread metadata.
+     * @param  bool        $autoconfirmmode Whether confirmation is already allowed for this thread.
      * @return string
      */
     private function build_prompt(
@@ -925,7 +928,8 @@ PROMPT;
         array $observations = [],
         string $steptype = self::STEP_TYPE_TOOL_CALL_PARSE,
         string $runtimecontext = '',
-        array $plannertracehistory = []
+        array $plannertracehistory = [],
+        bool $autoconfirmmode = false
     ): string {
         $normalizedsteptype = $this->normalize_step_type($steptype);
         $trimmedmessages = array_slice($messages, -$this->get_history_limit_for_step($normalizedsteptype));
@@ -966,7 +970,7 @@ PROMPT;
 
         $parts = $this->append_planner_traces_and_observations($parts, $plannertracehistory, $observations);
 
-        $localoutputcontract = $this->build_local_output_contract_block($normalizedsteptype);
+        $localoutputcontract = $this->build_local_output_contract_block($normalizedsteptype, $autoconfirmmode);
         if ($localoutputcontract !== '') {
             $parts[] = "[OUTPUT_CONTRACT]\n{$localoutputcontract}";
         }
@@ -979,21 +983,31 @@ PROMPT;
      * Build a local output contract reminder close to the assistant output slot.
      *
      * @param string $steptype
+     * @param bool $autoconfirmmode
      * @return string
      */
-    private function build_local_output_contract_block(string $steptype): string {
+    private function build_local_output_contract_block(string $steptype, bool $autoconfirmmode = false): string {
         $normalized = $this->normalize_step_type($steptype);
         if ($normalized === self::STEP_TYPE_FINAL_SYNTHESIS) {
             return '';
         }
 
-        return implode("\n", [
+        $lines = [
             'Return exactly one valid JSON object and nothing else.',
             'Do not output markdown, code fences, prose, or bullet lists outside JSON.',
             'Allowed response_type: task_call, confirmation_request, confirm_pending, clarification, sufficient, error.',
             'For task_call/confirmation_request: commands must be a non-empty array.',
             'For clarification/confirm_pending/sufficient/error: commands must be [].',
-        ]);
+        ];
+
+        if ($autoconfirmmode) {
+            $lines[] = 'Auto-confirm mode is active.';
+            $lines[] = 'If you return response_type="confirmation_request", do not ask the user for permission.';
+            $lines[] = 'Do not phrase the message as a question or request approval.';
+            $lines[] = 'Instead, write a concise informational message that clearly states which action will now be executed.';
+        }
+
+        return implode("\n", $lines);
     }
 
     /**
