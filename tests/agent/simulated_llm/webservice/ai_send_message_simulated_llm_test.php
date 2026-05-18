@@ -34,6 +34,7 @@ require_once(__DIR__ . '/ai_send_message_mock_scenarios.php');
 use mod_booking\external\ai_confirm_run;
 use mod_booking\external\ai_poll_run_status;
 use mod_booking\external\ai_send_message;
+use mod_booking\local\wbagent\conversation_store;
 
 /**
  * Whole-agent ai_send_message tests with scripted AI output.
@@ -696,13 +697,12 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         $poll = ai_poll_run_status::execute((int)$this->booking->cmid, (int)$confirm['runid']);
 
         $this->assertSame('completed', (string)($poll['status'] ?? ''));
-        $this->assertSame(1, (int)($poll['followupconfirmation'] ?? 0));
-        $this->assertSame(0, (int)($poll['sessionallowactive'] ?? 0));
 
-        $followupcommands = json_decode((string)($poll['followupcommandsjson'] ?? '[]'), true);
-        $this->assertIsArray($followupcommands);
-        $this->assertNotEmpty($followupcommands);
-        $this->assertSame('booking.update_option', (string)($followupcommands[0]['task'] ?? ''));
+        $store = new conversation_store();
+        $pending = $store->get_pending_intent((int)$firstresponse['threadid']);
+        $this->assertIsArray($pending);
+        $this->assertNotEmpty($pending['commands'] ?? []);
+        $this->assertSame('booking.update_option', (string)($pending['commands'][0]['task'] ?? ''));
     }
 
     /**
@@ -810,11 +810,11 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         $poll = ai_poll_run_status::execute((int)$this->booking->cmid, (int)$confirm['runid']);
 
         $this->assertSame('completed', (string)($poll['status'] ?? ''));
-        $this->assertSame(1, (int)($poll['followupconfirmation'] ?? 0));
 
-        $followupcommands = json_decode((string)($poll['followupcommandsjson'] ?? '[]'), true);
-        $this->assertIsArray($followupcommands);
-        $this->assertCount(1, $followupcommands, 'Follow-up should expose exactly the next stage command.');
-        $this->assertSame('booking.book_users', (string)($followupcommands[0]['task'] ?? ''));
+        $store = new conversation_store();
+        $pending = $store->get_pending_intent((int)$firstresponse['threadid']);
+        $this->assertIsArray($pending);
+        $this->assertCount(1, $pending['commands'] ?? [], 'Follow-up should expose exactly the next stage command.');
+        $this->assertSame('booking.book_users', (string)($pending['commands'][0]['task'] ?? ''));
     }
 }

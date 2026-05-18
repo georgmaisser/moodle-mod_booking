@@ -89,15 +89,6 @@ class ai_poll_run_status extends external_api {
                 'message'    => '',
                 'displaymessage' => '',
                 'privacyapplied' => 0,
-                'sessionallowactive' => 0,
-                'followupconfirmation' => 0,
-                'followupmessage' => '',
-                'followupdisplaymessage' => '',
-                'followupcommandsjson' => '[]',
-                'continuationmessageid' => 0,
-                'continuationresponsetype' => '',
-                'continuationmessage' => '',
-                'continuationdisplaymessage' => '',
                 'resultsjson' => '[]',
             ];
         }
@@ -106,19 +97,6 @@ class ai_poll_run_status extends external_api {
         $message = '';
         $displaymessage = '';
         $privacyapplied = 0;
-        $sessionallowactive = (int)$store->is_confirmation_allowed_for_thread(
-            (int)$USER->id,
-            (int)$params['cmid'],
-            (int)$run->threadid
-        );
-        $followupconfirmation = 0;
-        $followupmessage = '';
-        $followupdisplaymessage = '';
-        $followupcommandsjson = '[]';
-        $continuationmessageid = 0;
-        $continuationresponsetype = '';
-        $continuationmessage = '';
-        $continuationdisplaymessage = '';
         $executionmessage = $store->get_latest_execution_result_message_for_run((int)$run->threadid, (int)$run->id);
         if ($executionmessage) {
             $executionmessageid = (int)($executionmessage->id ?? 0);
@@ -128,86 +106,10 @@ class ai_poll_run_status extends external_api {
             $display = $anonymizer->deanonymize_message_for_display((int)$run->threadid, $message);
             $displaymessage = (string)($display['message'] ?? $message);
             $privacyapplied = (int)(!empty($display['replacedcount']));
-
-            // If execution produced a repair suggestion, expose it to the frontend so it can
-            // render a second confirmation panel directly below the error/result output.
-            $pending = $store->get_pending_intent((int)$run->threadid);
-            if (is_array($pending) && !empty($pending['commands']) && is_array($pending['commands'])) {
-                $followupconfirmation = 1;
-                $followupcommandsjson = json_encode((array)$pending['commands']);
-                $pendingcode = trim((string)($pending['confirmationcode'] ?? ''));
-
-                $recent = $store->get_recent_messages((int)$run->threadid, 30);
-                for ($i = count($recent) - 1; $i >= 0; $i--) {
-                    $candidate = $recent[$i] ?? null;
-                    if (!is_object($candidate) || (string)($candidate->role ?? '') !== 'assistant') {
-                        continue;
-                    }
-
-                    $structured = json_decode((string)($candidate->structuredjson ?? ''), true);
-                    if (!is_array($structured)) {
-                        continue;
-                    }
-                    if ((string)($structured['response_type'] ?? '') !== 'confirmation_request') {
-                        continue;
-                    }
-
-                    $candidatecode = trim((string)($structured['pending_confirmation_code'] ?? ''));
-                    if ($pendingcode !== '' && $candidatecode !== '' && $candidatecode !== $pendingcode) {
-                        continue;
-                    }
-
-                    $followupmessage = trim((string)($candidate->content ?? ''));
-                    break;
-                }
-
-                if ($followupmessage === '') {
-                    $followupmessage = get_string('ai_repair_proposal_message', 'mod_booking');
-                }
-
-                $followupdisplay = $anonymizer->deanonymize_message_for_display((int)$run->threadid, $followupmessage);
-                $followupdisplaymessage = (string)($followupdisplay['message'] ?? $followupmessage);
-            }
-
-            // Surface continuation responses (e.g. clarification) that were produced
-            // after execution_result in the same confirm request.
-            $recent = $store->get_recent_messages((int)$run->threadid, 50);
-            for ($i = count($recent) - 1; $i >= 0; $i--) {
-                $candidate = $recent[$i] ?? null;
-                if (!is_object($candidate) || (string)($candidate->role ?? '') !== 'assistant') {
-                    continue;
-                }
-                if ((int)($candidate->id ?? 0) <= (int)($executionmessage->id ?? 0)) {
-                    break;
-                }
-
-                $structured = json_decode((string)($candidate->structuredjson ?? ''), true);
-                if (!is_array($structured)) {
-                    continue;
-                }
-
-                $responsetype = trim((string)($structured['response_type'] ?? ''));
-                if (!in_array($responsetype, ['clarification', 'sufficient', 'error', 'confirmation_request'], true)) {
-                    continue;
-                }
-
-                $continuationmessageid = (int)($candidate->id ?? 0);
-                $continuationresponsetype = $responsetype;
-                $continuationmessage = trim((string)($candidate->content ?? ''));
-                if ($continuationmessage !== '') {
-                    $display = $anonymizer->deanonymize_message_for_display((int)$run->threadid, $continuationmessage);
-                    $continuationdisplaymessage = (string)($display['message'] ?? $continuationmessage);
-                }
-                break;
-            }
         }
 
         $message = self::format_ws_message($message, $context);
         $displaymessage = self::format_ws_message($displaymessage, $context);
-        $followupmessage = self::format_ws_message($followupmessage, $context);
-        $followupdisplaymessage = self::format_ws_message($followupdisplaymessage, $context);
-        $continuationmessage = self::format_ws_message($continuationmessage, $context);
-        $continuationdisplaymessage = self::format_ws_message($continuationdisplaymessage, $context);
 
         // Gather debug logs if debug mode is enabled.
         $debuglogsjson = '[]';
@@ -223,15 +125,6 @@ class ai_poll_run_status extends external_api {
             'message'     => $message,
             'displaymessage' => $displaymessage,
             'privacyapplied' => $privacyapplied,
-            'sessionallowactive' => $sessionallowactive,
-            'followupconfirmation' => $followupconfirmation,
-            'followupmessage' => $followupmessage,
-            'followupdisplaymessage' => $followupdisplaymessage,
-            'followupcommandsjson' => $followupcommandsjson,
-            'continuationmessageid' => $continuationmessageid,
-            'continuationresponsetype' => $continuationresponsetype,
-            'continuationmessage' => $continuationmessage,
-            'continuationdisplaymessage' => $continuationdisplaymessage,
             'resultsjson' => $run->resultsjson ?? '[]',
             'debuglogsjson' => $debuglogsjson,
         ];
@@ -301,21 +194,6 @@ class ai_poll_run_status extends external_api {
             'message'     => new external_value(PARAM_RAW, 'Assistant message stored for this run.'),
             'displaymessage' => new external_value(PARAM_RAW, 'Display message for this run.'),
             'privacyapplied' => new external_value(PARAM_INT, 'Whether de-masking was applied for display.'),
-            'sessionallowactive' => new external_value(PARAM_INT, 'Whether thread confirmation allowance is active.'),
-            'followupconfirmation' => new external_value(PARAM_INT, 'Whether a follow-up confirmation is available.'),
-            'followupmessage' => new external_value(PARAM_RAW, 'Follow-up assistant confirmation message.'),
-            'followupdisplaymessage' => new external_value(PARAM_RAW, 'Display message for the follow-up confirmation.'),
-            'followupcommandsjson' => new external_value(PARAM_RAW, 'JSON-encoded follow-up commands.'),
-            'continuationmessageid' => new external_value(PARAM_INT, 'Continuation message id (0 if not available).'),
-            'continuationresponsetype' => new external_value(
-                PARAM_TEXT,
-                'Post-run continuation response type (clarification/sufficient/error/confirmation_request).'
-            ),
-            'continuationmessage' => new external_value(PARAM_RAW, 'Post-run continuation assistant message.'),
-            'continuationdisplaymessage' => new external_value(
-                PARAM_RAW,
-                'Display message for the post-run continuation response.'
-            ),
             'resultsjson' => new external_value(PARAM_RAW, 'JSON-encoded per-command results.'),
             'debuglogsjson' => new external_value(PARAM_RAW, 'JSON-encoded LLM debug logs (only when debug mode enabled).'),
         ]);
