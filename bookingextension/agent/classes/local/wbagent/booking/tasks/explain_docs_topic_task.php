@@ -513,8 +513,8 @@ class explain_docs_topic_task extends booking_task_base implements task_trigger_
      * @return docs_lookup_service
      */
     protected function create_docs_lookup_service(): docs_lookup_service {
-        $docsroot = trim((string)(get_config('booking', 'aidocsroot') ?? ''));
-        $rootdocpath = trim((string)(get_config('booking', 'aidocsentry') ?? 'README.md'));
+        $docsroot = trim((string)(get_config('bookingextension_agent', 'aidocsroot') ?? ''));
+        $rootdocpath = trim((string)(get_config('bookingextension_agent', 'aidocsentry') ?? 'README.md'));
 
         return new docs_lookup_service($docsroot !== '' ? $docsroot : null, $rootdocpath !== '' ? $rootdocpath : null);
     }

@@ -36,7 +36,6 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
 require_once($CFG->dirroot . '/user/profile/lib.php');
 
 use mod_booking\booking;
-use bookingextension_agent\local\wbagent\orchestrator;
 use mod_booking\plugininfo\bookingextension_interface;
 use mod_booking\local\checkanswers\checkanswers;
 use mod_booking\price;
@@ -44,9 +43,6 @@ use mod_booking\utils\wb_payment;
 
 /** @var \admin_settingpage $settings */
 $settings;
-
-/** @var \admin_settingpage $aisettingspage */
-$aisettingspage = new admin_settingpage('modbookingaisettings', 'Booking AI Settings', 'moodle/site:config', true);
 
 $handler = booking_handler::create();
 echo $handler->check_for_forbidden_shortnames_and_return_warning();
@@ -146,34 +142,9 @@ $ADMIN->add(
     )
 );
 
-$ADMIN->add(
-    'modbookingfolder',
-    new admin_externalpage(
-        'modbookingaisettingslink',
-        'Booking AI Settings',
-        new moodle_url('/admin/settings.php', ['section' => 'modbookingaisettings'])
-    )
-);
-
 $ADMIN->add('modbookingfolder', $settings);
-$ADMIN->add('modbookingfolder', $aisettingspage);
 
 if ($ADMIN->fulltree) {
-    $defaultsummarypromptprefix = '';
-    if (class_exists('\\bookingextension_agent\\local\\wbagent\\orchestrator')) {
-        $defaultsummarypromptprefix = orchestrator::get_default_summary_prompt_prefix();
-    }
-
-    // Seed prompt defaults once when config entries are missing so admin textareas are prefilled.
-    $promptdefaults = [
-        'aiinitialprompt_summarise_text' => $defaultsummarypromptprefix,
-    ];
-    foreach ($promptdefaults as $configkey => $defaultvalue) {
-        if (get_config('booking', $configkey) === false) {
-            set_config($configkey, $defaultvalue, 'booking');
-        }
-    }
-
     $notsupported = false;
     $version = $CFG->version;
     switch ($version) {
@@ -279,63 +250,6 @@ if ($ADMIN->fulltree) {
             get_string('licensekey', 'mod_booking'),
             $licensekeydesc,
             ''
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_heading(
-            'aisettings',
-            get_string('aisettings', 'mod_booking'),
-            get_string('aisettings_desc', 'mod_booking')
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configselect(
-            'booking/aiexecutionmode',
-            get_string('aiexecutionmode', 'mod_booking'),
-            get_string('aiexecutionmode_desc', 'mod_booking'),
-            'direct',
-            [
-                'direct' => get_string('aiexecutionmode_direct', 'mod_booking'),
-                'adhoc' => get_string('aiexecutionmode_adhoc', 'mod_booking'),
-            ]
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configselect(
-            'booking/aiprivacymode',
-            get_string('aiprivacymode', 'mod_booking'),
-            get_string('aiprivacymode_desc', 'mod_booking'),
-            'strict',
-            [
-                'off' => get_string('aiprivacymode_off', 'mod_booking'),
-                'soft' => get_string('aiprivacymode_soft', 'mod_booking'),
-                'strict' => get_string('aiprivacymode_strict', 'mod_booking'),
-            ]
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configtext(
-            'booking/aifollowupsuggestionscount',
-            get_string('aifollowupsuggestionscount', 'mod_booking'),
-            get_string('aifollowupsuggestionscount_desc', 'mod_booking'),
-            '0',
-            PARAM_INT
-        )
-    );
-
-    $aisettingspage->add(
-        new admin_setting_configtextarea(
-            'booking/aiinitialprompt_summarise_text',
-            get_string('aiinitialprompt_summarise_text', 'mod_booking'),
-            get_string('aiinitialprompt_summarise_text_desc', 'mod_booking'),
-            $defaultsummarypromptprefix,
-            PARAM_RAW,
-            120,
-            8
         )
     );
 

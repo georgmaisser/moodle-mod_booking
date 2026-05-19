@@ -50,7 +50,7 @@ final class agent_privacy_mode_test extends abstract_agent_testcase {
      */
     public function test_privacy_soft_mode_anonymizes_names(): void {
         $this->setUser($this->teacher);
-        set_config('aiprivacymode', 'soft', 'booking');
+        set_config('aiprivacymode', 'soft', 'bookingextension_agent');
 
         // Ensure the anonymizer can deterministically match this full name.
         $this->getDataGenerator()->create_user([
@@ -101,7 +101,7 @@ final class agent_privacy_mode_test extends abstract_agent_testcase {
      */
     public function test_privacy_identity_fields_are_kept_separate(): void {
         $this->setUser($this->teacher);
-        set_config('aiprivacymode', 'soft', 'booking');
+        set_config('aiprivacymode', 'soft', 'bookingextension_agent');
 
         $store = new conversation_store();
         $thread = $store->get_or_create_thread((int)$this->teacher->id, (int)$this->booking->cmid, (int)$this->booking->id);
@@ -160,7 +160,7 @@ final class agent_privacy_mode_test extends abstract_agent_testcase {
      */
     public function test_privacy_soft_mode_does_not_mask_names_inside_email_local_part(): void {
         $this->setUser($this->teacher);
-        set_config('aiprivacymode', 'soft', 'booking');
+        set_config('aiprivacymode', 'soft', 'bookingextension_agent');
 
         // Ensure these names exist in the name index.
         $this->getDataGenerator()->create_user([
@@ -186,7 +186,7 @@ final class agent_privacy_mode_test extends abstract_agent_testcase {
      */
     public function test_privacy_labeled_email_does_not_create_hybrid_token_domain(): void {
         $this->setUser($this->teacher);
-        set_config('aiprivacymode', 'soft', 'booking');
+        set_config('aiprivacymode', 'soft', 'bookingextension_agent');
 
         $store = new conversation_store();
         $thread = $store->get_or_create_thread((int)$this->teacher->id, (int)$this->booking->cmid, (int)$this->booking->id);

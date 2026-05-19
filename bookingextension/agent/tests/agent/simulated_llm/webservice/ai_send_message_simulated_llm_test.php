@@ -182,7 +182,7 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
                     'Confirmation_request must not auto-create the booking option.'
                 );
 
-                set_config('aiexecutionmode', 'direct', 'booking');
+                set_config('aiexecutionmode', 'direct', 'bookingextension_agent');
                 $_POST['sesskey'] = sesskey();
                 $confirm = ai_confirm_run::execute(
                     (int)$this->booking->cmid,
@@ -627,7 +627,7 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         global $DB;
 
         $this->setUser($this->teacher);
-        set_config('aiexecutionmode', 'direct', 'booking');
+        set_config('aiexecutionmode', 'direct', 'bookingextension_agent');
 
         $title = 'Webservice Multistep Continue ' . uniqid('', true);
 
@@ -720,7 +720,7 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
         global $DB;
 
         $this->setUser($this->teacher);
-        set_config('aiexecutionmode', 'direct', 'booking');
+        set_config('aiexecutionmode', 'direct', 'bookingextension_agent');
 
         $title = 'Webservice Staged Confirm ' . uniqid('', true);
         $target = $this->getDataGenerator()->create_user([

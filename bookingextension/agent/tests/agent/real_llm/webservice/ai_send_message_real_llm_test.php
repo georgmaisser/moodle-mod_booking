@@ -180,7 +180,7 @@ final class ai_send_message_real_llm_test extends abstract_agent_testcase {
                     'Confirmation_request must not auto-create the booking option.'
                 );
 
-                set_config('aiexecutionmode', 'direct', 'booking');
+                set_config('aiexecutionmode', 'direct', 'bookingextension_agent');
                 $_POST['sesskey'] = sesskey();
                 $confirm = ai_confirm_run::execute(
                     (int)$this->booking->cmid,

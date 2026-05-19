@@ -80,7 +80,7 @@ class privacy_anonymizer {
      * @return string
      */
     public function get_mode(): string {
-        $mode = (string)(get_config('booking', 'aiprivacymode') ?: self::MODE_OFF);
+        $mode = (string)(get_config('bookingextension_agent', 'aiprivacymode') ?: self::MODE_OFF);
         if (!in_array($mode, [self::MODE_OFF, self::MODE_SOFT, self::MODE_STRICT], true)) {
             return self::MODE_OFF;
         }

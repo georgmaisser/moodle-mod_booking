@@ -254,7 +254,7 @@ class executor implements agent_executor {
      * @return int
      */
     private function get_follow_up_suggestions_limit(): int {
-        $configured = get_config('booking', 'aifollowupsuggestionscount');
+        $configured = get_config('bookingextension_agent', 'aifollowupsuggestionscount');
         if ($configured === false) {
             return self::MAX_FOLLOW_UP_SUGGESTIONS;
         }

@@ -63,6 +63,9 @@ class agent extends bookingextension implements bookingextension_interface {
      * @return void
      */
     public function load_settings(\part_of_admin_tree $adminroot, $parentnodename, $hassiteconfig): void {
+        global $CFG;
+
+        require($CFG->dirroot . '/mod/booking/bookingextension/agent/settings.php');
     }
 
     /**

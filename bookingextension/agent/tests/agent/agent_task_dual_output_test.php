@@ -27,7 +27,7 @@
  *   3. debugmessage contains technical details (task name, scope, counts).
  *   4. execution_feedback_service passes usermessage through as detail
  *      when a task provides it.
- *   5. The aiready debug_mode flag is derived from both bookingdebugmode and
+ *   5. The aiready debug_mode flag is derived from both aidebugmode and
  *      the core CFG->debug level.
  *
  * @package    mod_booking
@@ -350,17 +350,17 @@ final class agent_task_dual_output_test extends abstract_agent_testcase {
     // Aiready debug_mode flag.
 
     /**
-     * aiready::export_for_template sets debug_mode true when bookingdebugmode is on.
+      * aiready::export_for_template sets debug_mode true when aidebugmode is on.
      */
     public function test_aiready_debug_mode_from_booking_setting(): void {
-        set_config('bookingdebugmode', 1, 'booking');
+          set_config('aidebugmode', 1, 'bookingextension_agent');
 
         $aiready = new aiready((int)$this->booking->cmid, (int)$this->teacher->id, (int)$this->booking->id);
         $data = $aiready->export_for_template();
 
         $this->assertTrue(
             (bool)$data['debug_mode'],
-            'debug_mode must be true when bookingdebugmode config is enabled.'
+            'debug_mode must be true when aidebugmode config is enabled.'
         );
     }
 
@@ -370,7 +370,7 @@ final class agent_task_dual_output_test extends abstract_agent_testcase {
     public function test_aiready_debug_mode_from_cfg_debug_developer(): void {
         global $CFG;
 
-        set_config('bookingdebugmode', 0, 'booking');
+        set_config('aidebugmode', 0, 'bookingextension_agent');
         $CFG->debug = DEBUG_DEVELOPER;
 
         $aiready = new aiready((int)$this->booking->cmid, (int)$this->teacher->id, (int)$this->booking->id);
@@ -388,7 +388,7 @@ final class agent_task_dual_output_test extends abstract_agent_testcase {
     public function test_aiready_debug_mode_false_when_neither_flag(): void {
         global $CFG;
 
-        set_config('bookingdebugmode', 0, 'booking');
+        set_config('aidebugmode', 0, 'bookingextension_agent');
         $CFG->debug = 0;
 
         $aiready = new aiready((int)$this->booking->cmid, (int)$this->teacher->id, (int)$this->booking->id);
@@ -396,7 +396,7 @@ final class agent_task_dual_output_test extends abstract_agent_testcase {
 
         $this->assertFalse(
             (bool)$data['debug_mode'],
-            'debug_mode must be false when both bookingdebugmode and CFG->debug are inactive.'
+            'debug_mode must be false when both aidebugmode and CFG->debug are inactive.'
         );
     }
 

@@ -179,7 +179,7 @@ class ai_confirm_run extends external_api {
             $commandsforrun
         );
 
-        $executionmode = (string)(get_config('booking', 'aiexecutionmode') ?? 'direct');
+        $executionmode = (string)(get_config('bookingextension_agent', 'aiexecutionmode') ?? 'direct');
         if ($executionmode === 'adhoc') {
             $store->update_run_status($runid, 'queued');
             $store->add_message((int)$params['threadid'], 'assistant', get_string('ai_run_queued', 'mod_booking'), [
