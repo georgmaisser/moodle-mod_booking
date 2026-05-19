@@ -19,3 +19,7 @@ bookingextension/*/
 # Do not ignore confirmation_trainer
 !bookingextension/confirmation_trainer/
 !bookingextension/confirmation_trainer/**  # Unignore contents too
+
+# Do not ignore agent extension
+!bookingextension/agent/
+!bookingextension/agent/**  # Unignore contents too
