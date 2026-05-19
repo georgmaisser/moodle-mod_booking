@@ -28,7 +28,6 @@
 use mod_booking\output\business_card;
 use mod_booking\output\view;
 use mod_booking\local\htmlcomponents;
-use mod_booking\local\wbagent\aiready;
 use mod_booking\singleton_service;
 
 require_once(__DIR__ . '/../../config.php');
@@ -155,7 +154,23 @@ if (!empty($CFG->usetags)) {
 // Now we show the actual view.
 $view = new view($cmid, $whichview, $optionid);
 $classicview = $organizerhtml . $output->render_view($view);
-$aitemplatedata = (new aiready($cmid, $USER->id, $cm->instance))->export_for_template();
+$agentextensioninstalled = false;
+if (class_exists('\\core_plugin_manager')) {
+    try {
+        $plugininfo = \core_plugin_manager::instance()->get_plugin_info('bookingextension_agent');
+        $agentextensioninstalled = ($plugininfo !== null) && (bool)$plugininfo->is_installed_and_upgraded();
+    } catch (\Throwable $e) {
+        $agentextensioninstalled = false;
+    }
+}
+
+$aireadyclass = null;
+if ($agentextensioninstalled && class_exists('\\bookingextension_agent\\local\\wbagent\\aiready')) {
+    $aireadyclass = '\\bookingextension_agent\\local\\wbagent\\aiready';
+} else if ($agentextensioninstalled && class_exists('\\mod_booking\\local\\wbagent\\aiready')) {
+    // Fallback for transition phase.
+    $aireadyclass = '\\mod_booking\\local\\wbagent\\aiready';
+}
 
 $hasoptions = $booking->get_all_options_count() > 0;
 $tabs = [
@@ -165,13 +180,17 @@ $tabs = [
         'body' => $classicview,
         'active' => $hasoptions,
     ],
-    [
+];
+
+if (!empty($aireadyclass)) {
+    $aitemplatedata = (new $aireadyclass($cmid, $USER->id, $cm->instance))->export_for_template();
+    $tabs[] = [
         'title' => '<i class="fa fa-magic" aria-hidden="true"></i>',
         'label' => get_string('aiinstructions', 'mod_booking'),
         'body' => $OUTPUT->render_from_template('mod_booking/aiinstructions', $aitemplatedata),
         'active' => !$hasoptions,
-    ],
-];
+    ];
+}
 
 echo htmlcomponents::render_bootstrap_earmarks($tabs, 'booking-view-tabs-' . $cmid);
 

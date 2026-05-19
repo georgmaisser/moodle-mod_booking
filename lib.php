@@ -1309,6 +1309,24 @@ function booking_myprofile_navigation(core_user\output\myprofile\tree $tree, $us
 }
 
 /**
+ * Check if the bookingextension_agent subplugin is installed and upgraded.
+ *
+ * @return bool
+ */
+function booking_agent_extension_is_installed(): bool {
+    if (!class_exists('\\core_plugin_manager')) {
+        return false;
+    }
+
+    try {
+        $plugininfo = \core_plugin_manager::instance()->get_plugin_info('bookingextension_agent');
+        return ($plugininfo !== null) && (bool)$plugininfo->is_installed_and_upgraded();
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
+/**
  * Extend booking navigation settings
  *
  * @param settings_navigation $settings
@@ -1447,7 +1465,7 @@ function booking_extend_settings_navigation(settings_navigation $settings, navig
             'nav_teachers_instance_report'
         );
 
-        if (has_capability('mod/booking:useaiinstructions', $context)) {
+        if (has_capability('mod/booking:useaiinstructions', $context) && booking_agent_extension_is_installed()) {
             $navref->add(
                 get_string('aiinstructions', 'mod_booking') . " (" . format_string($bookingsettings->name) . ")",
                 new moodle_url('/mod/booking/aiinstructions.php', ['id' => $cmid]),

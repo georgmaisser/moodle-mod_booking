@@ -22,7 +22,6 @@
  * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-use mod_booking\local\wbagent\aiready;
 use mod_booking\local\wbagent\authorization_service;
 use mod_booking\local\wbagent\conversation_store;
 use mod_booking\local\wbagent\interpreter;
@@ -40,6 +39,20 @@ require_course_login($course, false, $cm);
 $context = context_module::instance($cm->id);
 $PAGE->set_context($context);
 $PAGE->activityheader->disable();
+
+$agentextensioninstalled = false;
+if (class_exists('\\core_plugin_manager')) {
+    try {
+        $plugininfo = \core_plugin_manager::instance()->get_plugin_info('bookingextension_agent');
+        $agentextensioninstalled = ($plugininfo !== null) && (bool)$plugininfo->is_installed_and_upgraded();
+    } catch (\Throwable $e) {
+        $agentextensioninstalled = false;
+    }
+}
+
+if (!$agentextensioninstalled) {
+    redirect(new moodle_url('/mod/booking/view.php', ['id' => $cmid]));
+}
 
 // Authorization.
 $authz = new authorization_service();
@@ -68,7 +81,19 @@ if ($providerstatus) {
     $threadid = (int)$thread->id;
 }
 
-$templatedata = (new aiready($cmid, $USER->id, $cm->instance))->export_for_template();
+$aireadyclass = null;
+if (class_exists('\\bookingextension_agent\\local\\wbagent\\aiready')) {
+    $aireadyclass = '\\bookingextension_agent\\local\\wbagent\\aiready';
+} else if (class_exists('\\mod_booking\\local\\wbagent\\aiready')) {
+    // Fallback for transition phase.
+    $aireadyclass = '\\mod_booking\\local\\wbagent\\aiready';
+}
+
+if (empty($aireadyclass)) {
+    redirect(new moodle_url('/mod/booking/view.php', ['id' => $cmid]));
+}
+
+$templatedata = (new $aireadyclass($cmid, $USER->id, $cm->instance))->export_for_template();
 
 echo $OUTPUT->header();
 echo $OUTPUT->render_from_template('mod_booking/aiinstructions', $templatedata);
