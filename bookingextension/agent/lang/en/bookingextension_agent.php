@@ -1,5 +1,18 @@
 <?php
 // This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 $string['agent_booking_add_pricecat_capability_required'] = 'Adding price categories requires moodle/site:config capability.';
 $string['agent_booking_blocker_followup_bookingpolicy'] = 'Please confirm how booking policy consent should be transmitted.';
@@ -513,6 +526,12 @@ $string['ai_trial_token_invalid_title'] = 'Trial token invalid';
 $string['ai_wait_thread_timeout_message'] = 'It looks like there was a problem while waiting for the next AI planning step. Please try again.';
 $string['ai_welcome_empty'] = 'Welcome! Would you like me to help you create your first booking option?';
 $string['ai_welcome_with_options'] = 'Welcome! You have {$a->numoptions} booking options here, and {$a->numbooked} people are already booked. How can I help you?';
+$string['aidebugmode'] = 'AI debug mode';
+$string['aidebugmode_desc'] = 'Enable detailed AI readiness and exchange logging for this extension.';
+$string['aidocsentry'] = 'Documentation entry file';
+$string['aidocsentry_desc'] = 'Default entry file used when opening agent documentation.';
+$string['aidocsroot'] = 'Documentation root';
+$string['aidocsroot_desc'] = 'Absolute or relative root directory used by documentation lookup tasks.';
 $string['aiexecutionmode'] = 'AI execution mode';
 $string['aiexecutionmode_adhoc'] = 'Queued via cron (adhoc task)';
 $string['aiexecutionmode_desc'] = 'Choose whether AI actions are executed immediately or queued for cron processing.';
@@ -592,12 +611,6 @@ $string['aiexecutionmode'] = 'Execution mode';
 $string['aiexecutionmode_desc'] = 'Choose how AI runs are executed.';
 $string['aiexecutionmode_direct'] = 'Direct';
 $string['aiexecutionmode_adhoc'] = 'Ad hoc task';
-$string['aidebugmode'] = 'AI debug mode';
-$string['aidebugmode_desc'] = 'Enable detailed AI readiness and exchange logging for this extension.';
-$string['aidocsroot'] = 'Documentation root';
-$string['aidocsroot_desc'] = 'Absolute or relative root directory used by documentation lookup tasks.';
-$string['aidocsentry'] = 'Documentation entry file';
-$string['aidocsentry_desc'] = 'Default entry file used when opening agent documentation.';
 $string['aiprivacymode'] = 'Privacy mode';
 $string['aiprivacymode_desc'] = 'Choose how much personal data the agent may include in AI prompts and logs.';
 $string['aiprivacymode_off'] = 'Off';

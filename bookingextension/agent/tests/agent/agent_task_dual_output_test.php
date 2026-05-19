@@ -350,7 +350,7 @@ final class agent_task_dual_output_test extends abstract_agent_testcase {
     // Aiready debug_mode flag.
 
     /**
-      * aiready::export_for_template sets debug_mode true when aidebugmode is on.
+     * aiready::export_for_template sets debug_mode true when aidebugmode is on.
      */
     public function test_aiready_debug_mode_from_booking_setting(): void {
           set_config('aidebugmode', 1, 'bookingextension_agent');

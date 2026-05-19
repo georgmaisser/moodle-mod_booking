@@ -1,4 +1,18 @@
 <?php
+// This file is part of Moodle - https://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 namespace bookingextension_agent\local\wbagent\core\tasks;
 
@@ -8,8 +22,12 @@ use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interf
 class core_send_user_message_task extends core_task_base implements task_trigger_provider_interface {
     public const TASK_NAME = 'booking.core_send_user_message';
 
-    public function __construct() { parent::__construct(false); }
-    public function get_name(): string { return self::TASK_NAME; }
+    public function __construct() {
+        parent::__construct(false);
+    }
+    public function get_name(): string {
+        return self::TASK_NAME;
+    }
 
     public function get_schema(): array {
         return $this->enrich_schema_with_prompt_meta([
@@ -29,8 +47,12 @@ class core_send_user_message_task extends core_task_base implements task_trigger
     public function validate(array $input, int $cmid): array {
         $errors = [];
         $issues = [];
-        if (trim((string)($input['recipient'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_recipient_required', 'bookingextension_agent'); }
-        if (trim((string)($input['message'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_message_required', 'bookingextension_agent'); }
+        if (trim((string)($input['recipient'] ?? '')) === '') {
+            $errors[] = get_string('agent_booking_core_recipient_required', 'bookingextension_agent');
+        }
+        if (trim((string)($input['message'] ?? '')) === '') {
+            $errors[] = get_string('agent_booking_core_message_required', 'bookingextension_agent');
+        }
         if (empty($input['confirmed'])) {
             $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_send_message', 'bookingextension_agent'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
         }
@@ -40,7 +62,9 @@ class core_send_user_message_task extends core_task_base implements task_trigger
     public function execute(array $input, int $cmid, int $userid): array {
         $lang = $this->get_output_language($input);
         $recipientid = $this->resolve_userid(['userquery' => (string)($input['recipient'] ?? '')], $userid);
-        if ($recipientid <= 0) { return ['status' => 'error', 'detail' => $this->localized_string('agent_booking_core_user_not_found', null, $lang), 'resultid' => null]; }
+        if ($recipientid <= 0) {
+            return ['status' => 'error', 'detail' => $this->localized_string('agent_booking_core_user_not_found', null, $lang), 'resultid' => null];
+        }
 
         if ($recipientid !== $userid && !has_capability('moodle/site:sendmessage', context_system::instance()) && !is_siteadmin($userid)) {
             return ['status' => 'error', 'detail' => $this->localized_string('agent_booking_core_message_permission_denied', null, $lang), 'resultid' => null];

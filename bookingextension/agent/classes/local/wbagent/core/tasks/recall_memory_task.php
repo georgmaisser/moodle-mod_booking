@@ -258,7 +258,8 @@ class recall_memory_task extends \bookingextension_agent\local\wbagent\booking\t
         $timezone = $this->resolve_user_timezone($userid);
         $now = new \DateTimeImmutable('now', $timezone);
 
-        if (preg_match('/\b(last|previous|letzten|letzter|letzte)\s+friday\b/u', $normalized)
+        if (
+            preg_match('/\b(last|previous|letzten|letzter|letzte)\s+friday\b/u', $normalized)
             || preg_match('/\b(letzten|letzter|letzte)\s+freitag\b/u', $normalized)
         ) {
             $day = $now->modify('last friday');

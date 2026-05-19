@@ -140,7 +140,7 @@ class embeddings_retrieval_service {
             $taskregistry = null;
         }
 
-        $register = function(array $contract) use (&$contractsbytask, $taskregistry): void {
+        $register = function (array $contract) use (&$contractsbytask, $taskregistry): void {
             $taskname = trim((string)($contract['task'] ?? ''));
             if ($taskname === '') {
                 return;
