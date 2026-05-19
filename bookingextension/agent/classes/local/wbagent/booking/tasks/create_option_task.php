@@ -286,7 +286,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             $observation = $this->build_unknown_property_observation($unknownprops, $rawinput, ['text']);
             return [
                 'valid'  => false,
-                'errors' => [get_string('agent_booking_create_option_missing_title', 'mod_booking'), $retrymessage],
+                'errors' => [get_string('agent_booking_create_option_missing_title', 'bookingextension_agent'), $retrymessage],
                 'observation_full' => $observation,
             ];
         }
@@ -683,28 +683,28 @@ class create_option_task extends booking_task_base implements task_trigger_provi
 
         if ($resolvedtype === 'normal') {
             if (!array_key_exists('maxanswers', $input)) {
-                $errors[] = get_string('agent_booking_create_normal_missing_maxanswers', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_normal_missing_maxanswers', 'bookingextension_agent');
             }
 
             $hasoptiondates = self::has_any_key($input, ['optiondates']);
             $hassinglestart = self::has_any_key($input, ['coursestarttime']);
 
             if (!$hasoptiondates && !$hassinglestart) {
-                $errors[] = get_string('agent_booking_create_normal_missing_startdate', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_normal_missing_startdate', 'bookingextension_agent');
             }
 
             if (!$hasoptiondates && !self::has_any_key($input, ['duration', 'courseendtime'])) {
-                $errors[] = get_string('agent_booking_create_normal_missing_duration', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_normal_missing_duration', 'bookingextension_agent');
             }
 
             $allowemptylocation = in_array('location', $overrides, true) || in_array('address', $overrides, true);
             if (!$allowemptylocation && !self::has_any_key($input, ['location', 'address'])) {
-                $errors[] = get_string('agent_booking_create_normal_missing_location', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_normal_missing_location', 'bookingextension_agent');
             }
 
             $allowemptyteacher = in_array('teacherquery', $overrides, true) || in_array('teacheremail', $overrides, true);
             if (!$allowemptyteacher && !self::has_any_key($input, ['teacherquery', 'teacheremail'])) {
-                $errors[] = get_string('agent_booking_create_normal_missing_teacher', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_normal_missing_teacher', 'bookingextension_agent');
             }
 
             return $errors;
@@ -712,15 +712,15 @@ class create_option_task extends booking_task_base implements task_trigger_provi
 
         if ($resolvedtype === 'selflearning') {
             if (!array_key_exists('maxanswers', $input)) {
-                $errors[] = get_string('agent_booking_create_selflearning_missing_maxanswers', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_selflearning_missing_maxanswers', 'bookingextension_agent');
             }
 
             if (!array_key_exists('duration', $input)) {
-                $errors[] = get_string('agent_booking_create_selflearning_missing_duration', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_selflearning_missing_duration', 'bookingextension_agent');
             }
 
             if (!self::has_any_key($input, ['teacherquery', 'teacheremail'])) {
-                $errors[] = get_string('agent_booking_create_selflearning_missing_teacher', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_selflearning_missing_teacher', 'bookingextension_agent');
             }
 
             return $errors;
@@ -735,28 +735,28 @@ class create_option_task extends booking_task_base implements task_trigger_provi
 
             if ($slottype === 'userdefined') {
                 if ((int)($input['slot_custom_max_duration'] ?? 0) <= 0) {
-                    $errors[] = get_string('agent_booking_create_slotbooking_missing_custom_duration', 'mod_booking');
+                    $errors[] = get_string('agent_booking_create_slotbooking_missing_custom_duration', 'bookingextension_agent');
                 }
             } else {
                 // Required: slot duration (how long is each slot).
                 if (!array_key_exists('slot_duration_minutes', $input)) {
-                    $errors[] = get_string('agent_booking_create_slotbooking_missing_duration', 'mod_booking');
+                    $errors[] = get_string('agent_booking_create_slotbooking_missing_duration', 'bookingextension_agent');
                 }
             }
 
             // Required: max participants per slot.
             if (!array_key_exists('slot_max_participants_per_slot', $input)) {
-                $errors[] = get_string('agent_booking_create_slotbooking_missing_participants', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_slotbooking_missing_participants', 'bookingextension_agent');
             }
 
             // Required: time window.
             if (!self::has_any_key($input, ['slot_opening_time', 'slot_closing_time'])) {
-                $errors[] = get_string('agent_booking_create_slotbooking_missing_timewindow', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_slotbooking_missing_timewindow', 'bookingextension_agent');
             }
 
             // Required: validity date range.
             if (!self::has_any_key($input, ['slot_valid_from', 'slot_valid_until'])) {
-                $errors[] = get_string('agent_booking_create_slotbooking_missing_validity', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_slotbooking_missing_validity', 'bookingextension_agent');
             }
 
             // Required: at least one weekday must be EXPLICITLY set to true.
@@ -768,7 +768,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 }
             }
             if (!$hasactiveday) {
-                $errors[] = get_string('agent_booking_create_slotbooking_missing_weekday', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_slotbooking_missing_weekday', 'bookingextension_agent');
             }
 
             return $errors;
@@ -882,7 +882,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                             $label = $labels[$pair] ?? $pair;
                             $errors[] = get_string_manager()->get_string(
                                 'agent_booking_create_option_placeholder_override_required_single',
-                                'booking',
+                                'bookingextension_agent',
                                 (object)['label' => $label, 'field' => $pair],
                                 $lang
                             );
@@ -929,7 +929,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                             $fieldlist = implode('", "', $needsoverride);
                             $errors[] = get_string_manager()->get_string(
                                 'agent_booking_create_option_placeholder_override_required',
-                                'booking',
+                                'bookingextension_agent',
                                 (object)['labels' => $desc, 'fields' => $fieldlist],
                                 $lang
                             );

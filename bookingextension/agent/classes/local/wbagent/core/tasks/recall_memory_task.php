@@ -97,10 +97,10 @@ class recall_memory_task extends \bookingextension_agent\local\wbagent\booking\t
         $errors = [];
         $mode = trim((string)($input['mode'] ?? ''));
         if (!in_array($mode, ['last_thread', 'date_window'], true)) {
-            $errors[] = get_string('agent_booking_recall_memory_invalid_mode', 'mod_booking');
+            $errors[] = get_string('agent_booking_recall_memory_invalid_mode', 'bookingextension_agent');
         }
         if ($mode === 'date_window' && trim((string)($input['date_hint'] ?? '')) === '') {
-            $errors[] = get_string('agent_booking_recall_memory_date_hint_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_recall_memory_date_hint_required', 'bookingextension_agent');
         }
 
         return [
@@ -167,7 +167,7 @@ class recall_memory_task extends \bookingextension_agent\local\wbagent\booking\t
             if ($window === null) {
                 return [
                     'status' => 'error',
-                    'detail' => get_string('agent_booking_recall_memory_invalid_date_hint', 'mod_booking'),
+                    'detail' => get_string('agent_booking_recall_memory_invalid_date_hint', 'bookingextension_agent'),
                     'resultid' => null,
                     'threadid' => null,
                     'from_timestamp' => null,
@@ -200,7 +200,7 @@ class recall_memory_task extends \bookingextension_agent\local\wbagent\booking\t
         if (empty($messages)) {
             return [
                 'status' => 'executed',
-                'detail' => get_string('agent_booking_recall_memory_no_memory_found', 'mod_booking'),
+                'detail' => get_string('agent_booking_recall_memory_no_memory_found', 'bookingextension_agent'),
                 'resultid' => null,
                 'threadid' => $threadid > 0 ? $threadid : null,
                 'from_timestamp' => $fromtimestamp,
@@ -231,7 +231,7 @@ class recall_memory_task extends \bookingextension_agent\local\wbagent\booking\t
 
         return [
             'status' => 'executed',
-            'detail' => get_string('agent_booking_recall_memory_summary', 'mod_booking', count($normalizedmessages)),
+            'detail' => get_string('agent_booking_recall_memory_summary', 'bookingextension_agent', count($normalizedmessages)),
             'resultid' => null,
             'threadid' => $threadid > 0 ? $threadid : null,
             'from_timestamp' => $fromtimestamp,

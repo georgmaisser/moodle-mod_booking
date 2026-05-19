@@ -96,7 +96,7 @@ class executor implements agent_executor {
         if ($this->store->run_exists_other_than($idempotencykey, $runid)) {
             return [[
                 'status' => 'skipped',
-                'detail' => get_string('agent_executor_run_already_executed', 'mod_booking'),
+                'detail' => get_string('agent_executor_run_already_executed', 'bookingextension_agent'),
                 'resultid' => null,
             ]];
         }
@@ -120,7 +120,7 @@ class executor implements agent_executor {
             if (!$task) {
                 $results[] = [
                     'status' => 'error',
-                    'detail' => get_string('agent_executor_task_not_registered', 'mod_booking', $taskname),
+                    'detail' => get_string('agent_executor_task_not_registered', 'bookingextension_agent', $taskname),
                     'resultid' => null,
                 ];
                 continue;
@@ -133,7 +133,7 @@ class executor implements agent_executor {
                 $detail = implode('; ', (array)($structural['errors'] ?? []));
                 $entry = [
                     'status' => 'error',
-                    'detail' => get_string('agent_executor_structural_failure', 'mod_booking', $detail),
+                    'detail' => get_string('agent_executor_structural_failure', 'bookingextension_agent', $detail),
                     'resultid' => null,
                 ];
                 if (!empty($structural['observation_full']) && is_string($structural['observation_full'])) {

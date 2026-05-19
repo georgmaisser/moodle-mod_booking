@@ -431,7 +431,7 @@ class orchestrator {
             $issuecodes = ai_error_classifier::classify_from_response($errormessage, $errorcode, $errorname);
             return [
                 'response_type' => 'error',
-                'message'       => get_string('ai_provider_error', 'mod_booking'),
+                'message'       => get_string('ai_provider_error', 'bookingextension_agent'),
                 'commands'      => [],
                 'ambiguities'   => [],
                 'errors'        => [$errormessage],
@@ -442,7 +442,7 @@ class orchestrator {
         if ($rawtext === '') {
             return [
                 'response_type' => 'error',
-                'message'       => get_string('ai_provider_error', 'mod_booking'),
+                'message'       => get_string('ai_provider_error', 'bookingextension_agent'),
                 'commands'      => [],
                 'ambiguities'   => [],
                 'errors'        => ['Provider returned empty content.'],

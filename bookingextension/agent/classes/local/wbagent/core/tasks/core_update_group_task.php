@@ -30,13 +30,13 @@ class core_update_group_task extends core_task_base implements task_trigger_prov
     public function validate(array $input, int $cmid): array {
         $errors = [];
         $issues = [];
-        if (trim((string)($input['coursequery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_coursequery_required', 'mod_booking'); }
-        if (trim((string)($input['groupquery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_groupquery_required', 'mod_booking'); }
+        if (trim((string)($input['coursequery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_coursequery_required', 'bookingextension_agent'); }
+        if (trim((string)($input['groupquery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_groupquery_required', 'bookingextension_agent'); }
         if (!array_key_exists('name', $input) && !array_key_exists('description', $input)) {
-            $errors[] = get_string('agent_booking_core_group_update_fields_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_core_group_update_fields_required', 'bookingextension_agent');
         }
         if (empty($input['confirmed'])) {
-            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_update_group', 'mod_booking'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
+            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_update_group', 'bookingextension_agent'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
         }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => [], 'issues' => $issues];
     }

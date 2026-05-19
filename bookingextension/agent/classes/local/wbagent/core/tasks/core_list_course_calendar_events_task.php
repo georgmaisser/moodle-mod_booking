@@ -27,8 +27,8 @@ class core_list_course_calendar_events_task extends core_task_base implements ta
 
     public function validate(array $input, int $cmid): array {
         $errors = [];
-        if (trim((string)($input['coursequery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_coursequery_required', 'mod_booking'); }
-        if (!empty($input['timestart']) && !empty($input['timeend']) && (int)$input['timestart'] > (int)$input['timeend']) { $errors[] = get_string('agent_booking_core_time_range_invalid', 'mod_booking'); }
+        if (trim((string)($input['coursequery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_coursequery_required', 'bookingextension_agent'); }
+        if (!empty($input['timestart']) && !empty($input['timeend']) && (int)$input['timestart'] > (int)$input['timeend']) { $errors[] = get_string('agent_booking_core_time_range_invalid', 'bookingextension_agent'); }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => []];
     }
 

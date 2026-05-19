@@ -31,9 +31,9 @@ class core_update_calendar_event_task extends core_task_base implements task_tri
     public function validate(array $input, int $cmid): array {
         $errors = [];
         $issues = [];
-        if (empty($input['eventid'])) { $errors[] = get_string('agent_booking_core_eventid_required', 'mod_booking'); }
+        if (empty($input['eventid'])) { $errors[] = get_string('agent_booking_core_eventid_required', 'bookingextension_agent'); }
         if (empty($input['confirmed'])) {
-            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_update_calendar_event', 'mod_booking'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
+            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_update_calendar_event', 'bookingextension_agent'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
         }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => [], 'issues' => $issues];
     }

@@ -129,13 +129,13 @@ class create_user_task extends \bookingextension_agent\local\wbagent\booking\tas
 
         $userquery = trim((string)($input['userquery'] ?? ''));
         if ($userquery === '') {
-            $errors[] = get_string('agent_booking_create_user_query_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_create_user_query_required', 'bookingextension_agent');
         }
 
         if (isset($input['email']) && trim((string)$input['email']) !== '') {
             $email = trim((string)$input['email']);
             if (!validate_email($email)) {
-                $errors[] = get_string('agent_booking_create_user_email_invalid', 'mod_booking');
+                $errors[] = get_string('agent_booking_create_user_email_invalid', 'bookingextension_agent');
             }
         }
 
@@ -160,7 +160,7 @@ class create_user_task extends \bookingextension_agent\local\wbagent\booking\tas
         if (!has_capability('moodle/user:create', context_system::instance())) {
             return [
                 'status' => 'error',
-                'detail' => get_string('agent_booking_create_user_capability_required', 'mod_booking'),
+                'detail' => get_string('agent_booking_create_user_capability_required', 'bookingextension_agent'),
                 'resultid' => null,
             ];
         }
@@ -169,7 +169,7 @@ class create_user_task extends \bookingextension_agent\local\wbagent\booking\tas
         if ($userquery === '') {
             return [
                 'status' => 'error',
-                'detail' => get_string('agent_booking_create_user_missing_userquery', 'mod_booking'),
+                'detail' => get_string('agent_booking_create_user_missing_userquery', 'bookingextension_agent'),
                 'resultid' => null,
             ];
         }
@@ -178,7 +178,7 @@ class create_user_task extends \bookingextension_agent\local\wbagent\booking\tas
         if (($resolved['status'] ?? '') === 'ok') {
             return [
                 'status' => 'executed',
-                'detail' => get_string('agent_booking_user_exists', 'mod_booking'),
+                'detail' => get_string('agent_booking_user_exists', 'bookingextension_agent'),
                 'resultid' => (int)($resolved['userid'] ?? 0),
                 'userid' => (int)($resolved['userid'] ?? 0),
                 'email' => (string)($resolved['email'] ?? ''),
@@ -189,7 +189,7 @@ class create_user_task extends \bookingextension_agent\local\wbagent\booking\tas
         if (($resolved['status'] ?? '') === 'ambiguity') {
             return [
                 'status' => 'error',
-                'detail' => (string)($resolved['message'] ?? get_string('agent_booking_create_user_ambiguous', 'mod_booking')),
+                'detail' => (string)($resolved['message'] ?? get_string('agent_booking_create_user_ambiguous', 'bookingextension_agent')),
                 'resultid' => null,
             ];
         }
@@ -231,7 +231,7 @@ class create_user_task extends \bookingextension_agent\local\wbagent\booking\tas
         } catch (\Throwable $e) {
             return [
                 'status' => 'error',
-                'detail' => get_string('agent_booking_create_user_failed', 'mod_booking', $e->getMessage()),
+                'detail' => get_string('agent_booking_create_user_failed', 'bookingextension_agent', $e->getMessage()),
                 'resultid' => null,
             ];
         }
@@ -240,7 +240,7 @@ class create_user_task extends \bookingextension_agent\local\wbagent\booking\tas
 
         return [
             'status' => 'executed',
-            'detail' => get_string('agent_booking_create_user_created', 'mod_booking'),
+            'detail' => get_string('agent_booking_create_user_created', 'bookingextension_agent'),
             'resultid' => (int)$created->id,
             'userid' => (int)$created->id,
             'username' => (string)$created->username,

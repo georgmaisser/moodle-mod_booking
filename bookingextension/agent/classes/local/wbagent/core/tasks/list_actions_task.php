@@ -115,7 +115,7 @@ class list_actions_task extends \bookingextension_agent\local\wbagent\booking\ta
         $scope = strtolower(trim((string)($input['scope'] ?? 'all')));
         $allowed = ['all', 'readonly', 'mutating'];
         if (!in_array($scope, $allowed, true)) {
-            $errors[] = get_string('agent_booking_list_actions_scope_invalid', 'mod_booking');
+            $errors[] = get_string('agent_booking_list_actions_scope_invalid', 'bookingextension_agent');
         }
 
         return [
@@ -233,15 +233,15 @@ class list_actions_task extends \bookingextension_agent\local\wbagent\booking\ta
         $intro = '';
 
         if (empty($capabilities)) {
-            return get_string('ai_list_actions_summary_none', 'mod_booking');
+            return get_string('ai_list_actions_summary_none', 'bookingextension_agent');
         }
 
         if ($scope === 'readonly') {
-            $intro = get_string('ai_list_actions_summary_readonly', 'mod_booking');
+            $intro = get_string('ai_list_actions_summary_readonly', 'bookingextension_agent');
         } else if ($scope === 'mutating') {
-            $intro = get_string('ai_list_actions_summary_mutating', 'mod_booking');
+            $intro = get_string('ai_list_actions_summary_mutating', 'bookingextension_agent');
         } else {
-            $intro = get_string('ai_list_actions_summary_all', 'mod_booking');
+            $intro = get_string('ai_list_actions_summary_all', 'bookingextension_agent');
         }
 
         $lines = array_map(static function (array $capability): string {
@@ -286,22 +286,22 @@ class list_actions_task extends \bookingextension_agent\local\wbagent\booking\ta
             || isset($available[bulk_update_options_task::TASK_NAME])
         ) {
             $capabilities[] = [
-                'title' => get_string('ai_capability_manage_options_title', 'mod_booking'),
-                'description' => get_string('ai_capability_manage_options_desc', 'mod_booking'),
+                'title' => get_string('ai_capability_manage_options_title', 'bookingextension_agent'),
+                'description' => get_string('ai_capability_manage_options_desc', 'bookingextension_agent'),
             ];
         }
 
         if (isset($available[search_options_task::TASK_NAME])) {
             $capabilities[] = [
-                'title' => get_string('ai_capability_search_options_title', 'mod_booking'),
-                'description' => get_string('ai_capability_search_options_desc', 'mod_booking'),
+                'title' => get_string('ai_capability_search_options_title', 'bookingextension_agent'),
+                'description' => get_string('ai_capability_search_options_desc', 'bookingextension_agent'),
             ];
         }
 
         if (isset($available[search_users_task::TASK_NAME]) || isset($available[search_courses_task::TASK_NAME])) {
             $capabilities[] = [
-                'title' => get_string('ai_capability_search_people_courses_title', 'mod_booking'),
-                'description' => get_string('ai_capability_search_people_courses_desc', 'mod_booking'),
+                'title' => get_string('ai_capability_search_people_courses_title', 'bookingextension_agent'),
+                'description' => get_string('ai_capability_search_people_courses_desc', 'bookingextension_agent'),
             ];
         }
 
@@ -310,22 +310,22 @@ class list_actions_task extends \bookingextension_agent\local\wbagent\booking\ta
             || isset($available[self::TASK_NAME])
         ) {
             $capabilities[] = [
-                'title' => get_string('ai_capability_explain_setup_title', 'mod_booking'),
-                'description' => get_string('ai_capability_explain_setup_desc', 'mod_booking'),
+                'title' => get_string('ai_capability_explain_setup_title', 'bookingextension_agent'),
+                'description' => get_string('ai_capability_explain_setup_desc', 'bookingextension_agent'),
             ];
         }
 
         if (isset($available[add_price_category_task::TASK_NAME])) {
             $capabilities[] = [
-                'title' => get_string('ai_capability_pricing_title', 'mod_booking'),
-                'description' => get_string('ai_capability_pricing_desc', 'mod_booking'),
+                'title' => get_string('ai_capability_pricing_title', 'bookingextension_agent'),
+                'description' => get_string('ai_capability_pricing_desc', 'bookingextension_agent'),
             ];
         }
 
         if (isset($available[get_current_user_task::TASK_NAME])) {
             $capabilities[] = [
-                'title' => get_string('ai_capability_user_context_title', 'mod_booking'),
-                'description' => get_string('ai_capability_user_context_desc', 'mod_booking'),
+                'title' => get_string('ai_capability_user_context_title', 'bookingextension_agent'),
+                'description' => get_string('ai_capability_user_context_desc', 'bookingextension_agent'),
             ];
         }
 

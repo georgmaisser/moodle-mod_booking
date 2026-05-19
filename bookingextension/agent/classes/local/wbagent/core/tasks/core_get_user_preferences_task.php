@@ -35,7 +35,7 @@ class core_get_user_preferences_task extends core_task_base implements task_trig
     public function validate(array $input, int $cmid): array {
         $errors = [];
         if (isset($input['prefkeys']) && !is_array($input['prefkeys'])) {
-            $errors[] = get_string('agent_booking_core_prefkeys_invalid', 'mod_booking');
+            $errors[] = get_string('agent_booking_core_prefkeys_invalid', 'bookingextension_agent');
         }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => []];
     }

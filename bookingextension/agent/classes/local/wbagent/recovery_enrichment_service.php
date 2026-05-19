@@ -228,7 +228,7 @@ class recovery_enrichment_service {
 
             $recoverypayload = [
                 'response_type'   => 'task_call',
-                'message'         => get_string('ai_status_taskcall_default', 'mod_booking'),
+                'message'         => get_string('ai_status_taskcall_default', 'bookingextension_agent'),
                 'commands'        => [[
                     'task' => $taskname,
                     'version' => 1,

@@ -113,7 +113,7 @@ class recreate_task_catalog_task extends \bookingextension_agent\local\wbagent\b
         if (isset($input['dimensions'])) {
             $dimensions = (int)$input['dimensions'];
             if ($dimensions < 1) {
-                $errors[] = get_string('agent_booking_recreate_task_catalog_invalid_dimensions', 'mod_booking');
+                $errors[] = get_string('agent_booking_recreate_task_catalog_invalid_dimensions', 'bookingextension_agent');
             }
         }
 
@@ -157,7 +157,7 @@ class recreate_task_catalog_task extends \bookingextension_agent\local\wbagent\b
 
         return [
             'status' => 'executed',
-            'detail' => get_string('agent_booking_recreate_task_catalog_queued', 'mod_booking'),
+            'detail' => get_string('agent_booking_recreate_task_catalog_queued', 'bookingextension_agent'),
             'resultid' => null,
             'queued_task_class' => rebuild_task_catalog_embeddings_adhoc::class,
             'force' => $force,

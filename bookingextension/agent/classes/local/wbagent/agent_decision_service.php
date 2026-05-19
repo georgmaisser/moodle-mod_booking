@@ -1124,20 +1124,20 @@ class agent_decision_service {
 
         foreach ($commands as $idx => $command) {
             if (!is_array($command)) {
-                $blockingerrors[] = get_string('agent_decision_command_malformed', 'mod_booking', $idx + 1);
+                $blockingerrors[] = get_string('agent_decision_command_malformed', 'bookingextension_agent', $idx + 1);
                 continue;
             }
 
             $taskname = trim((string)($command['task'] ?? ''));
             if ($taskname === '') {
-                $blockingerrors[] = get_string('agent_decision_command_missing_task', 'mod_booking', $idx + 1);
+                $blockingerrors[] = get_string('agent_decision_command_missing_task', 'bookingextension_agent', $idx + 1);
                 continue;
             }
             $attemptedtasks[] = $taskname;
 
             $task = $this->registry->get_task($taskname);
             if ($task === null) {
-                $blockingerrors[] = get_string('agent_decision_command_task_not_registered', 'mod_booking', (object)[
+                $blockingerrors[] = get_string('agent_decision_command_task_not_registered', 'bookingextension_agent', (object)[
                     'idx' => $idx + 1,
                     'task' => $taskname,
                 ]);

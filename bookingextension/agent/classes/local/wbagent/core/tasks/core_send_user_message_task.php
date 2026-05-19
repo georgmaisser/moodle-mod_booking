@@ -29,10 +29,10 @@ class core_send_user_message_task extends core_task_base implements task_trigger
     public function validate(array $input, int $cmid): array {
         $errors = [];
         $issues = [];
-        if (trim((string)($input['recipient'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_recipient_required', 'mod_booking'); }
-        if (trim((string)($input['message'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_message_required', 'mod_booking'); }
+        if (trim((string)($input['recipient'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_recipient_required', 'bookingextension_agent'); }
+        if (trim((string)($input['message'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_message_required', 'bookingextension_agent'); }
         if (empty($input['confirmed'])) {
-            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_send_message', 'mod_booking'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
+            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_send_message', 'bookingextension_agent'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
         }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => [], 'issues' => $issues];
     }
@@ -54,7 +54,7 @@ class core_send_user_message_task extends core_task_base implements task_trigger
         $payload->name = 'agent_message';
         $payload->userfrom = $from;
         $payload->userto = $to;
-        $payload->subject = trim((string)($input['subject'] ?? get_string('agent_booking_core_message_default_subject', 'mod_booking')));
+        $payload->subject = trim((string)($input['subject'] ?? get_string('agent_booking_core_message_default_subject', 'bookingextension_agent')));
         $payload->fullmessage = trim((string)$input['message']);
         $payload->fullmessageformat = FORMAT_PLAIN;
         $payload->fullmessagehtml = format_text(trim((string)$input['message']), FORMAT_PLAIN);

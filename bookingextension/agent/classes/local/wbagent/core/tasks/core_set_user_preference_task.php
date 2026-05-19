@@ -38,17 +38,17 @@ class core_set_user_preference_task extends core_task_base implements task_trigg
 
         $name = trim((string)($input['name'] ?? ''));
         if ($name === '') {
-            $errors[] = get_string('agent_booking_core_pref_name_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_core_pref_name_required', 'bookingextension_agent');
         }
         if (!array_key_exists('value', $input)) {
-            $errors[] = get_string('agent_booking_core_pref_value_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_core_pref_value_required', 'bookingextension_agent');
         }
 
         if (empty($input['confirmed'])) {
             $issues[] = [
                 'code' => 'CONFIRMATION_REQUIRED',
                 'severity' => 'needs_confirmation',
-                'user_question' => get_string('agent_booking_core_confirm_set_preference', 'mod_booking'),
+                'user_question' => get_string('agent_booking_core_confirm_set_preference', 'bookingextension_agent'),
                 'remedy_options' => ['CONFIRM', 'CANCEL'],
             ];
         }

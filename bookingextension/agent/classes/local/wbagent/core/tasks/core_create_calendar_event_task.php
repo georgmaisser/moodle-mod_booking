@@ -32,11 +32,11 @@ class core_create_calendar_event_task extends core_task_base implements task_tri
     public function validate(array $input, int $cmid): array {
         $errors = [];
         $issues = [];
-        if (trim((string)($input['title'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_calendar_title_required', 'mod_booking'); }
-        if (empty($input['timestart']) || empty($input['timeend'])) { $errors[] = get_string('agent_booking_core_calendar_time_required', 'mod_booking'); }
-        if (!empty($input['timestart']) && !empty($input['timeend']) && (int)$input['timestart'] >= (int)$input['timeend']) { $errors[] = get_string('agent_booking_core_time_range_invalid', 'mod_booking'); }
+        if (trim((string)($input['title'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_calendar_title_required', 'bookingextension_agent'); }
+        if (empty($input['timestart']) || empty($input['timeend'])) { $errors[] = get_string('agent_booking_core_calendar_time_required', 'bookingextension_agent'); }
+        if (!empty($input['timestart']) && !empty($input['timeend']) && (int)$input['timestart'] >= (int)$input['timeend']) { $errors[] = get_string('agent_booking_core_time_range_invalid', 'bookingextension_agent'); }
         if (empty($input['confirmed'])) {
-            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_create_calendar_event', 'mod_booking'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
+            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_create_calendar_event', 'bookingextension_agent'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
         }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => [], 'issues' => $issues];
     }

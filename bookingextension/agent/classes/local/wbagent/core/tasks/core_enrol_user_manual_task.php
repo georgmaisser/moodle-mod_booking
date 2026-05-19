@@ -33,13 +33,13 @@ class core_enrol_user_manual_task extends core_task_base implements task_trigger
         $errors = [];
         $issues = [];
         if (trim((string)($input['userquery'] ?? '')) === '') {
-            $errors[] = get_string('agent_booking_core_userquery_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_core_userquery_required', 'bookingextension_agent');
         }
         if (trim((string)($input['coursequery'] ?? '')) === '') {
-            $errors[] = get_string('agent_booking_core_coursequery_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_core_coursequery_required', 'bookingextension_agent');
         }
         if (empty($input['confirmed'])) {
-            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_enrol', 'mod_booking'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
+            $issues[] = ['code' => 'CONFIRMATION_REQUIRED', 'severity' => 'needs_confirmation', 'user_question' => get_string('agent_booking_core_confirm_enrol', 'bookingextension_agent'), 'remedy_options' => ['CONFIRM', 'CANCEL']];
         }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => [], 'issues' => $issues];
     }

@@ -161,7 +161,7 @@ class update_option_task extends booking_task_base implements task_trigger_provi
         if (empty($input['optionid']) && empty($input['optionquery'])) {
             return [
                 'valid'  => false,
-                'errors' => [get_string('agent_booking_update_option_missing_target', 'mod_booking')],
+                'errors' => [get_string('agent_booking_update_option_missing_target', 'bookingextension_agent')],
             ];
         }
         return ['valid' => true, 'errors' => []];

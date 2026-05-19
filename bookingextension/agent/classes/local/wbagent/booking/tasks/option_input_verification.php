@@ -40,7 +40,7 @@ class option_input_verification {
             $requested = trim((string)$input['text']);
             $actual = trim((string)($settings->text ?? ''));
             if ($requested !== '' && !self::equals_ci($requested, $actual)) {
-                $warnings[] = get_string('agent_booking_verify_field_text_failed', 'mod_booking', (object)[
+                $warnings[] = get_string('agent_booking_verify_field_text_failed', 'bookingextension_agent', (object)[
                     'requested' => $requested,
                     'actual' => $actual,
                 ]);
@@ -55,7 +55,7 @@ class option_input_verification {
             if ($requested !== '') {
                 $matched = self::equals_ci($requested, $actual) || self::equals_ci($requested, $entityname);
                 if (!$matched) {
-                    $warnings[] = get_string('agent_booking_verify_field_location_failed', 'mod_booking', (object)[
+                    $warnings[] = get_string('agent_booking_verify_field_location_failed', 'bookingextension_agent', (object)[
                         'requested' => $requested,
                         'actual' => $actual,
                     ]);
@@ -67,7 +67,7 @@ class option_input_verification {
             $requested = trim((string)$input['address']);
             $actual = trim((string)($settings->address ?? ''));
             if ($requested !== '' && !self::equals_ci($requested, $actual)) {
-                $warnings[] = get_string('agent_booking_verify_field_address_failed', 'mod_booking', (object)[
+                $warnings[] = get_string('agent_booking_verify_field_address_failed', 'bookingextension_agent', (object)[
                     'requested' => $requested,
                     'actual' => $actual,
                 ]);
@@ -78,7 +78,7 @@ class option_input_verification {
             $requested = trim((string)$input['description']);
             $actual = trim(strip_tags((string)($settings->description ?? '')));
             if ($requested !== '' && stripos($actual, $requested) === false) {
-                $warnings[] = get_string('agent_booking_verify_field_description_failed', 'mod_booking');
+                $warnings[] = get_string('agent_booking_verify_field_description_failed', 'bookingextension_agent');
             }
         }
 
@@ -86,7 +86,7 @@ class option_input_verification {
             $requested = (int)$input['maxanswers'];
             $actual = (int)($settings->maxanswers ?? 0);
             if ($requested !== $actual) {
-                $warnings[] = get_string('agent_booking_verify_field_maxanswers_failed', 'mod_booking', (object)[
+                $warnings[] = get_string('agent_booking_verify_field_maxanswers_failed', 'bookingextension_agent', (object)[
                     'requested' => $requested,
                     'actual' => $actual,
                 ]);
@@ -97,7 +97,7 @@ class option_input_verification {
             $requested = (int)$input['maxoverbooking'];
             $actual = (int)($settings->maxoverbooking ?? 0);
             if ($requested !== $actual) {
-                $warnings[] = get_string('agent_booking_verify_field_maxoverbooking_failed', 'mod_booking', (object)[
+                $warnings[] = get_string('agent_booking_verify_field_maxoverbooking_failed', 'bookingextension_agent', (object)[
                     'requested' => $requested,
                     'actual' => $actual,
                 ]);

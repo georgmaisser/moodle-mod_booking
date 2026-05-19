@@ -263,7 +263,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
                 if (!empty($hardblockers)) {
                     // Real hard blockers - nobody can book this user into this option.
                     $descriptions = $this->summarize_condition_descriptions($hardblockers);
-                    $errors[] = get_string('agent_booking_user_cannot_book_hard_block', 'mod_booking', (object)[
+                    $errors[] = get_string('agent_booking_user_cannot_book_hard_block', 'bookingextension_agent', (object)[
                         'userid' => $uid,
                         'descriptions' => $descriptions,
                     ]);
@@ -271,7 +271,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
                     // Soft blockers only: the target user could not book themselves,
                     // but the current actor (admin) has the right to book on their behalf.
                     $descriptions = $this->summarize_condition_descriptions($allblockers);
-                    $softoverridelines[] = get_string('agent_booking_book_users_soft_block', 'mod_booking', (object)[
+                    $softoverridelines[] = get_string('agent_booking_book_users_soft_block', 'bookingextension_agent', (object)[
                         'userid' => $uid,
                         'descriptions' => $descriptions,
                     ]);
@@ -283,7 +283,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
                     'code' => 'SOFT_BOOKING_OVERRIDE_CONFIRM_REQUIRED',
                     'severity' => 'needs_confirmation',
                     'user_question' => implode(' ', $softoverridelines)
-                        . ' ' . get_string('agent_booking_book_users_soft_block_confirm', 'mod_booking'),
+                        . ' ' . get_string('agent_booking_book_users_soft_block_confirm', 'bookingextension_agent'),
                 ];
             }
         }
@@ -314,7 +314,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
                 'status' => 'error',
                 'detail' => (string)($resolvedoption['message'] ?? get_string(
                     'agent_booking_book_users_option_resolve_failed',
-                    'mod_booking'
+                    'bookingextension_agent'
                 )),
                 'resultid' => null,
                 'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $input, ['Status: error']),
@@ -391,7 +391,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
         }
 
         $bookeduserids = $result['bookeduserids'];
-        $detail = get_string('agent_booking_book_users_booked', 'mod_booking', (object)[
+        $detail = get_string('agent_booking_book_users_booked', 'bookingextension_agent', (object)[
             'count' => count($bookeduserids),
             'optionid' => $optionid,
             'userids' => implode(', ', $bookeduserids),

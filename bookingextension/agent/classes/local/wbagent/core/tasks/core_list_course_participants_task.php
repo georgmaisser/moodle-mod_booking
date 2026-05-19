@@ -27,7 +27,7 @@ class core_list_course_participants_task extends core_task_base implements task_
     public function validate(array $input, int $cmid): array {
         $errors = [];
         if (trim((string)($input['coursequery'] ?? '')) === '') {
-            $errors[] = get_string('agent_booking_core_coursequery_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_core_coursequery_required', 'bookingextension_agent');
         }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => []];
     }

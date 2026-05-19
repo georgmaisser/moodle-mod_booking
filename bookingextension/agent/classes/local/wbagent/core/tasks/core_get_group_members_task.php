@@ -26,8 +26,8 @@ class core_get_group_members_task extends core_task_base implements task_trigger
 
     public function validate(array $input, int $cmid): array {
         $errors = [];
-        if (trim((string)($input['coursequery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_coursequery_required', 'mod_booking'); }
-        if (trim((string)($input['groupquery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_groupquery_required', 'mod_booking'); }
+        if (trim((string)($input['coursequery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_coursequery_required', 'bookingextension_agent'); }
+        if (trim((string)($input['groupquery'] ?? '')) === '') { $errors[] = get_string('agent_booking_core_groupquery_required', 'bookingextension_agent'); }
         return ['valid' => empty($errors), 'errors' => $errors, 'ambiguities' => []];
     }
 

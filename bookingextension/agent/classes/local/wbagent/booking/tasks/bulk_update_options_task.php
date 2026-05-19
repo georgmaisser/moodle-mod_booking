@@ -128,7 +128,7 @@ class bulk_update_options_task extends booking_task_base implements task_trigger
         if (!$hasids && !$hasquery && !$applyall) {
             return [
                 'valid'  => false,
-                'errors' => [get_string('agent_booking_bulk_update_missing_target', 'mod_booking')],
+                'errors' => [get_string('agent_booking_bulk_update_missing_target', 'bookingextension_agent')],
             ];
         }
         return ['valid' => true, 'errors' => []];

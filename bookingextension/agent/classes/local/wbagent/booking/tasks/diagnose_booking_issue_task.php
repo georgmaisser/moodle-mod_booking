@@ -187,7 +187,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
         if (!$hasquestion && !$hasoptionref && !$hasissue) {
             return [
                 'valid'  => false,
-                'errors' => [get_string('agent_booking_diagnose_required_question', 'mod_booking')],
+                'errors' => [get_string('agent_booking_diagnose_required_question', 'bookingextension_agent')],
             ];
         }
         return ['valid' => true, 'errors' => []];

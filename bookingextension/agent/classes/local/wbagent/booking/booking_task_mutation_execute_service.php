@@ -84,7 +84,7 @@ class booking_task_mutation_execute_service {
         if (!$cm) {
             return [
                 'status' => 'error',
-                'detail' => get_string('agent_booking_invalid_course_module', 'mod_booking'),
+                'detail' => get_string('agent_booking_invalid_course_module', 'bookingextension_agent'),
                 'resultid' => null,
             ];
         }
@@ -112,7 +112,7 @@ class booking_task_mutation_execute_service {
             if (empty($previewids)) {
                 return [
                     'status' => 'error',
-                    'detail' => get_string('agent_booking_bulk_update_no_preview', 'mod_booking'),
+                    'detail' => get_string('agent_booking_bulk_update_no_preview', 'bookingextension_agent'),
                     'resultid' => null,
                 ];
             }
@@ -282,7 +282,7 @@ class booking_task_mutation_execute_service {
                     if (empty($teacherresult['email'])) {
                         return [
                             'status' => 'error',
-                            'detail' => get_string('agent_booking_teacher_no_email', 'mod_booking'),
+                            'detail' => get_string('agent_booking_teacher_no_email', 'bookingextension_agent'),
                             'resultid' => null,
                         ];
                     }
@@ -319,7 +319,7 @@ class booking_task_mutation_execute_service {
             if (empty($restrictioncourses['courseids'])) {
                 return [
                     'status' => 'error',
-                    'detail' => get_string('agent_booking_no_valid_course_enrolled', 'mod_booking'),
+                    'detail' => get_string('agent_booking_no_valid_course_enrolled', 'bookingextension_agent'),
                     'resultid' => null,
                 ];
             }
@@ -420,7 +420,7 @@ class booking_task_mutation_execute_service {
                     'status' => 'error',
                     'detail' => (string)($prev['message'] ?? get_string(
                         'agent_booking_previouslybookedquery_resolve_failed',
-                        'mod_booking'
+                        'bookingextension_agent'
                     )),
                     'resultid' => null,
                 ];
@@ -669,7 +669,7 @@ class booking_task_mutation_execute_service {
             if (empty($optionids)) {
                 return [
                     'status' => 'error',
-                    'detail' => get_string('agent_booking_no_matching_options_to_update', 'mod_booking'),
+                    'detail' => get_string('agent_booking_no_matching_options_to_update', 'bookingextension_agent'),
                     'resultid' => null,
                 ];
             }
@@ -757,7 +757,7 @@ class booking_task_mutation_execute_service {
                         'status' => 'error',
                         'detail' => $detail . ' ' . get_string(
                             'agent_booking_user_booking_failed',
-                            'mod_booking',
+                            'bookingextension_agent',
                             implode(' ', $bookusersresult['errors'])
                         ),
                         'resultid' => (int)$newoptionid,
@@ -767,7 +767,7 @@ class booking_task_mutation_execute_service {
                 if (!empty($bookusersresult['bookeduserids'])) {
                     $detail .= ' ' . get_string(
                         'agent_booking_user_booking_booked_users',
-                        'mod_booking',
+                        'bookingextension_agent',
                         implode(', ', $bookusersresult['bookeduserids'])
                     );
                 }
@@ -843,7 +843,7 @@ class booking_task_mutation_execute_service {
 
         $cm = get_coursemodule_from_id('booking', $cmid);
         if (!$cm) {
-            $errors[] = get_string('agent_booking_invalid_course_module', 'mod_booking');
+            $errors[] = get_string('agent_booking_invalid_course_module', 'bookingextension_agent');
             return [
                 'errors' => $errors,
                 'ambiguities' => $ambiguities,
@@ -877,7 +877,7 @@ class booking_task_mutation_execute_service {
                 if (booking_task_support::is_last_preview_selection_reference($optionquery)) {
                     $previewids = booking_task_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
                     if (empty($previewids)) {
-                        $errors[] = get_string('agent_booking_bulk_update_no_preview', 'mod_booking');
+                        $errors[] = get_string('agent_booking_bulk_update_no_preview', 'bookingextension_agent');
                     } else if (count($previewids) === 1) {
                         $normalizedinput['optionid'] = (int)reset($previewids);
                     }
@@ -892,7 +892,7 @@ class booking_task_mutation_execute_service {
                     } else if (($result['status'] ?? '') === 'error') {
                         $errors[] = (string)($result['message'] ?? get_string(
                             'agent_booking_update_option_missing_target',
-                            'mod_booking'
+                            'bookingextension_agent'
                         ));
                     } else if (($result['status'] ?? '') === 'ok') {
                         $normalizedinput['optionid'] = (int)($result['optionid'] ?? 0);
@@ -904,7 +904,7 @@ class booking_task_mutation_execute_service {
         if ($taskname === bulk_update_options_task::TASK_NAME) {
             $optionids = booking_task_support::resolve_bulk_option_ids_for_execute($cmid, $normalizedinput, $userid);
             if (empty($optionids)) {
-                $errors[] = get_string('agent_booking_no_matching_options_to_update', 'mod_booking');
+                $errors[] = get_string('agent_booking_no_matching_options_to_update', 'bookingextension_agent');
             }
         }
 

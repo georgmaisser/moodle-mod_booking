@@ -129,7 +129,7 @@ class search_courses_task extends \bookingextension_agent\local\wbagent\booking\
     public function validate(array $input, int $cmid): array {
         $errors = [];
         if (empty($input['query']) || !is_string($input['query'])) {
-            $errors[] = get_string('agent_booking_search_courses_query_required', 'mod_booking');
+            $errors[] = get_string('agent_booking_search_courses_query_required', 'bookingextension_agent');
         }
 
         return [
@@ -156,7 +156,7 @@ class search_courses_task extends \bookingextension_agent\local\wbagent\booking\
         if ($query === '') {
             return [
                 'status' => 'error',
-                'detail' => get_string('agent_booking_search_courses_query_required', 'mod_booking'),
+                'detail' => get_string('agent_booking_search_courses_query_required', 'bookingextension_agent'),
                 'resultid' => null,
             ];
         }

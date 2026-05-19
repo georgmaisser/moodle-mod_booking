@@ -195,7 +195,7 @@ class booking_task_support {
 
         return [
             'status' => 'error',
-            'detail' => get_string('agent_booking_unknown_task', 'mod_booking', $taskname),
+            'detail' => get_string('agent_booking_unknown_task', 'bookingextension_agent', $taskname),
             'resultid' => null,
         ];
     }
@@ -329,7 +329,7 @@ class booking_task_support {
             'status' => 'error',
             'message' => get_string(
                 'agent_booking_update_permission_denied_groups',
-                'booking',
+                'bookingextension_agent',
                 implode(', ', $blockedlabels)
             ),
         ];
@@ -408,7 +408,7 @@ class booking_task_support {
         }
 
         if (self::has_any_input_key($input, ['invisible', 'visibility', 'visible'])) {
-            $register(MOD_BOOKING_OPTION_FIELD_INVISIBLE, get_string('optionvisibility', 'mod_booking'));
+            $register(MOD_BOOKING_OPTION_FIELD_INVISIBLE, get_string('optionvisibility', 'bookingextension_agent'));
         }
 
         if (
@@ -933,7 +933,7 @@ class booking_task_support {
         if ($query === '') {
             return [
                 'status' => 'ambiguity',
-                'message' => get_string('agent_booking_resolve_user_query_required', 'booking'),
+                'message' => get_string('agent_booking_resolve_user_query_required', 'bookingextension_agent'),
             ];
         }
 
@@ -969,7 +969,7 @@ class booking_task_support {
         if (empty($users)) {
             return [
                 'status' => 'error',
-                'message' => get_string('agent_booking_resolve_user_no_match', 'booking', $query),
+                'message' => get_string('agent_booking_resolve_user_no_match', 'bookingextension_agent', $query),
             ];
         }
 
@@ -983,7 +983,7 @@ class booking_task_support {
                 'status' => 'ambiguity',
                 'message' => get_string(
                     'agent_booking_resolve_user_ambiguous',
-                    'booking',
+                    'bookingextension_agent',
                     implode(', ', $candidates)
                 ),
             ];
@@ -1054,7 +1054,7 @@ class booking_task_support {
             return [
                 'courseids' => [],
                 'shortnames' => [],
-                'errors' => [get_string('agent_booking_enrolledincoursequery_required', 'mod_booking')],
+                'errors' => [get_string('agent_booking_enrolledincoursequery_required', 'bookingextension_agent')],
                 'ambiguities' => [],
             ];
         }
@@ -1075,7 +1075,7 @@ class booking_task_support {
                 if ($shortname !== '') {
                     $shortnames[] = $shortname;
                 } else {
-                    $errors[] = get_string('agent_booking_course_no_shortname', 'mod_booking', $part);
+                    $errors[] = get_string('agent_booking_course_no_shortname', 'bookingextension_agent', $part);
                 }
             } else if (($resolved['status'] ?? '') === 'ambiguity') {
                 $ambiguities[] = (string)($resolved['message'] ?? 'Ambiguous course query: ' . $part);
@@ -1141,7 +1141,7 @@ class booking_task_support {
             );
 
             if (empty($matches)) {
-                $errors[] = get_string('agent_booking_cohort_no_match', 'mod_booking', $part);
+                $errors[] = get_string('agent_booking_cohort_no_match', 'bookingextension_agent', $part);
                 continue;
             }
             if (count($matches) > 1) {
@@ -1149,7 +1149,7 @@ class booking_task_support {
                 foreach ($matches as $m) {
                     $cands[] = (int)$m->id . ' (' . (string)$m->name . ', ' . (string)$m->idnumber . ')';
                 }
-                $ambiguities[] = get_string('agent_booking_cohort_multiple_match', 'mod_booking', (object)[
+                $ambiguities[] = get_string('agent_booking_cohort_multiple_match', 'bookingextension_agent', (object)[
                     'query' => $part,
                     'candidates' => implode(', ', $cands),
                 ]);
@@ -1175,7 +1175,7 @@ class booking_task_support {
         if (empty($parts)) {
             return [
                 'competencyids' => [],
-                'errors' => [get_string('agent_booking_hascompetencyquery_required', 'mod_booking')],
+                'errors' => [get_string('agent_booking_hascompetencyquery_required', 'bookingextension_agent')],
                 'ambiguities' => [],
             ];
         }
@@ -1202,7 +1202,7 @@ class booking_task_support {
             );
 
             if (empty($matches)) {
-                $errors[] = get_string('agent_booking_competency_no_match', 'mod_booking', $part);
+                $errors[] = get_string('agent_booking_competency_no_match', 'bookingextension_agent', $part);
                 continue;
             }
             if (count($matches) > 1) {
@@ -1210,7 +1210,7 @@ class booking_task_support {
                 foreach ($matches as $m) {
                     $cands[] = (int)$m->id . ' (' . (string)$m->shortname . ')';
                 }
-                $ambiguities[] = get_string('agent_booking_competency_multiple_match', 'mod_booking', (object)[
+                $ambiguities[] = get_string('agent_booking_competency_multiple_match', 'bookingextension_agent', (object)[
                     'query' => $part,
                     'candidates' => implode(', ', $cands),
                 ]);
@@ -1280,7 +1280,7 @@ class booking_task_support {
                 $userid = (int)$part;
                 $user = singleton_service::get_instance_of_user($userid);
                 if (empty($user) || empty($user->id) || empty($user->email)) {
-                    $errors[] = get_string('agent_booking_user_id_no_email', 'mod_booking', $part);
+                    $errors[] = get_string('agent_booking_user_id_no_email', 'bookingextension_agent', $part);
                     continue;
                 }
                 $userids[] = (int)$user->id;
@@ -1293,7 +1293,7 @@ class booking_task_support {
                 $userids[] = (int)$resolved['userid'];
                 $email = trim((string)($resolved['email'] ?? ''));
                 if ($email === '') {
-                    $errors[] = get_string('agent_booking_user_no_email', 'mod_booking', $part);
+                    $errors[] = get_string('agent_booking_user_no_email', 'bookingextension_agent', $part);
                     continue;
                 }
                 $emails[] = $email;
@@ -1332,7 +1332,7 @@ class booking_task_support {
         if (empty($settings) || empty($settings->id)) {
             return [
                 'bookeduserids' => [],
-                'errors' => [get_string('agent_booking_option_resolve_settings_failed', 'mod_booking', $optionid)],
+                'errors' => [get_string('agent_booking_option_resolve_settings_failed', 'bookingextension_agent', $optionid)],
             ];
         }
 
@@ -1353,7 +1353,7 @@ class booking_task_support {
             if (!empty($hardresults)) {
                 $blockersummary = self::summarize_condition_blockers($hardresults);
                 $followup = self::blocking_followup_question($hardresults);
-                $errors[] = get_string('agent_booking_user_cannot_book_blocked', 'mod_booking', (object)[
+                $errors[] = get_string('agent_booking_user_cannot_book_blocked', 'bookingextension_agent', (object)[
                     'userid' => $targetuserid,
                     'conditions' => $blockersummary,
                     'followup' => $followup,
@@ -1377,14 +1377,14 @@ class booking_task_support {
                 if (!empty($latestblockers)) {
                     $blockersummary = self::summarize_condition_blockers($latestblockers);
                     $followup = self::blocking_followup_question($latestblockers);
-                    $errors[] = get_string('agent_booking_user_cannot_book_error_rollback', 'mod_booking', (object)[
+                    $errors[] = get_string('agent_booking_user_cannot_book_error_rollback', 'bookingextension_agent', (object)[
                         'userid' => $targetuserid,
                         'message' => $message,
                         'conditions' => $blockersummary,
                         'followup' => $followup,
                     ]);
                 } else {
-                    $errors[] = get_string('agent_booking_user_cannot_book_error', 'mod_booking', (object)[
+                    $errors[] = get_string('agent_booking_user_cannot_book_error', 'bookingextension_agent', (object)[
                         'userid' => $targetuserid,
                         'message' => $message,
                     ]);
@@ -1401,7 +1401,7 @@ class booking_task_support {
                     $updateexisting = !empty($meta['updateexisting']);
                     $bookingoption->toggle_user_completion($targetuserid, $timebooked, $updateexisting);
                 } catch (\Throwable $e) {
-                    $errors[] = get_string('agent_booking_user_booked_completion_failed', 'mod_booking', (object)[
+                    $errors[] = get_string('agent_booking_user_booked_completion_failed', 'bookingextension_agent', (object)[
                         'userid' => $targetuserid,
                         'error' => $e->getMessage(),
                     ]);
@@ -1673,16 +1673,16 @@ class booking_task_support {
         }
 
         if ($needscustomform && $needsbookingpolicy) {
-            return get_string('agent_booking_blocker_followup_customform_bookingpolicy', 'booking');
+            return get_string('agent_booking_blocker_followup_customform_bookingpolicy', 'bookingextension_agent');
         }
         if ($needscustomform) {
-            return get_string('agent_booking_blocker_followup_customform', 'booking');
+            return get_string('agent_booking_blocker_followup_customform', 'bookingextension_agent');
         }
         if ($needsbookingpolicy) {
-            return get_string('agent_booking_blocker_followup_bookingpolicy', 'booking');
+            return get_string('agent_booking_blocker_followup_bookingpolicy', 'bookingextension_agent');
         }
 
-        return get_string('agent_booking_blocker_followup_generic', 'booking');
+        return get_string('agent_booking_blocker_followup_generic', 'bookingextension_agent');
     }
 
     /**
@@ -1705,20 +1705,20 @@ class booking_task_support {
         ];
 
         if (count($elements) > 50) {
-            $errors[] = get_string('agent_booking_customformelements_max', 'mod_booking');
+            $errors[] = get_string('agent_booking_customformelements_max', 'bookingextension_agent');
             return ['errors' => $errors];
         }
 
         foreach ($elements as $idx => $element) {
             $n = $idx + 1;
             if (!is_array($element)) {
-                $errors[] = get_string('agent_booking_customformelement_not_object', 'mod_booking', $n);
+                $errors[] = get_string('agent_booking_customformelement_not_object', 'bookingextension_agent', $n);
                 continue;
             }
 
             $formtype = trim((string)($element['formtype'] ?? ''));
             if ($formtype === '' || !in_array($formtype, $allowed, true)) {
-                $errors[] = get_string('agent_booking_customformelement_invalid_formtype', 'mod_booking', (object)[
+                $errors[] = get_string('agent_booking_customformelement_invalid_formtype', 'bookingextension_agent', (object)[
                     'n' => $n,
                     'types' => implode(', ', $allowed),
                 ]);
@@ -1728,7 +1728,7 @@ class booking_task_support {
             if ($formtype !== 'deleteinfoscheckboxuser') {
                 $label = trim((string)($element['label'] ?? ''));
                 if ($label === '') {
-                    $errors[] = get_string('agent_booking_customformelement_label_required', 'mod_booking', (object)[
+                    $errors[] = get_string('agent_booking_customformelement_label_required', 'bookingextension_agent', (object)[
                         'n' => $n,
                         'formtype' => $formtype,
                     ]);
@@ -1871,12 +1871,12 @@ class booking_task_support {
 
         $prices = self::normalize_prices_input($input['prices']);
         if ($prices === null) {
-            $errors[] = get_string('agent_booking_prices_not_object', 'mod_booking');
+            $errors[] = get_string('agent_booking_prices_not_object', 'bookingextension_agent');
             return ['errors' => $errors, 'ambiguities' => $ambiguities];
         }
 
         if (empty($prices)) {
-            $errors[] = get_string('agent_booking_prices_empty', 'mod_booking');
+            $errors[] = get_string('agent_booking_prices_empty', 'bookingextension_agent');
             return ['errors' => $errors, 'ambiguities' => $ambiguities];
         }
 
@@ -1887,17 +1887,17 @@ class booking_task_support {
                 $unknown[] = $identifier;
             }
             if (!is_numeric($value)) {
-                $errors[] = get_string('agent_booking_price_not_numeric', 'mod_booking', $identifier);
+                $errors[] = get_string('agent_booking_price_not_numeric', 'bookingextension_agent', $identifier);
                 continue;
             }
             if ((float)$value < 0) {
-                $errors[] = get_string('agent_booking_price_negative', 'mod_booking', $identifier);
+                $errors[] = get_string('agent_booking_price_negative', 'bookingextension_agent', $identifier);
             }
         }
 
         if (!empty($unknown)) {
             $existinglist = self::format_price_categories_for_message($categories);
-            $ambiguities[] = get_string('agent_booking_unknown_price_categories', 'mod_booking', (object)[
+            $ambiguities[] = get_string('agent_booking_unknown_price_categories', 'bookingextension_agent', (object)[
                 'unknown' => implode(', ', $unknown),
                 'existing' => $existinglist,
             ]);

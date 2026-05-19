@@ -191,7 +191,7 @@ class search_options_task extends booking_task_base implements task_trigger_prov
                         'name' => $title,
                         'link' => $link,
                     ]];
-                    $usermessage = get_string('searchoptionsfound', 'mod_booking', 1);
+                    $usermessage = get_string('searchoptionsfound', 'bookingextension_agent', 1);
 
                     return [
                         'status' => 'executed',
@@ -215,7 +215,7 @@ class search_options_task extends booking_task_base implements task_trigger_prov
         }
 
         if (empty($rows)) {
-            $usermessage = get_string('searchoptionsnotfound', 'mod_booking');
+            $usermessage = get_string('searchoptionsnotfound', 'bookingextension_agent');
             return [
                 'status' => 'executed',
                 'detail' => $usermessage,
@@ -238,7 +238,7 @@ class search_options_task extends booking_task_base implements task_trigger_prov
             ];
         }
 
-        $usermessage = get_string('searchoptionsfound', 'mod_booking', count($structuredoptions));
+        $usermessage = get_string('searchoptionsfound', 'bookingextension_agent', count($structuredoptions));
 
         $previewids = array_values(array_map(
             static fn(array $row): int => (int)($row['optionid'] ?? 0),

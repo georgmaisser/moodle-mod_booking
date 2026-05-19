@@ -183,47 +183,47 @@ class aiready {
         $checks = [
             $this->build_check(
                 $providersconfigured,
-                get_string('aiready_check_provider_configured', 'mod_booking'),
+                get_string('aiready_check_provider_configured', 'bookingextension_agent'),
                 $providersconfigured
-                    ? get_string('aiready_check_provider_configured_done', 'mod_booking')
-                    : get_string('aiready_check_provider_configured_todo', 'mod_booking'),
+                    ? get_string('aiready_check_provider_configured_done', 'bookingextension_agent')
+                    : get_string('aiready_check_provider_configured_todo', 'bookingextension_agent'),
                 $providerconfigurl
             ),
             $this->build_check(
                 $provideractive,
-                get_string('aiready_check_provider_active', 'mod_booking'),
+                get_string('aiready_check_provider_active', 'bookingextension_agent'),
                 $provideractive
-                    ? get_string('aiready_check_provider_active_done', 'mod_booking')
-                    : get_string('aiready_check_provider_active_todo', 'mod_booking'),
+                    ? get_string('aiready_check_provider_active_done', 'bookingextension_agent')
+                    : get_string('aiready_check_provider_active_todo', 'bookingextension_agent'),
                 $providerconfigurl
             ),
             $this->build_check(
                 $courseenabled,
-                get_string('aiready_check_course_enabled', 'mod_booking'),
+                get_string('aiready_check_course_enabled', 'bookingextension_agent'),
                 $courseenabled
-                    ? get_string('aiready_check_course_enabled_done', 'mod_booking')
-                    : get_string('aiready_check_course_enabled_todo', 'mod_booking'),
+                    ? get_string('aiready_check_course_enabled_done', 'bookingextension_agent')
+                    : get_string('aiready_check_course_enabled_todo', 'bookingextension_agent'),
                 $courseconfigurl
             ),
             $this->build_check(
                 $contextenabled,
-                get_string('aiready_check_context_enabled', 'mod_booking'),
+                get_string('aiready_check_context_enabled', 'bookingextension_agent'),
                 $contextenabled
-                    ? get_string('aiready_check_context_enabled_done', 'mod_booking')
-                    : get_string('aiready_check_context_enabled_todo', 'mod_booking'),
+                    ? get_string('aiready_check_context_enabled_done', 'bookingextension_agent')
+                    : get_string('aiready_check_context_enabled_todo', 'bookingextension_agent'),
                 $moduleconfigurl
             ),
             $this->build_check(
                 $hascapability,
-                get_string('aiready_check_capability', 'mod_booking'),
+                get_string('aiready_check_capability', 'bookingextension_agent'),
                 $hascapability
-                    ? get_string('aiready_check_capability_done', 'mod_booking')
-                    : get_string('aiready_check_capability_todo', 'mod_booking'),
+                    ? get_string('aiready_check_capability_done', 'bookingextension_agent')
+                    : get_string('aiready_check_capability_todo', 'bookingextension_agent'),
                 $capabilityurl
             ),
         ];
 
-        $introtext = get_string('aiready_intro_text', 'mod_booking');
+        $introtext = get_string('aiready_intro_text', 'bookingextension_agent');
 
         $admintext = '';
         $nonadmintext = '';
@@ -232,20 +232,20 @@ class aiready {
             if ($isplatformadmin) {
                 $admintext = $haswunderbyteprovider
                     ? ''
-                    : get_string('aiready_admin_text', 'mod_booking');
+                    : get_string('aiready_admin_text', 'bookingextension_agent');
             } else {
-                $nonadmintext = get_string('aiready_nonadmin_text', 'mod_booking');
+                $nonadmintext = get_string('aiready_nonadmin_text', 'bookingextension_agent');
             }
         }
 
         $activationquestiontext = $haswunderbyteprovider
-            ? get_string('aitrial_activation_question_existing_provider', 'mod_booking')
-            : get_string('aitrial_activation_question', 'mod_booking');
+            ? get_string('aitrial_activation_question_existing_provider', 'bookingextension_agent')
+            : get_string('aitrial_activation_question', 'bookingextension_agent');
 
         $stats = $this->get_booking_statistics();
         $welcometext = ($stats['num_options'] === 0)
-            ? get_string('ai_welcome_empty', 'mod_booking')
-            : get_string('ai_welcome_with_options', 'mod_booking', (object) [
+            ? get_string('ai_welcome_empty', 'bookingextension_agent')
+            : get_string('ai_welcome_with_options', 'bookingextension_agent', (object) [
                 'numoptions' => $stats['num_options'],
                 'numbooked' => $stats['num_booked'],
             ]);
@@ -288,7 +288,7 @@ class aiready {
             'label' => $label,
             'detail' => $detail,
             'configureurl' => $configureurl,
-            'configurelabel' => get_string('aiready_configure_here', 'mod_booking'),
+            'configurelabel' => get_string('aiready_configure_here', 'bookingextension_agent'),
             'icon' => $done
                 ? '<i class="fa fa-check-square text-success" aria-hidden="true"></i>'
                 : '<i class="fa fa-square-o text-muted" aria-hidden="true"></i>',

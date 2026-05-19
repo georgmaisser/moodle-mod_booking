@@ -46,10 +46,10 @@ class booking_mutation_validation {
             $permissioncheck = booking_task_support::validate_update_field_permissions($input, (int)$context->id);
             if (($permissioncheck['status'] ?? '') !== 'ok') {
                 $errors[] = (string)($permissioncheck['message']
-                    ?? get_string('agent_booking_update_permission_denied_generic', 'booking'));
+                    ?? get_string('agent_booking_update_permission_denied_generic', 'bookingextension_agent'));
             }
         } catch (\Throwable $e) {
-            $errors[] = get_string('agent_booking_update_permission_check_failed', 'booking');
+            $errors[] = get_string('agent_booking_update_permission_check_failed', 'bookingextension_agent');
         }
 
         $pricevalidation = booking_task_support::validate_prices_input($input);
@@ -88,7 +88,7 @@ class booking_mutation_validation {
         if (array_key_exists('optiondatesmode', $input)) {
             $mode = strtolower(trim((string)$input['optiondatesmode']));
             if (!in_array($mode, ['append', 'replace'], true)) {
-                $errors[] = get_string('agent_validation_optiondatesmode_invalid', 'mod_booking');
+                $errors[] = get_string('agent_validation_optiondatesmode_invalid', 'bookingextension_agent');
             }
         }
 
@@ -107,7 +107,7 @@ class booking_mutation_validation {
 
             $operator = strtoupper(trim((string)($input['enrolledincourseoperator'] ?? 'OR')));
             if (!in_array($operator, ['OR', 'AND'], true)) {
-                $errors[] = get_string('agent_validation_enrolledincourseoperator_invalid', 'mod_booking');
+                $errors[] = get_string('agent_validation_enrolledincourseoperator_invalid', 'bookingextension_agent');
             }
         }
 
@@ -116,7 +116,7 @@ class booking_mutation_validation {
             && empty($input['enrolledincourseenabled'])
             && !empty($input['enrolledincoursequery'])
         ) {
-            $errors[] = get_string('agent_validation_enrolledincourseenabled_disabled', 'mod_booking');
+            $errors[] = get_string('agent_validation_enrolledincourseenabled_disabled', 'bookingextension_agent');
         }
 
         $parsedoptiondates = booking_task_support::extract_optiondates($input);
@@ -130,7 +130,7 @@ class booking_mutation_validation {
             $isplaceholder = $val === 0 || $val === '0' || $val === '' || $val === null;
             if (!$isplaceholder || !in_array('coursestarttime', $overrides, true)) {
                 if (!booking_task_support::parse_datetime($val)) {
-                    $errors[] = get_string('agent_validation_coursestarttime_invalid', 'mod_booking');
+                    $errors[] = get_string('agent_validation_coursestarttime_invalid', 'bookingextension_agent');
                 }
             }
         }
@@ -139,7 +139,7 @@ class booking_mutation_validation {
             $isplaceholder = $val === 0 || $val === '0' || $val === '' || $val === null;
             if (!$isplaceholder || !in_array('courseendtime', $overrides, true)) {
                 if (!booking_task_support::parse_datetime($val)) {
-                    $errors[] = get_string('agent_validation_courseendtime_invalid', 'mod_booking');
+                    $errors[] = get_string('agent_validation_courseendtime_invalid', 'bookingextension_agent');
                 }
             }
         }
@@ -148,7 +148,7 @@ class booking_mutation_validation {
             $isplaceholder = $val === 0 || $val === '0' || $val === '' || $val === null;
             if (!$isplaceholder || !in_array('bookingopeningtime', $overrides, true)) {
                 if (!booking_task_support::parse_datetime($val)) {
-                    $errors[] = get_string('agent_validation_bookingopeningtime_invalid', 'mod_booking');
+                    $errors[] = get_string('agent_validation_bookingopeningtime_invalid', 'bookingextension_agent');
                 }
             }
         }
@@ -157,13 +157,13 @@ class booking_mutation_validation {
             $isplaceholder = $val === 0 || $val === '0' || $val === '' || $val === null;
             if (!$isplaceholder || !in_array('bookingclosingtime', $overrides, true)) {
                 if (!booking_task_support::parse_datetime($val)) {
-                    $errors[] = get_string('agent_validation_bookingclosingtime_invalid', 'mod_booking');
+                    $errors[] = get_string('agent_validation_bookingclosingtime_invalid', 'bookingextension_agent');
                 }
             }
         }
 
         if (!empty($input['optiondates']) && empty($parsedoptiondates)) {
-            $errors[] = get_string('agent_validation_optiondates_invalid', 'mod_booking');
+            $errors[] = get_string('agent_validation_optiondates_invalid', 'bookingextension_agent');
         }
 
         if ($taskname === create_option_task::TASK_NAME) {
@@ -171,19 +171,19 @@ class booking_mutation_validation {
                 $startts = $date['coursestarttime'];
                 $endts = $date['courseendtime'];
                 $label = count($parsedoptiondates) > 1
-                    ? get_string('agent_validation_date_range_label', 'mod_booking', $idx + 1)
+                    ? get_string('agent_validation_date_range_label', 'bookingextension_agent', $idx + 1)
                     : '';
 
                 if ($startts < (time() - DAYSECS)) {
                     $ambiguities[] = $label
-                        . get_string('agent_validation_date_start_in_past', 'mod_booking');
+                        . get_string('agent_validation_date_start_in_past', 'bookingextension_agent');
                 }
                 if ($endts < (time() - DAYSECS)) {
                     $ambiguities[] = $label
-                        . get_string('agent_validation_date_end_in_past', 'mod_booking');
+                        . get_string('agent_validation_date_end_in_past', 'bookingextension_agent');
                 }
                 if ($endts <= $startts) {
-                    $errors[] = $label . get_string('agent_validation_courseendtime_before_starttime', 'mod_booking');
+                    $errors[] = $label . get_string('agent_validation_courseendtime_before_starttime', 'bookingextension_agent');
                 }
             }
         }
@@ -198,7 +198,7 @@ class booking_mutation_validation {
             }
             $operator = strtoupper(trim((string)($input['enrolledincohortoperator'] ?? 'OR')));
             if (!in_array($operator, ['OR', 'AND'], true)) {
-                $errors[] = get_string('agent_validation_enrolledincohortoperator_invalid', 'mod_booking');
+                $errors[] = get_string('agent_validation_enrolledincohortoperator_invalid', 'bookingextension_agent');
             }
         }
 
@@ -207,7 +207,7 @@ class booking_mutation_validation {
             && empty($input['enrolledincohortenabled'])
             && !empty($input['enrolledincohortquery'])
         ) {
-            $errors[] = get_string('agent_validation_enrolledincohortenabled_disabled', 'mod_booking');
+            $errors[] = get_string('agent_validation_enrolledincohortenabled_disabled', 'bookingextension_agent');
         }
 
         if (!empty($input['hascompetencyquery'])) {
@@ -220,7 +220,7 @@ class booking_mutation_validation {
             }
             $operator = strtoupper(trim((string)($input['hascompetencyoperator'] ?? 'AND')));
             if (!in_array($operator, ['OR', 'AND'], true)) {
-                $errors[] = get_string('agent_validation_hascompetencyoperator_invalid', 'mod_booking');
+                $errors[] = get_string('agent_validation_hascompetencyoperator_invalid', 'bookingextension_agent');
             }
         }
 
@@ -229,7 +229,7 @@ class booking_mutation_validation {
             && empty($input['hascompetencyenabled'])
             && !empty($input['hascompetencyquery'])
         ) {
-            $errors[] = get_string('agent_validation_hascompetencyenabled_disabled', 'mod_booking');
+            $errors[] = get_string('agent_validation_hascompetencyenabled_disabled', 'bookingextension_agent');
         }
 
         if (!empty($input['previouslybookedquery'])) {
@@ -246,7 +246,7 @@ class booking_mutation_validation {
             && empty($input['previouslybookedenabled'])
             && !empty($input['previouslybookedquery'])
         ) {
-            $errors[] = get_string('agent_validation_previouslybookedenabled_disabled', 'mod_booking');
+            $errors[] = get_string('agent_validation_previouslybookedenabled_disabled', 'bookingextension_agent');
         }
 
         if (!empty($input['selectusersquery'])) {
@@ -264,7 +264,7 @@ class booking_mutation_validation {
             && empty($input['selectusersenabled'])
             && !empty($input['selectusersquery'])
         ) {
-            $errors[] = get_string('agent_validation_selectusersenabled_disabled', 'mod_booking');
+            $errors[] = get_string('agent_validation_selectusersenabled_disabled', 'bookingextension_agent');
         }
 
         if (
@@ -285,32 +285,32 @@ class booking_mutation_validation {
             if (!empty($forbidden)) {
                 $errors[] = get_string(
                     'agent_validation_bookusersquery_exclusive',
-                    'mod_booking',
+                    'bookingextension_agent',
                     implode(', ', $forbidden)
                 );
             }
         }
 
         if (isset($input['bookuserstimebooked']) && !booking_task_support::parse_datetime($input['bookuserstimebooked'])) {
-            $errors[] = get_string('agent_validation_bookuserstimebooked_invalid', 'mod_booking');
+            $errors[] = get_string('agent_validation_bookuserstimebooked_invalid', 'bookingextension_agent');
         }
 
         if (!empty($input['nooverlappingmode'])) {
             $mode = strtolower(trim((string)$input['nooverlappingmode']));
             if (!in_array($mode, ['block', 'warn'], true)) {
-                $errors[] = get_string('agent_validation_nooverlappingmode_invalid', 'mod_booking');
+                $errors[] = get_string('agent_validation_nooverlappingmode_invalid', 'bookingextension_agent');
             }
         }
 
         if (!empty($input['userprofilestandardfield']) || !empty($input['userprofilestandardoperator'])) {
             if (empty($input['userprofilestandardfield']) || empty($input['userprofilestandardoperator'])) {
-                $errors[] = get_string('agent_validation_userprofile_standard_incomplete', 'mod_booking');
+                $errors[] = get_string('agent_validation_userprofile_standard_incomplete', 'bookingextension_agent');
             }
         }
 
         if (!empty($input['userprofilecustomfield']) || !empty($input['userprofilecustomoperator'])) {
             if (empty($input['userprofilecustomfield']) || empty($input['userprofilecustomoperator'])) {
-                $errors[] = get_string('agent_validation_userprofile_custom_incomplete', 'mod_booking');
+                $errors[] = get_string('agent_validation_userprofile_custom_incomplete', 'bookingextension_agent');
             }
         }
 
@@ -327,17 +327,17 @@ class booking_mutation_validation {
             if (isset($input[$overrideoperatorfield])) {
                 $op = strtoupper(trim((string)$input[$overrideoperatorfield]));
                 if (!in_array($op, ['OR', 'AND'], true)) {
-                    $errors[] = get_string('agent_validation_overrideoperator_invalid', 'mod_booking', $overrideoperatorfield);
+                    $errors[] = get_string('agent_validation_overrideoperator_invalid', 'bookingextension_agent', $overrideoperatorfield);
                 }
             }
         }
 
         if (isset($input['userprofilecustomfield2']) && empty($input['userprofilecustomoperator2'])) {
-            $errors[] = get_string('agent_validation_userprofilecustomoperator2_required', 'mod_booking');
+            $errors[] = get_string('agent_validation_userprofilecustomoperator2_required', 'bookingextension_agent');
         }
 
         if (!empty($input['duration']) && (int)$input['duration'] <= 0) {
-            $errors[] = get_string('agent_validation_duration_invalid', 'mod_booking');
+            $errors[] = get_string('agent_validation_duration_invalid', 'bookingextension_agent');
         }
 
         if (
@@ -345,12 +345,12 @@ class booking_mutation_validation {
             && empty($input['customformenabled'])
             && (!empty($input['customformjson']) || !empty($input['customformelements']))
         ) {
-            $errors[] = get_string('agent_validation_customformenabled_disabled', 'mod_booking');
+            $errors[] = get_string('agent_validation_customformenabled_disabled', 'bookingextension_agent');
         }
 
         if (array_key_exists('customformelements', $input)) {
             if (!is_array($input['customformelements'])) {
-                $errors[] = get_string('agent_validation_customformelements_not_array', 'mod_booking');
+                $errors[] = get_string('agent_validation_customformelements_not_array', 'bookingextension_agent');
             } else {
                 $validation = booking_task_support::validate_customform_elements($input['customformelements']);
                 foreach ($validation['errors'] as $error) {
