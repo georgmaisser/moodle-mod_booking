@@ -185,11 +185,7 @@ final class shopping_cart_test extends booking_advanced_testcase {
         $boinfo1 = new bo_info($settings1);
 
         // Validate subbooking presence.
-        if ((float)\PHPUnit\Runner\Version::series() < 9.6) {
-            $this->assertObjectHasAttribute('subbookings', $settings1);
-        } else {
-            $this->assertObjectHasProperty('subbookings', $settings1);
-        }
+        $this->assertTrue(property_exists($settings1, 'subbookings'));
         $this->assertIsArray($settings1->subbookings);
         $this->assertCount(1, $settings1->subbookings);
         $subbookingobj = $settings1->subbookings[0];

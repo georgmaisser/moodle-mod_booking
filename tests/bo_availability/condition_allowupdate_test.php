@@ -454,12 +454,7 @@ final class condition_allowupdate_test extends booking_advanced_testcase {
         $boinfo1 = new bo_info($settings1);
 
         // Validate subbooking presence.
-        $phpunitversion = (float)\PHPUnit\Runner\Version::series();
-        if ($phpunitversion < 9.6) {
-            $this->assertObjectHasAttribute('subbookings', $settings1);
-        } else {
-            $this->assertObjectHasProperty('subbookings', $settings1);
-        }
+        $this->assertTrue(property_exists($settings1, 'subbookings'));
         $this->assertIsArray($settings1->subbookings);
         $this->assertCount(1, $settings1->subbookings);
         $subbookingobj = $settings1->subbookings[0];
@@ -495,11 +490,7 @@ final class condition_allowupdate_test extends booking_advanced_testcase {
         $boinfo2 = new bo_info($settings2);
 
         // Validate subbooking presence.
-        if ($phpunitversion < 9.6) {
-            $this->assertObjectHasAttribute('subbookings', $settings2);
-        } else {
-            $this->assertObjectHasProperty('subbookings', $settings2);
-        }
+        $this->assertTrue(property_exists($settings2, 'subbookings'));
         $this->assertIsArray($settings2->subbookings);
         $this->assertCount(1, $settings2->subbookings);
         $subbookingobj = $settings2->subbookings[0];
