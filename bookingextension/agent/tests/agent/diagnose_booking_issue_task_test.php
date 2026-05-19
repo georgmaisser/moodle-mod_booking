@@ -220,7 +220,7 @@ final class diagnose_booking_issue_task_test extends abstract_agent_testcase {
         $detail = (string)($result['detail'] ?? '');
         $expectedintro = get_string_manager()->get_string(
             'agent_booking_diagnose_intro_checked_option',
-            'mod_booking',
+            'bookingextension_agent',
             'Diagnose Deutsch',
             'de'
         );
@@ -244,7 +244,7 @@ final class diagnose_booking_issue_task_test extends abstract_agent_testcase {
         $this->assertNotEmpty($result['errors']);
         $expectedmessage = get_string_manager()->get_string(
             'agent_booking_diagnose_ambiguity_option_required',
-            'mod_booking',
+            'bookingextension_agent',
             null,
             'de'
         );
@@ -266,7 +266,7 @@ final class diagnose_booking_issue_task_test extends abstract_agent_testcase {
         $this->assertSame('executed', $result['status']);
         $expectedintro = get_string_manager()->get_string(
             'agent_booking_diagnose_intro_checked_option',
-            'mod_booking',
+            'bookingextension_agent',
             'Diagnose Outputlang',
             'de'
         );
@@ -290,7 +290,7 @@ final class diagnose_booking_issue_task_test extends abstract_agent_testcase {
 
         $this->assertSame('error', $result['status']);
         $this->assertSame(
-            get_string('agent_booking_diagnose_other_user_permission_denied', 'mod_booking'),
+            get_string('agent_booking_diagnose_other_user_permission_denied', 'bookingextension_agent'),
             (string)($result['detail'] ?? '')
         );
     }

@@ -153,7 +153,7 @@ final class diagnose_cancellation_issue_task_test extends abstract_agent_testcas
 
         $this->assertSame('error', $result['status']);
         $this->assertSame(
-            get_string('agent_booking_diagnose_cancel_other_user_permission_denied', 'mod_booking'),
+            get_string('agent_booking_diagnose_cancel_other_user_permission_denied', 'bookingextension_agent'),
             (string)($result['detail'] ?? '')
         );
     }

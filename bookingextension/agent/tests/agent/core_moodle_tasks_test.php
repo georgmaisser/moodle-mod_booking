@@ -155,7 +155,7 @@ final class core_moodle_tasks_test extends abstract_agent_testcase {
         ], (int)$this->booking->cmid, (int)$this->student->id);
 
         $this->assertSame('error', $result['status']);
-        $this->assertSame(get_string('agent_booking_core_user_permission_denied', 'mod_booking'), (string)($result['detail'] ?? ''));
+        $this->assertSame(get_string('agent_booking_core_user_permission_denied', 'bookingextension_agent'), (string)($result['detail'] ?? ''));
     }
 
     /**
