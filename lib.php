@@ -1314,8 +1314,8 @@ function booking_myprofile_navigation(core_user\output\myprofile\tree $tree, $us
  * @return bool
  */
 function booking_agent_extension_is_installed(): bool {
-    if (class_exists('\\mod_booking\\local\\wbagent\\authorization_service')) {
-        return \mod_booking\local\wbagent\authorization_service::is_agent_extension_installed();
+    if (class_exists('\\bookingextension_agent\\local\\wbagent\\authorization_service')) {
+        return \bookingextension_agent\local\wbagent\authorization_service::is_agent_extension_installed();
     }
 
     return false;

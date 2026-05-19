@@ -31,7 +31,7 @@ use external_api;
 use external_function_parameters;
 use external_single_structure;
 use external_value;
-use mod_booking\local\wbagent\authorization_service;
+use bookingextension_agent\local\wbagent\authorization_service;
 use moodle_url;
 
 defined('MOODLE_INTERNAL') || die();

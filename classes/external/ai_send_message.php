@@ -31,14 +31,14 @@ use external_api;
 use external_function_parameters;
 use external_single_structure;
 use external_value;
-use mod_booking\local\wbagent\agent_runtime;
-use mod_booking\local\wbagent\authorization_service;
-use mod_booking\local\wbagent\booking\booking_task_support;
-use mod_booking\local\wbagent\conversation_store;
-use mod_booking\local\wbagent\interpreter;
-use mod_booking\local\wbagent\orchestrator;
-use mod_booking\local\wbagent\privacy_anonymizer;
-use mod_booking\local\wbagent\task_registry;
+use bookingextension_agent\local\wbagent\agent_runtime;
+use bookingextension_agent\local\wbagent\authorization_service;
+use bookingextension_agent\local\wbagent\booking\booking_task_support;
+use bookingextension_agent\local\wbagent\conversation_store;
+use bookingextension_agent\local\wbagent\interpreter;
+use bookingextension_agent\local\wbagent\orchestrator;
+use bookingextension_agent\local\wbagent\privacy_anonymizer;
+use bookingextension_agent\local\wbagent\task_registry;
 
 defined('MOODLE_INTERNAL') || die();
 

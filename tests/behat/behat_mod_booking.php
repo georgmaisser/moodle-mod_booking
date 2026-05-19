@@ -32,7 +32,7 @@ use mod_booking\singleton_service;
 use mod_booking\booking_rules\booking_rules;
 use mod_booking\booking_rules\rules_info;
 use mod_booking\bo_availability\conditions\maxoptionsfromcategory;
-use mod_booking\local\wbagent\booking\tasks\diagnose_cancellation_issue_task;
+use bookingextension_agent\local\wbagent\booking\tasks\diagnose_cancellation_issue_task;
 use Behat\Gherkin\Node\TableNode;
 use Moodle\BehatExtension\Exception\SkippedException;
 

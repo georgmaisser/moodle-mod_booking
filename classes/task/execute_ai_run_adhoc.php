@@ -25,11 +25,11 @@
 namespace mod_booking\task;
 
 use core\task\adhoc_task;
-use mod_booking\local\wbagent\authorization_service;
-use mod_booking\local\wbagent\conversation_store;
-use mod_booking\local\wbagent\execution_feedback_service;
-use mod_booking\local\wbagent\executor;
-use mod_booking\local\wbagent\task_registry;
+use bookingextension_agent\local\wbagent\authorization_service;
+use bookingextension_agent\local\wbagent\conversation_store;
+use bookingextension_agent\local\wbagent\execution_feedback_service;
+use bookingextension_agent\local\wbagent\executor;
+use bookingextension_agent\local\wbagent\task_registry;
 
 /**
  * Executes a confirmed AI run: re-validates, enforces idempotency, dispatches commands.

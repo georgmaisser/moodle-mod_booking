@@ -22,11 +22,11 @@
  * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-use mod_booking\local\wbagent\authorization_service;
-use mod_booking\local\wbagent\conversation_store;
-use mod_booking\local\wbagent\interpreter;
-use mod_booking\local\wbagent\orchestrator;
-use mod_booking\local\wbagent\task_registry;
+use bookingextension_agent\local\wbagent\authorization_service;
+use bookingextension_agent\local\wbagent\conversation_store;
+use bookingextension_agent\local\wbagent\interpreter;
+use bookingextension_agent\local\wbagent\orchestrator;
+use bookingextension_agent\local\wbagent\task_registry;
 use mod_booking\singleton_service;
 
 require_once(__DIR__ . '/../../config.php');
@@ -74,9 +74,6 @@ if ($providerstatus) {
 $aireadyclass = null;
 if (class_exists('\\bookingextension_agent\\local\\wbagent\\aiready')) {
     $aireadyclass = '\\bookingextension_agent\\local\\wbagent\\aiready';
-} else if (class_exists('\\mod_booking\\local\\wbagent\\aiready')) {
-    // Fallback for transition phase.
-    $aireadyclass = '\\mod_booking\\local\\wbagent\\aiready';
 }
 
 if (empty($aireadyclass)) {

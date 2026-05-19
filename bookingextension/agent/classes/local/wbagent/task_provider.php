@@ -16,21 +16,21 @@
 
 namespace bookingextension_agent\local\wbagent;
 
-use mod_booking\local\wbagent\booking_issue_code_provider;
-use mod_booking\local\wbagent\interfaces\result_summary_provider_interface;
-use mod_booking\local\wbagent\interfaces\task_interface;
-use mod_booking\local\wbagent\interfaces\task_provider_interface;
-use mod_booking\local\wbagent\task_discovery;
-use mod_booking\local\wbagent\summarizer\basic_collection_result_summary_contributor;
-use mod_booking\local\wbagent\summarizer\diagnosis_result_summary_contributor;
-use mod_booking\local\wbagent\summarizer\docs_result_summary_contributor;
-use mod_booking\local\wbagent\summarizer\single_object_result_summary_contributor;
+require_once(__DIR__ . '/summarizer/single_object_result_summary_contributor.php');
+
+use bookingextension_agent\local\wbagent\interfaces\result_summary_provider_interface;
+use bookingextension_agent\local\wbagent\interfaces\task_interface;
+use bookingextension_agent\local\wbagent\interfaces\task_provider_interface;
+use bookingextension_agent\local\wbagent\summarizer\basic_collection_result_summary_contributor;
+use bookingextension_agent\local\wbagent\summarizer\diagnosis_result_summary_contributor;
+use bookingextension_agent\local\wbagent\summarizer\docs_result_summary_contributor;
+use bookingextension_agent\local\wbagent\summarizer\single_object_result_summary_contributor;
 
 /**
- * bookingextension_agent task provider entrypoint.
+ * mod_booking task provider entrypoint.
  *
- * @package    bookingextension_agent
- * @copyright  2026 Wunderbyte GmbH
+ * @package    mod_booking
+ * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class task_provider implements result_summary_provider_interface, task_provider_interface {
@@ -49,7 +49,7 @@ class task_provider implements result_summary_provider_interface, task_provider_
      * @return array
      */
     public function get_tasks(): array {
-        $tasks = array_values(task_discovery::get_task_instances('mod_booking'));
+        $tasks = array_values(task_discovery::get_task_instances('bookingextension_agent'));
 
         usort($tasks, static fn(task_interface $a, task_interface $b): int => strcmp($a->get_name(), $b->get_name()));
         return $tasks;
@@ -87,11 +87,11 @@ class task_provider implements result_summary_provider_interface, task_provider_
     }
 
     /**
-     * Return optional issue code provider.
+     * Return optional issue code provider for domain-specific business logic codes.
      *
-     * @return \mod_booking\local\wbagent\interfaces\issue_code_provider_interface|null
+     * @return \bookingextension_agent\local\wbagent\interfaces\issue_code_provider_interface|null
      */
-    public function get_issue_code_provider(): ?\mod_booking\local\wbagent\interfaces\issue_code_provider_interface {
+    public function get_issue_code_provider(): ?\bookingextension_agent\local\wbagent\interfaces\issue_code_provider_interface {
         try {
             return new booking_issue_code_provider();
         } catch (\Throwable $e) {
@@ -100,18 +100,20 @@ class task_provider implements result_summary_provider_interface, task_provider_
     }
 
     /**
-     * Return optional prompt guidance.
+     * Return optional prompt guidance (domain-specific LLM instructions).
      *
      * @return array<string,mixed>
      */
     public function get_prompt_guidance(): array {
+        // For now, no custom prompt guidance beyond what orchestrator provides.
+        // Plugins can override to inject domain-specific instructions.
         return [];
     }
 
     /**
      * Return result summary contributors for this component.
      *
-     * @return array<int,\mod_booking\local\wbagent\interfaces\summarizer\result_summary_contributor_interface>
+     * @return array<int,\bookingextension_agent\local\wbagent\interfaces\summarizer\result_summary_contributor_interface>
      */
     public function get_result_summary_contributors(): array {
         return [

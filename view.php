@@ -167,9 +167,6 @@ if (class_exists('\\core_plugin_manager')) {
 $aireadyclass = null;
 if ($agentextensioninstalled && class_exists('\\bookingextension_agent\\local\\wbagent\\aiready')) {
     $aireadyclass = '\\bookingextension_agent\\local\\wbagent\\aiready';
-} else if ($agentextensioninstalled && class_exists('\\mod_booking\\local\\wbagent\\aiready')) {
-    // Fallback for transition phase.
-    $aireadyclass = '\\mod_booking\\local\\wbagent\\aiready';
 }
 
 $hasoptions = $booking->get_all_options_count() > 0;

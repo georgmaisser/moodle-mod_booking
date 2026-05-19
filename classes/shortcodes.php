@@ -718,7 +718,7 @@ class shortcodes {
             return get_string('shortcode:error', 'mod_booking');
         }
 
-        $authz = new \mod_booking\local\wbagent\authorization_service();
+        $authz = new \bookingextension_agent\local\wbagent\authorization_service();
         if (!$authz->can_use($USER->id, $cmid)) {
             return '';
         }
@@ -727,8 +727,6 @@ class shortcodes {
             $aireadyclass = null;
             if (class_exists('\\bookingextension_agent\\local\\wbagent\\aiready')) {
                 $aireadyclass = '\\bookingextension_agent\\local\\wbagent\\aiready';
-            } else if (class_exists('\\mod_booking\\local\\wbagent\\aiready')) {
-                $aireadyclass = '\\mod_booking\\local\\wbagent\\aiready';
             }
 
             if (empty($aireadyclass)) {

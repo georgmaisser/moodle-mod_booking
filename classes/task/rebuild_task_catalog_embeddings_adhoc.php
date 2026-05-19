@@ -29,11 +29,11 @@ namespace mod_booking\task;
 use context_system;
 use core\di;
 use core_ai\manager as ai_manager;
-use mod_booking\local\wbagent\embeddings_action_config_resolver;
-use mod_booking\local\wbagent\embeddings_catalog_builder_service;
-use mod_booking\local\wbagent\embeddings_csv_repository;
-use mod_booking\local\wbagent\orchestrator;
-use mod_booking\local\wbagent\task_registry_factory;
+use bookingextension_agent\local\wbagent\embeddings_action_config_resolver;
+use bookingextension_agent\local\wbagent\embeddings_catalog_builder_service;
+use bookingextension_agent\local\wbagent\embeddings_csv_repository;
+use bookingextension_agent\local\wbagent\orchestrator;
+use bookingextension_agent\local\wbagent\task_registry_factory;
 
 /**
  * Rebuilds embeddings for the full task catalog.

@@ -36,7 +36,7 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
 require_once($CFG->dirroot . '/user/profile/lib.php');
 
 use mod_booking\booking;
-use mod_booking\local\wbagent\orchestrator;
+use bookingextension_agent\local\wbagent\orchestrator;
 use mod_booking\plugininfo\bookingextension_interface;
 use mod_booking\local\checkanswers\checkanswers;
 use mod_booking\price;
@@ -159,9 +159,14 @@ $ADMIN->add('modbookingfolder', $settings);
 $ADMIN->add('modbookingfolder', $aisettingspage);
 
 if ($ADMIN->fulltree) {
+    $defaultsummarypromptprefix = '';
+    if (class_exists('\\bookingextension_agent\\local\\wbagent\\orchestrator')) {
+        $defaultsummarypromptprefix = orchestrator::get_default_summary_prompt_prefix();
+    }
+
     // Seed prompt defaults once when config entries are missing so admin textareas are prefilled.
     $promptdefaults = [
-        'aiinitialprompt_summarise_text' => orchestrator::get_default_summary_prompt_prefix(),
+        'aiinitialprompt_summarise_text' => $defaultsummarypromptprefix,
     ];
     foreach ($promptdefaults as $configkey => $defaultvalue) {
         if (get_config('booking', $configkey) === false) {
@@ -327,7 +332,7 @@ if ($ADMIN->fulltree) {
             'booking/aiinitialprompt_summarise_text',
             get_string('aiinitialprompt_summarise_text', 'mod_booking'),
             get_string('aiinitialprompt_summarise_text_desc', 'mod_booking'),
-            orchestrator::get_default_summary_prompt_prefix(),
+            $defaultsummarypromptprefix,
             PARAM_RAW,
             120,
             8
