@@ -1514,11 +1514,8 @@ PROMPT;
      * @return bool
      */
     private function is_wunderbyte_routing_available(ai_manager $manager): bool {
-        if (!class_exists(self::WB_ACTION_PLANNER_DECIDE) || !class_exists(self::WB_ACTION_GENERATE_AGENT_REPLY)) {
-            return false;
-        }
-
         try {
+            // Check if Wunderbyte provider instances exist and are active.
             $instances = $manager->get_provider_instances(['provider' => 'aiprovider_wunderbyte\\provider']);
             if (empty($instances)) {
                 return false;
@@ -1533,6 +1530,8 @@ PROMPT;
                     continue;
                 }
 
+                // Provider exists, is enabled, and is configured.
+                // Wunderbyte action classes will be available if the provider is installed.
                 return true;
             }
 
