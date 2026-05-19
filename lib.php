@@ -1314,16 +1314,11 @@ function booking_myprofile_navigation(core_user\output\myprofile\tree $tree, $us
  * @return bool
  */
 function booking_agent_extension_is_installed(): bool {
-    if (!class_exists('\\core_plugin_manager')) {
-        return false;
+    if (class_exists('\\mod_booking\\local\\wbagent\\authorization_service')) {
+        return \mod_booking\local\wbagent\authorization_service::is_agent_extension_installed();
     }
 
-    try {
-        $plugininfo = \core_plugin_manager::instance()->get_plugin_info('bookingextension_agent');
-        return ($plugininfo !== null) && (bool)$plugininfo->is_installed_and_upgraded();
-    } catch (\Throwable $e) {
-        return false;
-    }
+    return false;
 }
 
 /**

@@ -40,17 +40,7 @@ $context = context_module::instance($cm->id);
 $PAGE->set_context($context);
 $PAGE->activityheader->disable();
 
-$agentextensioninstalled = false;
-if (class_exists('\\core_plugin_manager')) {
-    try {
-        $plugininfo = \core_plugin_manager::instance()->get_plugin_info('bookingextension_agent');
-        $agentextensioninstalled = ($plugininfo !== null) && (bool)$plugininfo->is_installed_and_upgraded();
-    } catch (\Throwable $e) {
-        $agentextensioninstalled = false;
-    }
-}
-
-if (!$agentextensioninstalled) {
+if (!authorization_service::is_agent_extension_installed()) {
     redirect(new moodle_url('/mod/booking/view.php', ['id' => $cmid]));
 }
 

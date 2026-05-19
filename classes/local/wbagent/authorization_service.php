@@ -38,6 +38,24 @@ use required_capability_exception;
  */
 class authorization_service implements agent_authorization_service {
     /**
+     * Return true when bookingextension_agent is installed and upgraded.
+     *
+     * @return bool
+     */
+    public static function is_agent_extension_installed(): bool {
+        if (!class_exists('\\core_plugin_manager')) {
+            return false;
+        }
+
+        try {
+            $plugininfo = \core_plugin_manager::instance()->get_plugin_info('bookingextension_agent');
+            return ($plugininfo !== null) && (bool)$plugininfo->is_installed_and_upgraded();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
      * Assert that the given user may use the AI instructions feature for this cmid.
      *
      * @param int $userid
@@ -46,6 +64,9 @@ class authorization_service implements agent_authorization_service {
      */
     public function require_use_capability(int $userid, int $cmid): void {
         $context = context_module::instance($cmid);
+        if (!self::is_agent_extension_installed()) {
+            throw new required_capability_exception($context, 'mod/booking:useaiinstructions', 'nopermissions', '');
+        }
         if (!has_capability('mod/booking:useaiinstructions', $context, $userid)) {
             throw new required_capability_exception($context, 'mod/booking:useaiinstructions', 'nopermissions', '');
         }
@@ -59,6 +80,10 @@ class authorization_service implements agent_authorization_service {
      * @return bool
      */
     public function can_use(int $userid, int $cmid): bool {
+        if (!self::is_agent_extension_installed()) {
+            return false;
+        }
+
         $context = context_module::instance($cmid);
         return has_capability('mod/booking:useaiinstructions', $context, $userid);
     }

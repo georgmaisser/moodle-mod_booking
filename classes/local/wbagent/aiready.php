@@ -83,6 +83,21 @@ class aiready {
         $context = context_module::instance($this->cmid);
         $authz = new authorization_service();
 
+        if (!authorization_service::is_agent_extension_installed()) {
+            return [
+                'readyforchat' => false,
+                'isplatformadmin' => has_capability('moodle/site:config', context_system::instance(), $this->userid),
+                'threadid' => 0,
+                'checks' => [],
+                'introtext' => '',
+                'admintext' => '',
+                'nonadmintext' => '',
+                'initialpanelhidden' => true,
+                'chatpanelhidden' => true,
+                'cmid' => $this->cmid,
+            ];
+        }
+
         $isplatformadmin = has_capability('moodle/site:config', context_system::instance(), $this->userid);
         $hascapability = $authz->can_use($this->userid, $this->cmid);
 

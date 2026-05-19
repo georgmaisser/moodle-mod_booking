@@ -724,7 +724,18 @@ class shortcodes {
         }
 
         try {
-            $templatedata = (new \mod_booking\local\wbagent\aiready($cmid, $USER->id, $cm->instance))
+            $aireadyclass = null;
+            if (class_exists('\\bookingextension_agent\\local\\wbagent\\aiready')) {
+                $aireadyclass = '\\bookingextension_agent\\local\\wbagent\\aiready';
+            } else if (class_exists('\\mod_booking\\local\\wbagent\\aiready')) {
+                $aireadyclass = '\\mod_booking\\local\\wbagent\\aiready';
+            }
+
+            if (empty($aireadyclass)) {
+                return '';
+            }
+
+            $templatedata = (new $aireadyclass($cmid, $USER->id, $cm->instance))
                 ->export_for_template();
             return $OUTPUT->render_from_template('mod_booking/aiinstructions', $templatedata);
         } catch (Throwable $e) {

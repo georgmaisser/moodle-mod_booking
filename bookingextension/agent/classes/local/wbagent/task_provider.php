@@ -14,42 +14,33 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace mod_booking\local\wbagent;
+namespace bookingextension_agent\local\wbagent;
 
-require_once(__DIR__ . '/summarizer/single_object_result_summary_contributor.php');
-
+use mod_booking\local\wbagent\booking_issue_code_provider;
 use mod_booking\local\wbagent\interfaces\result_summary_provider_interface;
 use mod_booking\local\wbagent\interfaces\task_interface;
 use mod_booking\local\wbagent\interfaces\task_provider_interface;
+use mod_booking\local\wbagent\task_discovery;
 use mod_booking\local\wbagent\summarizer\basic_collection_result_summary_contributor;
 use mod_booking\local\wbagent\summarizer\diagnosis_result_summary_contributor;
 use mod_booking\local\wbagent\summarizer\docs_result_summary_contributor;
 use mod_booking\local\wbagent\summarizer\single_object_result_summary_contributor;
 
 /**
- * mod_booking task provider entrypoint.
+ * bookingextension_agent task provider entrypoint.
  *
- * @package    mod_booking
- * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
+ * @package    bookingextension_agent
+ * @copyright  2026 Wunderbyte GmbH
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class task_provider implements result_summary_provider_interface, task_provider_interface {
-    /**
-     * Whether bookingextension_agent owns agent runtime for this request.
-     *
-     * @return bool
-     */
-    private function is_delegated_to_extension(): bool {
-        return authorization_service::is_agent_extension_installed();
-    }
-
     /**
      * Return the component name.
      *
      * @return string
      */
     public function get_component(): string {
-        return 'mod_booking';
+        return 'bookingextension_agent';
     }
 
     /**
@@ -58,11 +49,7 @@ class task_provider implements result_summary_provider_interface, task_provider_
      * @return array
      */
     public function get_tasks(): array {
-        if ($this->is_delegated_to_extension()) {
-            return [];
-        }
-
-        $tasks = array_values(task_discovery::get_task_instances());
+        $tasks = array_values(task_discovery::get_task_instances('mod_booking'));
 
         usort($tasks, static fn(task_interface $a, task_interface $b): int => strcmp($a->get_name(), $b->get_name()));
         return $tasks;
@@ -74,10 +61,6 @@ class task_provider implements result_summary_provider_interface, task_provider_
      * @return array<int,array<string,mixed>>
      */
     public function get_contextual_prompt_packs(): array {
-        if ($this->is_delegated_to_extension()) {
-            return [];
-        }
-
         $packs = [];
         $seenids = [];
 
@@ -104,15 +87,11 @@ class task_provider implements result_summary_provider_interface, task_provider_
     }
 
     /**
-     * Return optional issue code provider for domain-specific business logic codes.
+     * Return optional issue code provider.
      *
      * @return \mod_booking\local\wbagent\interfaces\issue_code_provider_interface|null
      */
     public function get_issue_code_provider(): ?\mod_booking\local\wbagent\interfaces\issue_code_provider_interface {
-        if ($this->is_delegated_to_extension()) {
-            return null;
-        }
-
         try {
             return new booking_issue_code_provider();
         } catch (\Throwable $e) {
@@ -121,13 +100,11 @@ class task_provider implements result_summary_provider_interface, task_provider_
     }
 
     /**
-     * Return optional prompt guidance (domain-specific LLM instructions).
+     * Return optional prompt guidance.
      *
      * @return array<string,mixed>
      */
     public function get_prompt_guidance(): array {
-        // For now, no custom prompt guidance beyond what orchestrator provides.
-        // Plugins can override to inject domain-specific instructions.
         return [];
     }
 
@@ -137,10 +114,6 @@ class task_provider implements result_summary_provider_interface, task_provider_
      * @return array<int,\mod_booking\local\wbagent\interfaces\summarizer\result_summary_contributor_interface>
      */
     public function get_result_summary_contributors(): array {
-        if ($this->is_delegated_to_extension()) {
-            return [];
-        }
-
         return [
             new basic_collection_result_summary_contributor(),
             new single_object_result_summary_contributor(),
