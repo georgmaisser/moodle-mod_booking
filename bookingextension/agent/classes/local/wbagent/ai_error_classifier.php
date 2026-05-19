@@ -26,7 +26,6 @@ declare(strict_types=1);
 
 namespace bookingextension_agent\local\wbagent;
 
-use context_module;
 use core_text;
 
 /**
@@ -125,10 +124,10 @@ class ai_error_classifier {
      * prevented the model from returning a structured JSON response.
      *
      * @param  int $userid
-     * @param  int $cmid
+     * @param  int $contextid
      * @return string[]
      */
-    public static function classify_from_db(int $userid, int $cmid): array {
+    public static function classify_from_db(int $userid, int $contextid): array {
         global $DB;
 
         try {
@@ -137,7 +136,6 @@ class ai_error_classifier {
                 return [];
             }
 
-            $contextid = (int)context_module::instance($cmid)->id;
             $records = $DB->get_records_select(
                 'ai_action_register',
                 'userid = :userid AND contextid = :contextid AND actionname = :actionname

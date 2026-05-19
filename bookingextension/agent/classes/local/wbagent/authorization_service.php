@@ -24,6 +24,7 @@
 
 namespace bookingextension_agent\local\wbagent;
 
+use context;
 use context_module;
 use bookingextension_agent\local\wbagent\interfaces\agent_authorization_service;
 use moodle_exception;
@@ -56,14 +57,32 @@ class authorization_service implements agent_authorization_service {
     }
 
     /**
-     * Assert that the given user may use the AI instructions feature for this cmid.
+     * Resolve and validate a booking module context by context id.
+     *
+     * @param int $contextid
+     * @return context_module
+     */
+    private function require_booking_module_context(int $contextid): context_module {
+        $context = context::instance_by_id($contextid, MUST_EXIST);
+        if (!($context instanceof context_module)) {
+            throw new moodle_exception('invalidcontext');
+        }
+        $cm = get_coursemodule_from_id('booking', (int)$context->instanceid);
+        if (!$cm) {
+            throw new moodle_exception('invalidcoursemodule', 'mod_booking');
+        }
+        return $context;
+    }
+
+    /**
+     * Assert that the given user may use the AI instructions feature for this context.
      *
      * @param int $userid
-     * @param int $cmid
+     * @param int $contextid
      * @return void
      */
-    public function require_use_capability(int $userid, int $cmid): void {
-        $context = context_module::instance($cmid);
+    public function require_use_capability(int $userid, int $contextid): void {
+        $context = $this->require_booking_module_context($contextid);
         if (!self::is_agent_extension_installed()) {
             throw new required_capability_exception($context, 'mod/booking:useaiinstructions', 'nopermissions', '');
         }
@@ -76,30 +95,29 @@ class authorization_service implements agent_authorization_service {
      * Return true if the user has permission to use AI instructions.
      *
      * @param int $userid
-     * @param int $cmid
+     * @param int $contextid
      * @return bool
      */
-    public function can_use(int $userid, int $cmid): bool {
+    public function can_use(int $userid, int $contextid): bool {
         if (!self::is_agent_extension_installed()) {
             return false;
         }
 
-        $context = context_module::instance($cmid);
-        return has_capability('mod/booking:useaiinstructions', $context, $userid);
+        try {
+            $context = $this->require_booking_module_context($contextid);
+            return has_capability('mod/booking:useaiinstructions', $context, $userid);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**
-     * Assert that the context (cmid) belongs to an active booking module.
+     * Assert that the context belongs to an active booking module.
      *
-     * @param int $cmid
+     * @param int $contextid
      * @return void
      */
-    public function require_valid_context(int $cmid): void {
-        global $DB;
-
-        $cm = get_coursemodule_from_id('booking', $cmid);
-        if (!$cm) {
-            throw new moodle_exception('invalidcoursemodule', 'mod_booking');
-        }
+    public function require_valid_context(int $contextid): void {
+        $this->require_booking_module_context($contextid);
     }
 }

@@ -29,6 +29,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once(__DIR__ . '/abstract_agent_testcase.php');
 
+use context_module;
 use bookingextension_agent\local\wbagent\authorization_service;
 use bookingextension_agent\local\wbagent\conversation_store;
 use bookingextension_agent\local\wbagent\executor;
@@ -200,7 +201,8 @@ final class agent_executor_test extends abstract_agent_testcase {
         $this->expectException(required_capability_exception::class);
 
         $authz = new authorization_service();
-        $authz->require_use_capability((int)$this->student->id, (int)$this->booking->cmid);
+        $contextid = (int)context_module::instance((int)$this->booking->cmid)->id;
+        $authz->require_use_capability((int)$this->student->id, $contextid);
     }
 
     /**
@@ -208,7 +210,8 @@ final class agent_executor_test extends abstract_agent_testcase {
      */
     public function test_authz_can_use_false_for_student(): void {
         $authz = new authorization_service();
-        $this->assertFalse($authz->can_use((int)$this->student->id, (int)$this->booking->cmid));
+        $contextid = (int)context_module::instance((int)$this->booking->cmid)->id;
+        $this->assertFalse($authz->can_use((int)$this->student->id, $contextid));
     }
 
     /**
@@ -216,13 +219,14 @@ final class agent_executor_test extends abstract_agent_testcase {
      */
     public function test_authz_can_use_true_for_teacher(): void {
         $authz = new authorization_service();
-        $this->assertTrue($authz->can_use((int)$this->teacher->id, (int)$this->booking->cmid));
+        $contextid = (int)context_module::instance((int)$this->booking->cmid)->id;
+        $this->assertTrue($authz->can_use((int)$this->teacher->id, $contextid));
     }
 
     /**
-     * require_valid_context throws moodle_exception for a non-existent cmid.
+     * require_valid_context throws moodle_exception for a non-existent contextid.
      */
-    public function test_authz_require_valid_context_throws_for_invalid_cmid(): void {
+    public function test_authz_require_valid_context_throws_for_invalid_contextid(): void {
         $this->expectException(moodle_exception::class);
 
         $authz = new authorization_service();
@@ -230,12 +234,13 @@ final class agent_executor_test extends abstract_agent_testcase {
     }
 
     /**
-     * require_valid_context passes for a valid booking cmid.
+     * require_valid_context passes for a valid booking contextid.
      */
-    public function test_authz_require_valid_context_passes_for_valid_cmid(): void {
+    public function test_authz_require_valid_context_passes_for_valid_contextid(): void {
         $authz = new authorization_service();
+        $contextid = (int)context_module::instance((int)$this->booking->cmid)->id;
         // Must not throw.
-        $authz->require_valid_context((int)$this->booking->cmid);
+        $authz->require_valid_context($contextid);
         $this->assertTrue(true);
     }
 

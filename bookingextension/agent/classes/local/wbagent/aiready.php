@@ -99,7 +99,7 @@ class aiready {
         }
 
         $isplatformadmin = has_capability('moodle/site:config', context_system::instance(), $this->userid);
-        $hascapability = $authz->can_use($this->userid, $this->cmid);
+        $hascapability = $authz->can_use($this->userid, (int)$context->id);
 
         $providersconfigured = false;
         $haswunderbyteprovider = false;

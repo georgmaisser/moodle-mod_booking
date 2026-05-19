@@ -24,6 +24,7 @@
 
 namespace bookingextension_agent\local\wbagent;
 
+use context_module;
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\interfaces\agent_executor;
 use bookingextension_agent\local\wbagent\privacy_anonymizer;
@@ -88,9 +89,10 @@ class executor implements agent_executor {
       * @return array
       */
     public function execute_commands(array $commands, int $cmid, int $userid, string $idempotencykey, int $runid): array {
+        $contextid = (int)context_module::instance($cmid)->id;
         // Re-check authorization (always re-verify in adhoc context).
-        $this->authz->require_use_capability($userid, $cmid);
-        $this->authz->require_valid_context($cmid);
+        $this->authz->require_use_capability($userid, $contextid);
+        $this->authz->require_valid_context($contextid);
 
         // Idempotency guard.
         if ($this->store->run_exists_other_than($idempotencykey, $runid)) {

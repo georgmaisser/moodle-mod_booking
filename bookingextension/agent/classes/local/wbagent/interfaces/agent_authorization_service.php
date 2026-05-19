@@ -37,32 +37,32 @@ namespace bookingextension_agent\local\wbagent\interfaces;
  */
 interface agent_authorization_service {
     /**
-     * Assert that the given user may use the AI instructions feature for this cmid.
+     * Assert that the given user may use the AI instructions feature for this context.
      *
      * Throws \required_capability_exception on failure.
      *
      * @param int $userid
-     * @param int $cmid
+     * @param int $contextid
      * @return void
      */
-    public function require_use_capability(int $userid, int $cmid): void;
+    public function require_use_capability(int $userid, int $contextid): void;
 
     /**
      * Return true if the user has permission to use AI instructions.
      *
      * @param int $userid
-     * @param int $cmid
+     * @param int $contextid
      * @return bool
      */
-    public function can_use(int $userid, int $cmid): bool;
+    public function can_use(int $userid, int $contextid): bool;
 
     /**
-     * Assert that the context (cmid) belongs to an active booking module.
+     * Assert that the context belongs to an active booking module.
      *
      * Throws \moodle_exception on failure.
      *
-     * @param int $cmid
+     * @param int $contextid
      * @return void
      */
-    public function require_valid_context(int $cmid): void;
+    public function require_valid_context(int $contextid): void;
 }

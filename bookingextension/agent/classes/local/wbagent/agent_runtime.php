@@ -27,6 +27,7 @@ declare(strict_types=1);
 namespace bookingextension_agent\local\wbagent;
 
 use core_text;
+use context_module;
 use bookingextension_agent\local\wbagent\agent_state;
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\result_payload_summarizer;
@@ -1782,7 +1783,8 @@ class agent_runtime {
             (string)($result['response_type'] ?? '') === 'error'
             && empty((array)($result['issue_codes'] ?? []))
         ) {
-            $fallback = ai_error_classifier::classify_from_db($userid, $cmid);
+            $contextid = (int)context_module::instance($cmid)->id;
+            $fallback = ai_error_classifier::classify_from_db($userid, $contextid);
             if (!empty($fallback)) {
                 $result['issue_codes'] = $fallback;
             }
