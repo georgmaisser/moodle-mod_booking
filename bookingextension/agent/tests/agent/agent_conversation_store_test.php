@@ -146,7 +146,7 @@ final class agent_conversation_store_test extends booking_advanced_testcase {
         $thread = $store->get_or_create_thread(42, 70, 19);
 
         $messageid = $store->add_message((int)$thread->id, 'user', 'User-scoped message');
-        $record = $DB->get_record('booking_ai_messages', ['id' => $messageid], 'id,threadid,userid', MUST_EXIST);
+        $record = $DB->get_record('local_wbagent_ai_messages', ['id' => $messageid], 'id,threadid,userid', MUST_EXIST);
 
         $this->assertSame((int)$thread->id, (int)$record->threadid);
         $this->assertSame(42, (int)$record->userid);

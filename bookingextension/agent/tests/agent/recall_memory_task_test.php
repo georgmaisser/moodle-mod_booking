@@ -42,7 +42,7 @@ final class recall_memory_task_test extends abstract_agent_testcase {
         $record = new \stdClass();
         $record->id = $messageid;
         $record->timecreated = $timestamp;
-        $DB->update_record('booking_ai_messages', $record);
+        $DB->update_record('local_wbagent_ai_messages', $record);
     }
 
     /**

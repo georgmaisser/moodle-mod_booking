@@ -124,7 +124,7 @@ final class ai_send_message_simulated_llm_test extends abstract_agent_testcase {
 
         $this->assertGreaterThan(0, (int)($response['threadid'] ?? 0));
 
-        $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => (int)$response['threadid']], 'id ASC');
+        $entries = $DB->get_records('local_wbagent_ai_llm_debug', ['threadid' => (int)$response['threadid']], 'id ASC');
         $this->assertGreaterThanOrEqual((int)$case['min_debug_rows'], count($entries));
         if (isset($case['expected_loop_depth_min'])) {
             $this->assertGreaterThanOrEqual((int)$case['expected_loop_depth_min'], count($entries));

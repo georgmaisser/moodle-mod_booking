@@ -145,8 +145,8 @@ final class embeddings_runtime_real_llm_test extends abstract_agent_testcase {
             'Embedded runtime call still returned error: ' . json_encode($result, JSON_UNESCAPED_UNICODE)
         );
 
-        $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => $threadid], 'id ASC');
-        $this->assertNotEmpty($entries, 'Expected booking_ai_llm_debug rows for runtime telemetry assertions.');
+        $entries = $DB->get_records('local_wbagent_ai_llm_debug', ['threadid' => $threadid], 'id ASC');
+        $this->assertNotEmpty($entries, 'Expected local_wbagent_ai_llm_debug rows for runtime telemetry assertions.');
 
         $hasmarker = false;
         foreach ($entries as $entry) {

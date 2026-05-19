@@ -534,8 +534,8 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
     protected function assert_generate_text_logged_for_thread(int $threadid): void {
         global $DB;
 
-        $entries = $DB->get_records('booking_ai_llm_debug', ['threadid' => $threadid], 'id ASC');
-        $this->assertNotEmpty($entries, 'booking_ai_llm_debug must contain entries for thread ' . $threadid . '.');
+        $entries = $DB->get_records('local_wbagent_ai_llm_debug', ['threadid' => $threadid], 'id ASC');
+        $this->assertNotEmpty($entries, 'local_wbagent_ai_llm_debug must contain entries for thread ' . $threadid . '.');
 
         $hasgenerate = false;
         foreach ($entries as $entry) {
@@ -548,7 +548,7 @@ abstract class abstract_agent_testcase extends booking_advanced_testcase {
 
         $this->assertTrue(
             $hasgenerate,
-            'Expected at least one generate_text LLM debug entry (source contains ac=gen or ac=wpl) in booking_ai_llm_debug.'
+            'Expected at least one generate_text LLM debug entry (source contains ac=gen or ac=wpl) in local_wbagent_ai_llm_debug.'
         );
     }
 

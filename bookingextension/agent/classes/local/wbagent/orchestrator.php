@@ -1564,7 +1564,7 @@ PROMPT;
     }
 
     /**
-     * Build compact orchestrator telemetry in source field for booking_ai_llm_debug.
+     * Build compact orchestrator telemetry in source field for local_wbagent_ai_llm_debug.
      *
      * @param string $steptype
      * @param string $actionclass

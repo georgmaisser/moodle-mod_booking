@@ -4,7 +4,7 @@
     xsi:noNamespaceSchemaLocation="../../../../../lib/xmldb/xmldb.xsd"
 >
   <TABLES>
-    <TABLE NAME="booking_ai_threads" COMMENT="AI agent conversation threads, one per user per booking context">
+    <TABLE NAME="local_wbagent_ai_threads" COMMENT="AI agent conversation threads, one per user per booking context">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
@@ -23,7 +23,7 @@
         <INDEX NAME="statusidx" UNIQUE="false" FIELDS="status"/>
       </INDEXES>
     </TABLE>
-    <TABLE NAME="booking_ai_messages" COMMENT="Individual messages within an AI agent conversation thread">
+    <TABLE NAME="local_wbagent_ai_messages" COMMENT="Individual messages within an AI agent conversation thread">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="threadid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
@@ -35,14 +35,14 @@
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
-        <KEY NAME="threadid" TYPE="foreign" FIELDS="threadid" REFTABLE="booking_ai_threads" REFFIELDS="id"/>
+        <KEY NAME="threadid" TYPE="foreign" FIELDS="threadid" REFTABLE="local_wbagent_ai_threads" REFFIELDS="id"/>
       </KEYS>
       <INDEXES>
         <INDEX NAME="threadidx" UNIQUE="false" FIELDS="threadid"/>
         <INDEX NAME="useridthreadidx" UNIQUE="false" FIELDS="userid, threadid"/>
       </INDEXES>
     </TABLE>
-    <TABLE NAME="booking_ai_runs" COMMENT="AI agent execution runs tracking actions to be or already executed">
+    <TABLE NAME="local_wbagent_ai_runs" COMMENT="AI agent execution runs tracking actions to be or already executed">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="threadid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
@@ -57,7 +57,7 @@
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
-        <KEY NAME="threadid" TYPE="foreign" FIELDS="threadid" REFTABLE="booking_ai_threads" REFFIELDS="id"/>
+        <KEY NAME="threadid" TYPE="foreign" FIELDS="threadid" REFTABLE="local_wbagent_ai_threads" REFFIELDS="id"/>
       </KEYS>
       <INDEXES>
         <INDEX NAME="useridcmidx" UNIQUE="false" FIELDS="userid, cmid"/>
@@ -65,7 +65,7 @@
         <INDEX NAME="idempotencyidx" UNIQUE="true" FIELDS="idempotencykey"/>
       </INDEXES>
     </TABLE>
-    <TABLE NAME="booking_ai_llm_debug" COMMENT="Raw LLM request/response strings for booking AI debug mode">
+    <TABLE NAME="local_wbagent_ai_llm_debug" COMMENT="Raw LLM request/response strings for booking AI debug mode">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="threadid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
@@ -80,7 +80,7 @@
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
-        <KEY NAME="threadid" TYPE="foreign" FIELDS="threadid" REFTABLE="booking_ai_threads" REFFIELDS="id"/>
+        <KEY NAME="threadid" TYPE="foreign" FIELDS="threadid" REFTABLE="local_wbagent_ai_threads" REFFIELDS="id"/>
       </KEYS>
       <INDEXES>
         <INDEX NAME="threadtimeidx" UNIQUE="false" FIELDS="threadid, timecreated"/>

@@ -27,7 +27,7 @@ In addition to the wave grouping, conversation-style agent tests are now organiz
 
 - `webservice_mock_llm/`
   - Uses `ai_send_message` as the entry point and injects a scripted `core_ai\manager`.
-  - Keeps the runtime, loop, executor, persistence, and `booking_ai_llm_debug` logging real.
+  - Keeps the runtime, loop, executor, persistence, and `local_wbagent_ai_llm_debug` logging real.
   - Covers the whole agent stack without a live provider.
 
 This gives a clear structural counterpart to `real_llm/`: same scenario family, but deterministic execution.

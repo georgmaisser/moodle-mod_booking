@@ -19,7 +19,7 @@ namespace mod_booking;
 use mod_booking\local\testing\booking_advanced_testcase;
 
 /**
- * Upgrade tests for booking_ai_messages.userid migration.
+ * Upgrade tests for local_wbagent_ai_messages.userid migration.
  *
  * @package    mod_booking
  * @category   test
@@ -27,15 +27,15 @@ use mod_booking\local\testing\booking_advanced_testcase;
  */
 final class ai_messages_userid_upgrade_test extends booking_advanced_testcase {
     /**
-     * Upgrade must backfill booking_ai_messages.userid from booking_ai_threads.userid.
+     * Upgrade must backfill local_wbagent_ai_messages.userid from local_wbagent_ai_threads.userid.
      */
-    public function test_upgrade_backfills_booking_ai_messages_userid(): void {
+    public function test_upgrade_backfills_local_wbagent_ai_messages_userid(): void {
         global $DB;
 
         $this->resetAfterTest();
 
         $dbman = $DB->get_manager();
-        $table = new \xmldb_table('booking_ai_messages');
+        $table = new \xmldb_table('local_wbagent_ai_messages');
         $index = new \xmldb_index('useridthreadidx', XMLDB_INDEX_NOTUNIQUE, ['userid', 'threadid']);
         if ($dbman->index_exists($table, $index)) {
             $dbman->drop_index($table, $index);
@@ -46,7 +46,7 @@ final class ai_messages_userid_upgrade_test extends booking_advanced_testcase {
             $dbman->drop_field($table, $field);
         }
 
-        $threada = (int)$DB->insert_record('booking_ai_threads', (object)[
+        $threada = (int)$DB->insert_record('local_wbagent_ai_threads', (object)[
             'userid' => 301,
             'cmid' => 11,
             'bookingid' => 21,
@@ -55,7 +55,7 @@ final class ai_messages_userid_upgrade_test extends booking_advanced_testcase {
             'timecreated' => time() - 200,
             'timemodified' => time() - 200,
         ]);
-        $threadb = (int)$DB->insert_record('booking_ai_threads', (object)[
+        $threadb = (int)$DB->insert_record('local_wbagent_ai_threads', (object)[
             'userid' => 302,
             'cmid' => 11,
             'bookingid' => 21,
@@ -65,14 +65,14 @@ final class ai_messages_userid_upgrade_test extends booking_advanced_testcase {
             'timemodified' => time() - 100,
         ]);
 
-        $messagea = (int)$DB->insert_record('booking_ai_messages', (object)[
+        $messagea = (int)$DB->insert_record('local_wbagent_ai_messages', (object)[
             'threadid' => $threada,
             'role' => 'user',
             'content' => 'Upgrade A',
             'structuredjson' => null,
             'timecreated' => time() - 90,
         ]);
-        $messageb = (int)$DB->insert_record('booking_ai_messages', (object)[
+        $messageb = (int)$DB->insert_record('local_wbagent_ai_messages', (object)[
             'threadid' => $threadb,
             'role' => 'assistant',
             'content' => 'Upgrade B',
@@ -87,8 +87,8 @@ final class ai_messages_userid_upgrade_test extends booking_advanced_testcase {
         $this->assertTrue($dbman->field_exists($table, $notnullfield));
         $this->assertTrue($dbman->index_exists($table, $index));
 
-        $rowa = $DB->get_record('booking_ai_messages', ['id' => $messagea], 'id,userid', MUST_EXIST);
-        $rowb = $DB->get_record('booking_ai_messages', ['id' => $messageb], 'id,userid', MUST_EXIST);
+        $rowa = $DB->get_record('local_wbagent_ai_messages', ['id' => $messagea], 'id,userid', MUST_EXIST);
+        $rowb = $DB->get_record('local_wbagent_ai_messages', ['id' => $messageb], 'id,userid', MUST_EXIST);
 
         $this->assertSame(301, (int)$rowa->userid);
         $this->assertSame(302, (int)$rowb->userid);
