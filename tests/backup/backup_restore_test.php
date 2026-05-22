@@ -16,7 +16,7 @@
 
 namespace mod_booking;
 
-use mod_booking\local\testing\booking_advanced_testcase;
+use mod_booking\booking_advanced_testcase;
 use backup_controller;
 use restore_controller;
 use backup;

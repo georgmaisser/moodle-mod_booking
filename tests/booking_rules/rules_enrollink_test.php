@@ -25,7 +25,7 @@
 
 namespace mod_booking;
 
-use mod_booking\local\testing\booking_advanced_testcase;
+use mod_booking\booking_advanced_testcase;
 use stdClass;
 use mod_booking\teachers_handler;
 use mod_booking\booking_rules\booking_rules;

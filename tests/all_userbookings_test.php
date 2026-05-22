@@ -16,11 +16,13 @@
 
 namespace mod_booking;
 
-use mod_booking\local\testing\booking_advanced_testcase;
+use mod_booking\booking_advanced_testcase;
 use stdClass;
 use mod_booking\bo_availability\bo_info;
 use mod_booking\local\mobile\customformstore;
 use tool_mocktesttime\time_mock;
+
+require_once(__DIR__ . '/booking_advanced_testcase.php');
 
 /**
  * Tests for all_userbookings::other_cols.
