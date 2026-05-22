@@ -26,7 +26,7 @@
 
 namespace mod_booking;
 
-use advanced_testcase;
+use mod_booking\local\testing\booking_advanced_testcase;
 use coding_exception;
 use context_course;
 use context_system;
@@ -46,26 +46,15 @@ use tool_mocktesttime\time_mock;
  * @runInSeparateProcess
  * @runTestsInSeparateProcesses
  */
-final class arguments_test extends advanced_testcase {
+final class arguments_test extends booking_advanced_testcase {
     /**
      * Tests set up.
      */
     public function setUp(): void {
         parent::setUp();
         $this->resetAfterTest(true);
-        time_mock::init();
         time_mock::set_mock_time(strtotime('now'));
         singleton_service::destroy_instance();
-    }
-
-    /**
-     * Mandatory clean-up after each test.
-     */
-    public function tearDown(): void {
-        parent::tearDown();
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $plugingenerator->teardown();
     }
 
     /**
