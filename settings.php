@@ -224,7 +224,7 @@ if ($ADMIN->fulltree) {
 
         $expirationdate = wb_payment::decryptlicensekey($licensekey);
         if (!empty($expirationdate)) {
-            $expirationdatetimestamp = strtotime($expirationdate);
+            $expirationdatetimestamp = strtotime($expirationdate, time());
             $now = time();
             if ($expirationdatetimestamp < $now) {
                 // License has expired.
@@ -681,6 +681,15 @@ if ($ADMIN->fulltree) {
             'booking/openbookingdetailinsametab',
             get_string('openbookingdetailinsametab', 'mod_booking'),
             get_string('openbookingdetailinsametab_desc', 'mod_booking'),
+            0
+        )
+    );
+
+    $settings->add(
+        new admin_setting_configcheckbox(
+            'booking/customformprefillenabled',
+            get_string('customformprefillenabled', 'mod_booking'),
+            get_string('customformprefillenabled_desc', 'mod_booking'),
             0
         )
     );
