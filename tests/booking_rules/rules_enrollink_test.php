@@ -38,6 +38,9 @@ use local_shopping_cart\local\cartstore;
 use mod_booking\enrollink;
 use tool_mocktesttime\time_mock;
 
+defined('MOODLE_INTERNAL') || die();
+require_once(__DIR__ . '/../booking_advanced_testcase.php');
+
 /**
  * Tests for booking enrollink rules.
  *

@@ -38,6 +38,9 @@ use mod_booking\local\mobile\customformstore;
 use tool_mocktesttime\time_mock;
 use mod_booking_generator;
 
+defined('MOODLE_INTERNAL') || die();
+require_once(__DIR__ . '/../booking_advanced_testcase.php');
+
 /**
  * Tests for booking rules.
  *

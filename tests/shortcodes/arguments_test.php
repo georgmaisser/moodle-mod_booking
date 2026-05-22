@@ -35,6 +35,11 @@ use mod_booking_generator;
 use stdClass;
 use tool_mocktesttime\time_mock;
 
+defined('MOODLE_INTERNAL') || die();
+global $CFG;
+require_once($CFG->dirroot . '/mod/booking/lib.php');
+require_once(__DIR__ . '/../booking_advanced_testcase.php');
+
 /**
  * This test tests the functionality of some arguments.
  *
