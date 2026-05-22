@@ -30,6 +30,7 @@ use mod_booking\booking;
 use mod_booking\booking_rules\booking_rules;
 use mod_booking\booking_rules\rules_info;
 use mod_booking\output\view;
+use mod_booking\price;
 use mod_booking\table\bookingoptions_wbtable;
 use mod_booking\booking_option;
 use mod_booking\booking_campaigns\campaigns_info;
@@ -124,6 +125,7 @@ class mod_booking_generator extends testing_module_generator {
         userprofilefield_1_default::reset_instance();
         userprofilefield_2_custom::reset_instance();
         booking_rules::$rules = [];
+        price::destroy_singletons();
         // Slotbooking static caches.
         slot_availability::reset_caches();
         slot_rules::reset_caches();
