@@ -92,6 +92,60 @@ $capabilities = [
             'manager' => CAP_ALLOW,
         ],
     ],
+    // AI task capability: create normal option (type 0).
+    'mod/booking:task_mod_booking_create_option_normal' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // AI task capability: update normal option (type 0).
+    'mod/booking:task_mod_booking_update_option_normal' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // AI task capability: create selflearning option (type 1).
+    'mod/booking:task_mod_booking_create_option_selflearning' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // AI task capability: update selflearning option (type 1).
+    'mod/booking:task_mod_booking_update_option_selflearning' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // AI task capability: create slotbooking option (type 2).
+    'mod/booking:task_mod_booking_create_option_slotbooking' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // AI task capability: update slotbooking option (type 2).
+    'mod/booking:task_mod_booking_update_option_slotbooking' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
     'mod/booking:readresponses' => [
         'captype' => 'read',
         'contextlevel' => CONTEXT_MODULE,
