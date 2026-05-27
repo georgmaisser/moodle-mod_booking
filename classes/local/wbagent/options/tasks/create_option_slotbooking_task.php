@@ -16,6 +16,7 @@
 
 namespace mod_booking\local\wbagent\options\tasks;
 
+use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 use bookingextension_agent\local\wbagent\services\task_prompt_contract;
 
@@ -26,7 +27,7 @@ use bookingextension_agent\local\wbagent\services\task_prompt_contract;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class create_option_slotbooking_task extends option_mutation_task_base {
+final class create_option_slotbooking_task extends option_mutation_task_base implements task_trigger_provider_interface {
     /** @var string[] */
     private const REQUIRED_SLOT_FIELDS = [
         'slot_opening_time',
@@ -81,7 +82,15 @@ final class create_option_slotbooking_task extends option_mutation_task_base {
         return new task_prompt_contract([
             'intent' => 'create_slotbooking',
             'anchors' => ['text', 'slot_opening_time', 'slot_closing_time', 'slot_valid_from', 'slot_valid_until'],
-            'minimal_input' => ['text', 'slot_opening_time', 'slot_closing_time', 'slot_valid_from', 'slot_valid_until'],
+            'minimal_input' => [
+                'text',
+                'slot_opening_time',
+                'slot_closing_time',
+                'slot_valid_from',
+                'slot_valid_until',
+                'slot_duration_minutes',
+                'slot_max_participants_per_slot',
+            ],
             'example_input' => $this->get_example_input(),
             'namespace' => 'mod_booking',
             'version' => 1,
@@ -91,13 +100,33 @@ final class create_option_slotbooking_task extends option_mutation_task_base {
     }
 
     /**
+     * Return task-specific message triggers.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_message_triggers(): array {
+        return [[
+            'id' => 'mod_booking.create_option_slotbooking_explicit_slots',
+            'description' => 'Create slotbooking only when user intent is explicit slot form '
+                . 'behavior (slot windows, slot duration, participants per slot, weekday slot flags). '
+                . 'Do not use for regular weekday/date series like Mon-Fri 10-12.',
+            'examples' => [
+                'Erstelle Slotbuchung mit 30-Minuten-Slots und maximal 1 Person pro Slot',
+                'Setze slot opening time 09:00, closing 12:00, duration 20 minutes',
+                'Create slot booking with slot_day_1 and slot_day_3 enabled',
+            ],
+        ]];
+    }
+
+    /**
      * Return slotbooking schema with explicit required slot fields.
      *
      * @return array<string,mixed>
      */
     public function get_schema(): array {
         $schema = parent::get_schema();
-        $schema['description'] = 'Create a slotbooking option (type 2) with explicit slot form fields.';
+        $schema['description'] = 'Create a slotbooking option (type 2) only for explicit slot-form use cases with slot_* fields. '
+            . 'Not for regular date/week based series where one normal option per occurrence is intended.';
 
         $schema['properties']['slot_opening_time'] = [
             'type' => 'string',
@@ -169,26 +198,57 @@ final class create_option_slotbooking_task extends option_mutation_task_base {
         $structure = parent::check_structure($input);
         $errors = (array)($structure['errors'] ?? []);
 
+        foreach (['slot_opening_time', 'slot_closing_time'] as $field) {
+            if (!array_key_exists($field, $input)) {
+                continue;
+            }
+
+            if (!preg_match('/^\d{2}:\d{2}$/', trim((string)$input[$field]))) {
+                $errors[] = 'Invalid slot time format for ' . $field . ': expected HH:MM.';
+            }
+        }
+
+        if (array_key_exists('slot_duration_minutes', $input) && (int)$input['slot_duration_minutes'] <= 0) {
+            $errors[] = 'slot_duration_minutes must be greater than 0.';
+        }
+
+        if (array_key_exists('slot_max_participants_per_slot', $input) && (int)$input['slot_max_participants_per_slot'] <= 0) {
+            $errors[] = 'slot_max_participants_per_slot must be greater than 0.';
+        }
+
+        return [
+            'valid' => empty($errors),
+            'errors' => $errors,
+            'issue_codes' => !empty($errors) ? ['RECOVERABLE_INPUT_ERROR'] : [],
+        ];
+    }
+
+    /**
+     * Run preflight and include normalized slot form fields in prepared input.
+     *
+     * @param array<string,mixed> $input
+     * @param int $contextid
+     * @param int $userid
+     * @return preflight_result_v2
+     */
+    public function preflight(array $input, int $contextid, int $userid): preflight_result_v2 {
+        $result = parent::preflight($input, $contextid, $userid);
+        if ($result->status !== 'pass') {
+            return $result;
+        }
+
+        $errors = [];
+
         foreach (self::REQUIRED_SLOT_FIELDS as $field) {
             if (!array_key_exists($field, $input) || trim((string)$input[$field]) === '') {
                 $errors[] = 'Missing required slot field: ' . $field . '.';
             }
         }
 
-        foreach (['slot_opening_time', 'slot_closing_time'] as $field) {
-            if (array_key_exists($field, $input) && !preg_match('/^\d{2}:\d{2}$/', trim((string)$input[$field]))) {
-                $errors[] = 'Invalid slot time format for ' . $field . ': expected HH:MM.';
-            }
-        }
-
-        $duration = (int)($input['slot_duration_minutes'] ?? 0);
-        if ($duration <= 0) {
-            $errors[] = 'slot_duration_minutes must be greater than 0.';
-        }
-
-        $maxparticipants = (int)($input['slot_max_participants_per_slot'] ?? 0);
-        if ($maxparticipants <= 0) {
-            $errors[] = 'slot_max_participants_per_slot must be greater than 0.';
+        $openingminutes = $this->clock_to_minutes((string)($input['slot_opening_time'] ?? ''));
+        $closingminutes = $this->clock_to_minutes((string)($input['slot_closing_time'] ?? ''));
+        if ($openingminutes >= 0 && $closingminutes >= 0 && $closingminutes <= $openingminutes) {
+            $errors[] = 'slot_closing_time must be later than slot_opening_time.';
         }
 
         $validfrom = $this->parse_datetime_to_timestamp($input['slot_valid_from'] ?? null);
@@ -197,12 +257,6 @@ final class create_option_slotbooking_task extends option_mutation_task_base {
             $errors[] = 'slot_valid_from and slot_valid_until must be valid date/time values.';
         } else if ($validuntil < $validfrom) {
             $errors[] = 'slot_valid_until must be greater than or equal to slot_valid_from.';
-        }
-
-        $openingminutes = $this->clock_to_minutes((string)($input['slot_opening_time'] ?? ''));
-        $closingminutes = $this->clock_to_minutes((string)($input['slot_closing_time'] ?? ''));
-        if ($openingminutes >= 0 && $closingminutes >= 0 && $closingminutes <= $openingminutes) {
-            $errors[] = 'slot_closing_time must be later than slot_opening_time.';
         }
 
         $hasweekday = false;
@@ -225,24 +279,14 @@ final class create_option_slotbooking_task extends option_mutation_task_base {
             $errors[] = 'At least one weekday flag slot_day_1..slot_day_7 must be set to 1.';
         }
 
-        return [
-            'valid' => empty($errors),
-            'errors' => $errors,
-        ];
-    }
-
-    /**
-     * Run preflight and include normalized slot form fields in prepared input.
-     *
-     * @param array<string,mixed> $input
-     * @param int $contextid
-     * @param int $userid
-     * @return preflight_result_v2
-     */
-    public function preflight(array $input, int $contextid, int $userid): preflight_result_v2 {
-        $result = parent::preflight($input, $contextid, $userid);
-        if ($result->status !== 'pass') {
-            return $result;
+        if (!empty($errors)) {
+            return preflight_result_v2::invalid([[
+                'code' => 'RECOVERABLE_INPUT_ERROR',
+                'severity' => 'needs_clarification',
+                'message' => implode(' ', $errors)
+                    . ' If you want regular date/week based options (including weekday series), '
+                    . 'use mod_booking.create_option_normal instead.',
+            ]]);
         }
 
         $prepared = $result->preparedinput;

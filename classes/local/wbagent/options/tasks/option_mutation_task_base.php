@@ -59,6 +59,7 @@ abstract class option_mutation_task_base extends base_task {
             return [
                 'text' => 'Option A',
                 'maxanswers' => 10,
+                'invisible' => 1,
             ];
         }
 
@@ -106,6 +107,11 @@ abstract class option_mutation_task_base extends base_task {
             'maxanswers' => [
                 'type' => 'integer',
                 'description' => 'Max participant count. 0 means unlimited.',
+                'required' => false,
+            ],
+            'invisible' => [
+                'type' => 'integer',
+                'description' => 'Visibility flag (0=visible, 1=invisible). Defaults to 1 for create tasks.',
                 'required' => false,
             ],
         ];
@@ -163,6 +169,18 @@ abstract class option_mutation_task_base extends base_task {
 
         if (array_key_exists('maxanswers', $input) && !is_numeric($input['maxanswers'])) {
             $errors[] = 'Invalid field maxanswers: expected integer.';
+        }
+
+        if (array_key_exists('invisible', $input)) {
+            $rawinvisible = $input['invisible'];
+            if (!is_bool($rawinvisible) && !is_numeric($rawinvisible)) {
+                $errors[] = 'Invalid field invisible: expected 0 or 1.';
+            } else {
+                $normalizedinvisible = (int)$rawinvisible;
+                if (!in_array($normalizedinvisible, [0, 1], true)) {
+                    $errors[] = 'Invalid field invisible: expected 0 or 1.';
+                }
+            }
         }
 
         if ($this->iscreate && array_key_exists('bookingid', $input) && !is_numeric($input['bookingid'])) {
@@ -245,6 +263,7 @@ abstract class option_mutation_task_base extends base_task {
             $prepared['maxanswers'] = array_key_exists('maxanswers', $input)
                 ? max(0, (int)$input['maxanswers'])
                 : 0;
+            $prepared['invisible'] = $this->normalize_invisible($input['invisible'] ?? null, 1);
             $prepared['id'] = 0;
             $prepared['optionid'] = 0;
 
@@ -278,6 +297,10 @@ abstract class option_mutation_task_base extends base_task {
         $prepared['maxanswers'] = array_key_exists('maxanswers', $input)
             ? max(0, (int)$input['maxanswers'])
             : (int)($settings->maxanswers ?? 0);
+
+        $prepared['invisible'] = array_key_exists('invisible', $input)
+            ? $this->normalize_invisible($input['invisible'], (int)($settings->invisible ?? 0))
+            : (int)($settings->invisible ?? 0);
 
         // Ensure the option exists in DB before execute.
         if (!$DB->record_exists('booking_options', ['id' => $prepared['id'], 'bookingid' => $prepared['bookingid']])) {
@@ -323,6 +346,7 @@ abstract class option_mutation_task_base extends base_task {
                 'optiontype' => (int)($settings->type ?? 0),
                 'text' => (string)($settings->text ?? ''),
                 'maxanswers' => (int)($settings->maxanswers ?? 0),
+                'invisible' => (int)($settings->invisible ?? 0),
             ];
         } catch (\Throwable $e) {
             return [
@@ -345,5 +369,25 @@ abstract class option_mutation_task_base extends base_task {
         }
 
         return $type;
+    }
+
+    /**
+     * Normalize invisible field to 0/1.
+     *
+     * @param mixed $value
+     * @param int $default
+     * @return int
+     */
+    private function normalize_invisible($value, int $default): int {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 1 : 0;
+        }
+
+        $normalized = (int)$value;
+        return in_array($normalized, [0, 1], true) ? $normalized : $default;
     }
 }
