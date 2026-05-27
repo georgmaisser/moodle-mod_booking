@@ -61,7 +61,7 @@ final class create_option_slotbooking_task extends option_mutation_task_base imp
      */
     public function get_example_input(): array {
         return [
-            'text' => 'Office Hour Slots',
+            'text' => 'Sprechstunde',
             'maxanswers' => 20,
             'slot_opening_time' => '10:00',
             'slot_closing_time' => '12:00',
@@ -96,6 +96,8 @@ final class create_option_slotbooking_task extends option_mutation_task_base imp
             'version' => 1,
             'capabilities' => [],
             'context_scopes' => ['module'],
+            'description' => 'Use this task for bookable appointment/office-hour/consultation style availability '
+                . 'where participants should choose one slot within a broader time window.',
         ]);
     }
 
@@ -108,10 +110,15 @@ final class create_option_slotbooking_task extends option_mutation_task_base imp
         return [[
             'id' => 'mod_booking.create_option_slotbooking_explicit_slots',
             'description' => 'Create slotbooking only when user intent is explicit slot form '
-                . 'behavior (slot windows, slot duration, participants per slot, weekday slot flags). '
-                . 'Do not use for regular weekday/date series like Mon-Fri 10-12.',
+                . 'behavior (slot windows, slot duration, participants per slot, weekday slot flags) '
+                . 'or when the user wants people to book appointments such as office hours, consultation hours, '
+                . 'or a Sprechstunde inside an availability window. Do not use for regular weekday/date series '
+                . 'like Mon-Fri 10-12.',
             'examples' => [
                 'Erstelle Slotbuchung mit 30-Minuten-Slots und maximal 1 Person pro Slot',
+                'Ich moechte, dass jemand meine Sprechstunde buchen kann',
+                'Erstelle eine buchbare Sprechstunde mit 20-Minuten-Terminen',
+                'Create bookable office hours with 15-minute appointment slots',
                 'Setze slot opening time 09:00, closing 12:00, duration 20 minutes',
                 'Create slot booking with slot_day_1 and slot_day_3 enabled',
             ],
@@ -126,6 +133,8 @@ final class create_option_slotbooking_task extends option_mutation_task_base imp
     public function get_schema(): array {
         $schema = parent::get_schema();
         $schema['description'] = 'Create a slotbooking option (type 2) only for explicit slot-form use cases with slot_* fields. '
+            . 'Also use it for bookable office hours, Sprechstunden, consultation hours, or appointment-style '
+            . 'availability where users should choose one slot inside a time window. '
             . 'Not for regular date/week based series where one normal option per occurrence is intended.';
 
         $schema['properties']['slot_opening_time'] = [

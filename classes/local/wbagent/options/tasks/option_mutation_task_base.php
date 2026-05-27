@@ -336,17 +336,30 @@ abstract class option_mutation_task_base extends base_task {
             $context = context_module::instance($cmid);
             $optionid = (int)booking_option::update((object)$preparedinput, $context);
             $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+            $optiontype = (int)($settings->type ?? 0);
+            $title = (string)($settings->text ?? '');
+            $bookingid = (int)($settings->bookingid ?? 0);
+            $maxanswers = (int)($settings->maxanswers ?? 0);
+            $invisible = (int)($settings->invisible ?? 0);
 
             return [
                 'status' => 'executed',
                 'detail' => $this->iscreate ? 'Booking option created.' : 'Booking option updated.',
+                'observation_full' => ($this->iscreate ? 'Booking option created' : 'Booking option updated')
+                    . ': optionid=' . $optionid
+                    . ', title="' . $title . '"'
+                    . ', bookingid=' . $bookingid
+                    . ', type=' . $optiontype
+                    . ', maxanswers=' . $maxanswers
+                    . ', invisible=' . $invisible
+                    . '.',
                 'resultid' => $optionid,
                 'optionid' => $optionid,
-                'bookingid' => (int)($settings->bookingid ?? 0),
-                'optiontype' => (int)($settings->type ?? 0),
-                'text' => (string)($settings->text ?? ''),
-                'maxanswers' => (int)($settings->maxanswers ?? 0),
-                'invisible' => (int)($settings->invisible ?? 0),
+                'bookingid' => $bookingid,
+                'optiontype' => $optiontype,
+                'text' => $title,
+                'maxanswers' => $maxanswers,
+                'invisible' => $invisible,
             ];
         } catch (\Throwable $e) {
             return [
