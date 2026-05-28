@@ -16,7 +16,7 @@
 
 namespace mod_booking\local\wbagent\options\tasks;
 
-use bookingextension_agent\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 use mod_booking\bo_availability\bo_info;
@@ -202,6 +202,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $structure = $this->check_structure($input);
         if (!($structure['valid'] ?? false)) {
             return preflight_result_v2::invalid($this->build_preflight_issues((array)($structure['errors'] ?? [])));
@@ -354,6 +355,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $outputlang = $this->get_output_language($input);
 
         $optionid = (int)($input['resolvedoptionid'] ?? 0);

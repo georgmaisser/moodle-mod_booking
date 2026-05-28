@@ -17,7 +17,7 @@
 namespace mod_booking\local\wbagent\options\tasks;
 
 use core_text;
-use bookingextension_agent\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 use mod_booking\bo_availability\bo_info;
@@ -206,6 +206,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $lang = $this->get_output_language($input);
         $issues = [];
 
@@ -277,6 +278,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
      * @return array
      */
     public function execute(array $preparedinput, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         global $DB;
         $outputlang = $this->get_output_language($preparedinput);
 

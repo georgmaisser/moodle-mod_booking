@@ -85,6 +85,7 @@ class create_slotbooking_option_task extends create_option_task {
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         unset($input['selflearningcourse'], $input['duration'], $input['disablecancel']);
         $input['optiontype'] = 'slotbooking';
         $input['slot_enabled'] = true;
@@ -100,6 +101,7 @@ class create_slotbooking_option_task extends create_option_task {
      * @return array
      */
     public function execute(array $preparedinput, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         unset($preparedinput['selflearningcourse'], $preparedinput['duration'], $preparedinput['disablecancel']);
         $preparedinput['optiontype'] = 'slotbooking';
         $preparedinput['slot_enabled'] = true;

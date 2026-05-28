@@ -200,6 +200,7 @@ class explain_docs_topic_task extends booking_task_base implements task_trigger_
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $structure = $this->check_structure($input);
         if (!($structure['valid'] ?? false)) {
             $issues = [];
@@ -224,6 +225,7 @@ class explain_docs_topic_task extends booking_task_base implements task_trigger_
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $question = trim((string)($input['question'] ?? ''));
         $outputlang = $this->get_output_language($input);
         $docpath = trim((string)($input['doc_path'] ?? ''));

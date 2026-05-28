@@ -17,8 +17,9 @@
 namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\base_task;
-use bookingextension_agent\local\wbagent\booking\booking_task_mutation_execute_service;
-use bookingextension_agent\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\booking\booking_task_mutation_execute_service;
+use mod_booking\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\booking\support\booking_mutation_validation;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 
 /**
@@ -620,6 +621,7 @@ abstract class booking_task_base extends base_task {
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         return $this->support->execute($this->get_name(), $input, $cmid, $userid);
     }
 
@@ -647,7 +649,7 @@ abstract class booking_task_base extends base_task {
      * Run service-level preflight validation and return an enriched preflight_result_v2.
      *
      * Centralises the repeated pattern across mutation tasks:
-     *  1. Call booking_task_mutation_execute_service::preflight_validate().
+    *  1. Run shared mutation validation.
      *  2. On errors/ambiguities: append them to $existingissues and return invalid().
      *  3. On success: apply normalized_input and return ok().
      *
@@ -667,8 +669,8 @@ abstract class booking_task_base extends base_task {
         array $existingissues = [],
         string $lang = ''
     ): preflight_result_v2 {
-        $service = new booking_task_mutation_execute_service();
-        $servicepreflight = $service->preflight_validate($taskname, $preparedinput, $cmid, $userid);
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
+        $servicepreflight = booking_mutation_validation::validate_common($preparedinput, $cmid, $taskname);
 
         $issues = $existingissues;
         if (!empty($servicepreflight['errors']) || !empty($servicepreflight['ambiguities'])) {
@@ -690,11 +692,31 @@ abstract class booking_task_base extends base_task {
             return preflight_result_v2::invalid($issues);
         }
 
-        if (is_array($servicepreflight['normalized_input'] ?? null)) {
-            $preparedinput = (array)$servicepreflight['normalized_input'];
+        return preflight_result_v2::ok($preparedinput);
+    }
+
+    /**
+     * Accept both contextid and legacy cmid task-call styles.
+     *
+     * @param int $contextidorcmid
+     * @return int
+     */
+    protected function resolve_cmid_from_context_or_cmid(int $contextidorcmid): int {
+        if ($contextidorcmid <= 0) {
+            return 0;
         }
 
-        return preflight_result_v2::ok($preparedinput);
+        $cm = get_coursemodule_from_id('booking', $contextidorcmid, 0, false, IGNORE_MISSING);
+        if ($cm && !empty($cm->id)) {
+            return (int)$cm->id;
+        }
+
+        $ctx = \context::instance_by_id($contextidorcmid, IGNORE_MISSING);
+        if ($ctx instanceof \context_module && (int)($ctx->instanceid ?? 0) > 0) {
+            return (int)$ctx->instanceid;
+        }
+
+        return $contextidorcmid;
     }
 
     /**

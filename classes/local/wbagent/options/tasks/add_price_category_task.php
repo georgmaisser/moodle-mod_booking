@@ -161,6 +161,7 @@ class add_price_category_task extends booking_task_base implements task_trigger_
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $structure = $this->check_structure($input);
         if (!($structure['valid'] ?? false)) {
             return preflight_result_v2::invalid($this->build_preflight_issues((array)($structure['errors'] ?? [])));
@@ -237,6 +238,7 @@ class add_price_category_task extends booking_task_base implements task_trigger_
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         if (!has_capability('moodle/site:config', context_system::instance())) {
             return [
                 'status' => 'error',

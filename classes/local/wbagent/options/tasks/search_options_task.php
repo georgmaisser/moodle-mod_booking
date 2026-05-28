@@ -17,7 +17,7 @@
 namespace mod_booking\local\wbagent\options\tasks;
 
 use core_text;
-use bookingextension_agent\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 
@@ -165,6 +165,7 @@ class search_options_task extends booking_task_base implements task_trigger_prov
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $structure = $this->check_structure($input);
         if (!($structure['valid'] ?? false)) {
             $issues = [];
@@ -189,6 +190,7 @@ class search_options_task extends booking_task_base implements task_trigger_prov
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         global $DB;
 
         $query = trim((string)($input['query'] ?? ''));

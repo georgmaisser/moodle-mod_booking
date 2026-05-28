@@ -285,6 +285,7 @@ class configure_booking_instance_task extends booking_task_base {
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         // Capability check.
         $context = context_module::instance($cmid);
         if (!has_capability('mod/booking:updatebooking', $context, $userid)) {
@@ -341,6 +342,7 @@ class configure_booking_instance_task extends booking_task_base {
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         global $DB;
 
         $action = trim((string)($input['action'] ?? ''));

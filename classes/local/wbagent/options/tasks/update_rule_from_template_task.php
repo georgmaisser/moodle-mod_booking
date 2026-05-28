@@ -169,6 +169,7 @@ class update_rule_from_template_task extends booking_task_base implements task_t
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         if ($this->ruleservice === null) {
             return preflight_result_v2::invalid([
                 [
@@ -267,6 +268,7 @@ class update_rule_from_template_task extends booking_task_base implements task_t
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         if ($this->ruleservice === null) {
             $message = 'Booking rules service is currently unavailable in this installation.';
             return [

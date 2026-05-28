@@ -16,8 +16,9 @@
 
 namespace mod_booking\local\wbagent\options\tasks;
 
-use bookingextension_agent\local\wbagent\booking\booking_task_mutation_execute_service;
-use bookingextension_agent\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\booking\booking_task_mutation_execute_service;
+use mod_booking\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\booking\support\booking_mutation_validation;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 use context;
@@ -618,8 +619,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         }
 
         // Service-level preflight (teacher resolution, date normalization, etc.).
-        $service = new booking_task_mutation_execute_service();
-        $servicepreflight = $service->preflight_validate(self::TASK_NAME, $input, $cmid, $userid);
+        $servicepreflight = booking_mutation_validation::validate_common($input, $cmid, self::TASK_NAME);
         if (!empty($servicepreflight['errors']) || !empty($servicepreflight['ambiguities'])) {
             $serviceissuecodes = array_values(array_filter(array_map('strval', (array)($servicepreflight['issue_codes'] ?? []))));
             foreach ((array)($servicepreflight['errors'] ?? []) as $idx => $err) {
@@ -635,9 +635,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             return preflight_result_v2::invalid($issues);
         }
 
-        $preparedinput = is_array($servicepreflight['normalized_input'] ?? null)
-            ? (array)$servicepreflight['normalized_input']
-            : $input;
+        $preparedinput = $input;
 
         // If there are only confirmable issues (no blocking ones), use confirmable().
         $blockingissues = array_filter(

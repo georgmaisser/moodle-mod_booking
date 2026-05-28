@@ -16,8 +16,8 @@
 
 namespace mod_booking\local\wbagent\options\tasks;
 
-use bookingextension_agent\local\wbagent\booking\booking_task_mutation_execute_service;
-use bookingextension_agent\local\wbagent\booking\booking_task_support;
+use mod_booking\local\wbagent\booking\booking_task_mutation_execute_service;
+use mod_booking\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\privacy_anonymizer;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
@@ -188,6 +188,7 @@ class update_option_task extends booking_task_base implements task_trigger_provi
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         global $DB;
 
         $lang = $this->get_output_language($input);
@@ -340,6 +341,7 @@ class update_option_task extends booking_task_base implements task_trigger_provi
      * @return array
      */
     public function execute(array $preparedinput, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $service = new booking_task_mutation_execute_service();
         $result = $service->execute(self::TASK_NAME, $preparedinput, $cmid, $userid, $this->support);
         if (is_array($result)) {

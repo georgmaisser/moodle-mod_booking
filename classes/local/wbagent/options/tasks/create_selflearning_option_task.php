@@ -88,6 +88,7 @@ class create_selflearning_option_task extends create_option_task {
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         unset($input['slot_enabled']);
         foreach (array_keys($input) as $key) {
             if (is_string($key) && str_starts_with($key, 'slot_')) {
@@ -109,6 +110,7 @@ class create_selflearning_option_task extends create_option_task {
      * @return array
      */
     public function execute(array $preparedinput, int $cmid, int $userid): array {
+        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         unset($preparedinput['slot_enabled']);
         foreach (array_keys($preparedinput) as $key) {
             if (is_string($key) && str_starts_with($key, 'slot_')) {
