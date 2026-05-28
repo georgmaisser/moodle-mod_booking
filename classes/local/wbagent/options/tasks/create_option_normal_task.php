@@ -17,6 +17,7 @@
 namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
+use bookingextension_agent\local\wbagent\interfaces\queue_identity_provider_interface;
 use bookingextension_agent\local\wbagent\services\task_prompt_contract;
 
 /**
@@ -26,7 +27,7 @@ use bookingextension_agent\local\wbagent\services\task_prompt_contract;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-final class create_option_normal_task extends option_mutation_task_base implements task_trigger_provider_interface {
+final class create_option_normal_task extends option_mutation_task_base implements task_trigger_provider_interface, queue_identity_provider_interface {
     /**
      * Constructor.
      */
@@ -127,5 +128,65 @@ final class create_option_normal_task extends option_mutation_task_base implemen
         $schema['prompt_meta']['input_fields_for_prompt'] = ['text', 'maxanswers', 'coursestarttime', 'courseendtime', 'invisible'];
 
         return $schema;
+    }
+
+    /**
+     * Build canonical queue business identity for create-option deduplication.
+     *
+     * Identity is based on title + event start/end to avoid duplicate queue items
+     * caused by technical/default input differences.
+     *
+     * @param array<string,mixed> $input
+     * @return array<string,mixed>
+     */
+    public function build_queue_business_identity(array $input): array {
+        $text = trim((string)($input['text'] ?? ''));
+        $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+
+        $startvalue = $input['coursestarttime'] ?? null;
+        $endvalue = $input['courseendtime'] ?? null;
+
+        // For date-series shaped input, derive the first occurrence as identity anchor.
+        if (is_array($input['optiondates'] ?? null) && !empty($input['optiondates'])) {
+            $firstdate = $input['optiondates'][0] ?? null;
+            if (is_array($firstdate)) {
+                $startvalue = $startvalue ?? ($firstdate['coursestarttime'] ?? null);
+                $endvalue = $endvalue ?? ($firstdate['courseendtime'] ?? null);
+            }
+        }
+
+        return [
+            'text' => $text,
+            'coursestarttime' => $this->normalize_identity_datetime($startvalue),
+            'courseendtime' => $this->normalize_identity_datetime($endvalue),
+        ];
+    }
+
+    /**
+     * Normalize datetime-ish value for stable identity hashing.
+     *
+     * @param mixed $value
+     * @return int|string
+     */
+    private function normalize_identity_datetime($value) {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_float($value) || (is_string($value) && is_numeric($value))) {
+            return (int)$value;
+        }
+
+        $raw = trim((string)$value);
+        if ($raw === '') {
+            return '';
+        }
+
+        $parsed = strtotime($raw);
+        if ($parsed !== false) {
+            return (int)$parsed;
+        }
+
+        return $raw;
     }
 }
