@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\booking\booking_task_mutation_execute_service;
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
@@ -31,7 +31,7 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  */
 class update_option_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.update_option';
+    public const TASK_NAME = 'mod_booking.update_option';
 
     /**
      * Constructor.
@@ -99,19 +99,19 @@ class update_option_task extends booking_task_base implements task_trigger_provi
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.use_preview_context_for_update',
+                'id' => 'mod_booking.use_preview_context_for_update',
                 'description' => 'User refers to the previously previewed option(s) as the update target.',
             ],
             [
-                'id' => 'booking.resolve_option_by_exact_query',
+                'id' => 'mod_booking.resolve_option_by_exact_query',
                 'description' => 'User asks to target an option by an exact/specific query string.',
             ],
             [
-                'id' => 'booking.option_resolution_ambiguous_clarify',
+                'id' => 'mod_booking.option_resolution_ambiguous_clarify',
                 'description' => 'User provides clarification to resolve an ambiguous option match.',
             ],
             [
-                'id' => 'booking.option_resolution_failed_retry',
+                'id' => 'mod_booking.option_resolution_failed_retry',
                 'description' => 'User retries target resolution after previous option resolution failure.',
             ],
         ];
@@ -125,7 +125,7 @@ class update_option_task extends booking_task_base implements task_trigger_provi
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.mutation_flow',
+                'id' => 'mod_booking.mutation_flow',
                 'triggers' => [
                     'create option', 'update option', 'new option', 'change option',
                     'erstelle', 'anlegen', 'aktualisiere', 'update', 'setze', 'andern', 'ändern',

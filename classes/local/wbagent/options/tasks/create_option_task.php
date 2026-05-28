@@ -1,5 +1,8 @@
 <?php
 // This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
@@ -11,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\booking\booking_task_mutation_execute_service;
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
@@ -29,7 +32,7 @@ use context_module;
  */
 class create_option_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.create_option';
+    public const TASK_NAME = 'mod_booking.create_option';
 
     /**
      * Constructor.
@@ -98,7 +101,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.create_booking_request',
+                'id' => 'mod_booking.create_booking_request',
                 'description' => 'User wants to create a booking or booking option
                     and includes scheduling details like date, time, duration, or participant count.
                     Treat booking/event/course/meeting synonymously.
@@ -112,19 +115,19 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 ],
             ],
             [
-                'id' => 'booking.force_create_duplicate_title',
+                'id' => 'mod_booking.force_create_duplicate_title',
                 'description' => 'User explicitly confirms creating a new option although a duplicate title exists.',
             ],
             [
-                'id' => 'booking.skip_location_specification',
+                'id' => 'mod_booking.skip_location_specification',
                 'description' => 'User explicitly confirms creating a normal option without location/address.',
             ],
             [
-                'id' => 'booking.create_location_first_then_option',
+                'id' => 'mod_booking.create_location_first_then_option',
                 'description' => 'User asks to create/resolve a missing location first and then continue with option creation.',
             ],
             [
-                'id' => 'booking.select_option_type_change',
+                'id' => 'mod_booking.select_option_type_change',
                 'description' => 'User explicitly selects or confirms option type. '
                     . 'Use booking.create_option for normal options only. '
                     . 'Use booking.create_slotbooking_option for slot-based appointment booking. '
@@ -260,7 +263,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             $parts[] = 'If you need the full EN label -> key map, ask with: FULL_KEY_MAP ' . static::TASK_NAME . '.';
         }
 
-        if (static::TASK_NAME === 'booking.create_slotbooking_option') {
+        if (static::TASK_NAME === 'mod_booking.create_slotbooking_option') {
             $parts[] = 'For slot booking include at least: text, slot_valid_from, slot_valid_until, '
                 . 'slot_opening_time, slot_closing_time, slot_duration_minutes, '
                 . 'slot_max_participants_per_slot, and one active slot_day_X=true.';
@@ -352,13 +355,13 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         $input = self::strip_llm_noise_keys($input);
         $rawinput = self::strip_llm_noise_keys($rawinput);
 
-        if (static::TASK_NAME === 'booking.create_slotbooking_option') {
+        if (static::TASK_NAME === 'mod_booking.create_slotbooking_option') {
             unset($input['optiontype'], $input['slot_enabled']);
             unset($rawinput['optiontype'], $rawinput['slot_enabled']);
         }
 
         $resolvedtype = self::resolve_requested_option_type($input);
-        if (static::TASK_NAME === 'booking.create_slotbooking_option') {
+        if (static::TASK_NAME === 'mod_booking.create_slotbooking_option') {
             $resolvedtype = 'slotbooking';
         }
 
@@ -1056,7 +1059,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.create_option_required_details',
+                'id' => 'mod_booking.create_option_required_details',
                 'triggers' => [
                     'create option', 'new option', 'create booking option', 'buchungsoption erstellen',
                     'buchung', 'booking', 'buchungsmöglichkeit', 'bookingsmoeglichkeit',
@@ -1082,7 +1085,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 ],
             ],
             [
-                'id' => 'booking.course_teacher',
+                'id' => 'mod_booking.course_teacher',
                 'triggers' => ['course', 'kurs', 'teacher', 'dozent', 'trainer', 'lehrer'],
                 'guidance' => [
                     '- Use coursequery to connect an option to a Moodle course.',
@@ -1095,7 +1098,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 ],
             ],
             [
-                'id' => 'booking.availability_conditions',
+                'id' => 'mod_booking.availability_conditions',
                 'triggers' => [
                     'availability', 'verfugbarkeit', 'verfügbarkeit', 'enrolled', 'cohort', 'competency',
                     'previously booked', 'overlapping', 'profile field', 'condition', 'einschrankung', 'einschränkung',
@@ -1112,7 +1115,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 ],
             ],
             [
-                'id' => 'booking.selflearning_cancel',
+                'id' => 'mod_booking.selflearning_cancel',
                 'triggers' => ['self-learning', 'selflearning', 'duration', 'hours', 'cancel', 'storno', 'stornieren'],
                 'guidance' => [
                     '- For self-learning options use selflearningcourse=true with duration in seconds (e.g. 4h = 14400).',
@@ -1121,7 +1124,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 ],
             ],
             [
-                'id' => 'booking.bookusers',
+                'id' => 'mod_booking.bookusers',
                 'triggers' => ['book user', 'book users', 'buche', 'teilnehmer buchen', 'assign user', 'enrol user'],
                 'guidance' => [
                     '- To book users directly to an option, use bookusersquery in booking.create_option'
@@ -1137,7 +1140,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 ],
             ],
             [
-                'id' => 'booking.datetime',
+                'id' => 'mod_booking.datetime',
                 'triggers' => ['date', 'time', 'datum', 'uhrzeit', 'tomorrow', 'today', 'next', 'morgen', 'heute'],
                 'guidance' => [
                     '- Resolve relative dates against current Moodle timezone and current datetime from system prompt.',
@@ -1148,7 +1151,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 ],
             ],
             [
-                'id' => 'booking.customform',
+                'id' => 'mod_booking.customform',
                 'triggers' => [
                     'custom form', 'customform', 'formular', 'form element', 'formelement', 'bo_cond',
                     'checkbox', 'dropdown', 'select element',

@@ -14,9 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
-use bookingextension_agent\local\wbagent\booking\support\booking_rules_agent_service;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 
@@ -29,17 +28,42 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  */
 class update_rule_from_template_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.update_rule_from_template';
+    public const TASK_NAME = 'mod_booking.update_rule_from_template';
 
-    /** @var booking_rules_agent_service */
-    private booking_rules_agent_service $ruleservice;
+    /** @var object|null */
+    private ?object $ruleservice = null;
 
     /**
      * Constructor.
      */
     public function __construct() {
         parent::__construct(false);
-        $this->ruleservice = new booking_rules_agent_service();
+        $this->ruleservice = $this->resolve_rule_service();
+    }
+
+    /**
+     * Resolve optional rules service without breaking task discovery.
+     *
+     * @return object|null
+     */
+    private function resolve_rule_service(): ?object {
+        $candidates = [
+            '\\mod_booking\\local\\wbagent\\options\\support\\booking_rules_agent_service',
+            '\\bookingextension_agent\\local\\wbagent\\booking\\support\\booking_rules_agent_service',
+        ];
+
+        foreach ($candidates as $classname) {
+            if (!class_exists($classname)) {
+                continue;
+            }
+            try {
+                return new $classname();
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -111,7 +135,7 @@ class update_rule_from_template_task extends booking_task_base implements task_t
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.update_rule_from_template',
+                'id' => 'mod_booking.update_rule_from_template',
                 'description' => 'User asks to modify an existing booking rule by id/name, optionally based on a template.',
             ],
         ];
@@ -145,6 +169,16 @@ class update_rule_from_template_task extends booking_task_base implements task_t
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        if ($this->ruleservice === null) {
+            return preflight_result_v2::invalid([
+                [
+                    'code' => 'RULE_SERVICE_UNAVAILABLE',
+                    'severity' => 'needs_clarification',
+                    'message' => 'Booking rules service is currently unavailable in this installation.',
+                ],
+            ]);
+        }
+
         $issues = [];
         $contextid = $this->ruleservice->get_module_contextid($cmid);
 
@@ -233,6 +267,17 @@ class update_rule_from_template_task extends booking_task_base implements task_t
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        if ($this->ruleservice === null) {
+            $message = 'Booking rules service is currently unavailable in this installation.';
+            return [
+                'status' => 'failed',
+                'detail' => $message,
+                'usermessage' => $message,
+                'resultid' => null,
+                'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $input, ['Rules service: unavailable']),
+            ];
+        }
+
         $contextid = $this->ruleservice->get_module_contextid($cmid);
         $overrides = [];
         if (isset($input['rulename'])) {

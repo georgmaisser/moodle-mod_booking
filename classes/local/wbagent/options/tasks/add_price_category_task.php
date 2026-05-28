@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use context_system;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
@@ -30,7 +30,7 @@ use mod_booking\local\pricecategories_handler;
  */
 class add_price_category_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.add_price_category';
+    public const TASK_NAME = 'mod_booking.add_price_category';
 
     /**
      * Constructor.
@@ -56,7 +56,7 @@ class add_price_category_task extends booking_task_base implements task_trigger_
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.pricing',
+                'id' => 'mod_booking.pricing',
                 'triggers' => ['price', 'preise', 'preis', 'cost', 'kosten', 'price category', 'pricecat'],
                 'guidance' => [
                     '- Use a "prices" object keyed by price category identifier, e.g. {"default": 10, "student": 20}.',
@@ -117,7 +117,7 @@ class add_price_category_task extends booking_task_base implements task_trigger_
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.confirm_duplicate_price_category',
+                'id' => 'mod_booking.confirm_duplicate_price_category',
                 'description' => 'User explicitly confirms creating/keeping a duplicate price category identifier.',
             ],
         ];

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\task_registry_factory;
@@ -30,7 +30,7 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  */
 class list_option_properties_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.list_option_properties';
+    public const TASK_NAME = 'mod_booking.list_option_properties';
 
     /**
      * Constructor.
@@ -86,7 +86,7 @@ class list_option_properties_task extends booking_task_base implements task_trig
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.list_option_properties_request',
+                'id' => 'mod_booking.list_option_properties_request',
                 'description' => 'User asks for a list of option properties or field definitions '
                     . 'when creating or updating a booking option.',
                 'examples' => [
@@ -109,7 +109,7 @@ class list_option_properties_task extends booking_task_base implements task_trig
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.list_option_properties',
+                'id' => 'mod_booking.list_option_properties',
                 'triggers' => [
                     'list properties', 'option properties', 'which fields', 'option fields',
                     'felder option', 'welche felder', 'kann ich setzen', 'fields can i set',

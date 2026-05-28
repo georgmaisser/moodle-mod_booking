@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 
@@ -27,7 +27,7 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  */
 class create_slotbooking_option_task extends create_option_task {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.create_slotbooking_option';
+    public const TASK_NAME = 'mod_booking.create_slotbooking_option';
 
     /**
      * Return task name.
@@ -66,7 +66,7 @@ class create_slotbooking_option_task extends create_option_task {
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.create_slotbooking_request',
+                'id' => 'mod_booking.create_slotbooking_request',
                 'description' => 'User asks for slot/appointment booking with recurring weekday availability and slot duration.',
                 'examples' => [
                     'Mein Tennisplatz soll jeden Wochentag von 10 bis 18 Uhr buchbar sein, in 1h-Slots.',

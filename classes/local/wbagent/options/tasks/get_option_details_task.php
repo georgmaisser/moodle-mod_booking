@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
@@ -30,7 +30,7 @@ use mod_booking\singleton_service;
  */
 class get_option_details_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.get_option_details';
+    public const TASK_NAME = 'mod_booking.get_option_details';
 
     /** Default fields returned on the first detail lookup. */
     private const DEFAULT_STANDARD_FIELDS = [
@@ -143,7 +143,7 @@ class get_option_details_task extends booking_task_base implements task_trigger_
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.get_option_details_request',
+                'id' => 'mod_booking.get_option_details_request',
                 'description' => 'User asks for specific details of an already identified booking option.',
                 'examples' => [
                     'Wer ist Trainerin bei "Lesung mit Georg"?',
@@ -162,7 +162,7 @@ class get_option_details_task extends booking_task_base implements task_trigger_
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.get_option_details',
+                'id' => 'mod_booking.get_option_details',
                 'triggers' => [
                     'trainer', 'trainerin', 'teacher', 'dozent', 'referent',
                     'option details', 'option detail', 'sessions der option',

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use core_text;
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
@@ -30,7 +30,7 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  */
 class search_options_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.search_options';
+    public const TASK_NAME = 'mod_booking.search_options';
 
     /**
      * Constructor.
@@ -98,11 +98,11 @@ class search_options_task extends booking_task_base implements task_trigger_prov
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.search_options_exact_title_match',
+                'id' => 'mod_booking.search_options_exact_title_match',
                 'description' => 'User asks for exact-title matching instead of fuzzy search.',
             ],
             [
-                'id' => 'booking.search_options_temporal_filter_applied',
+                'id' => 'mod_booking.search_options_temporal_filter_applied',
                 'description' => 'User asks to constrain option search by time/date hints.',
             ],
         ];
@@ -116,7 +116,7 @@ class search_options_task extends booking_task_base implements task_trigger_prov
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.search_options',
+                'id' => 'mod_booking.search_options',
                 'triggers' => [
                     'search', 'find options', 'show options', 'which options',
                     'suche', 'optionen', 'zeige optionen', 'wo finde', 'finde option',

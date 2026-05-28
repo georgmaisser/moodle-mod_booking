@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
@@ -33,7 +33,7 @@ use mod_booking\bo_availability\bo_info;
  */
 class book_users_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.book_users';
+    public const TASK_NAME = 'mod_booking.book_users';
 
     /**
      * Constructor.
@@ -122,7 +122,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.book_users_for_option',
+                'id' => 'mod_booking.book_users_for_option',
                 'description' => 'User asks to book one or more people into a booking option.',
                 'examples' => [
                     'Book a user into an option.',
@@ -142,7 +142,7 @@ class book_users_task extends booking_task_base implements task_trigger_provider
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.book_users_guidance',
+                'id' => 'mod_booking.book_users_guidance',
                 'triggers' => [
                     'book user', 'register user', 'enroll user', 'buche', 'einschreiben', 'eintragen',
                 ],

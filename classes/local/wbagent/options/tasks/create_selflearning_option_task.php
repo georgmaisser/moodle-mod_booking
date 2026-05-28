@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 
@@ -27,7 +27,7 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  */
 class create_selflearning_option_task extends create_option_task {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.create_selflearning_option';
+    public const TASK_NAME = 'mod_booking.create_selflearning_option';
 
     /**
      * Return task name.
@@ -69,7 +69,7 @@ class create_selflearning_option_task extends create_option_task {
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.create_selflearning_request',
+                'id' => 'mod_booking.create_selflearning_request',
                 'description' => 'User asks for a self-learning/e-learning option with duration-based participation.',
                 'examples' => [
                     'Erstelle einen Selbstlernkurs mit einer Lerndauer von 4 Stunden.',

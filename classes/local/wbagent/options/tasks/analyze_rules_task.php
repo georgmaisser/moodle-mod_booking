@@ -14,10 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use core_text;
-use bookingextension_agent\local\wbagent\booking\support\booking_rules_agent_service;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 
@@ -30,17 +29,42 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  */
 class analyze_rules_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.analyze_rules';
+    public const TASK_NAME = 'mod_booking.analyze_rules';
 
-    /** @var booking_rules_agent_service */
-    private booking_rules_agent_service $ruleservice;
+    /** @var object|null */
+    private ?object $ruleservice = null;
 
     /**
      * Constructor.
      */
     public function __construct() {
         parent::__construct(true);
-        $this->ruleservice = new booking_rules_agent_service();
+        $this->ruleservice = $this->resolve_rule_service();
+    }
+
+    /**
+     * Resolve optional rules service without breaking task discovery.
+     *
+     * @return object|null
+     */
+    private function resolve_rule_service(): ?object {
+        $candidates = [
+            '\\mod_booking\\local\\wbagent\\options\\support\\booking_rules_agent_service',
+            '\\bookingextension_agent\\local\\wbagent\\booking\\support\\booking_rules_agent_service',
+        ];
+
+        foreach ($candidates as $classname) {
+            if (!class_exists($classname)) {
+                continue;
+            }
+            try {
+                return new $classname();
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -107,7 +131,7 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.analyze_rules',
+                'id' => 'mod_booking.analyze_rules',
                 'description' => 'User asks to inspect, understand, list or summarize booking rules, '
                     . 'automated notifications, e-mails or messages that are sent by the booking instance, '
                     . 'or wants to know which rules are active / configured. '
@@ -149,6 +173,16 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
+        if ($this->ruleservice === null) {
+            return preflight_result_v2::invalid([
+                [
+                    'code' => 'RULE_SERVICE_UNAVAILABLE',
+                    'severity' => 'needs_clarification',
+                    'message' => 'Booking rules service is currently unavailable in this installation.',
+                ],
+            ]);
+        }
+
         $structure = $this->check_structure($input);
         if (!($structure['valid'] ?? false)) {
             $issues = [];
@@ -173,6 +207,17 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
      * @return array
      */
     public function execute(array $input, int $cmid, int $userid): array {
+        if ($this->ruleservice === null) {
+            $message = 'Booking rules service is currently unavailable in this installation.';
+            return [
+                'status' => 'failed',
+                'detail' => $message,
+                'usermessage' => $message,
+                'resultid' => null,
+                'debugmessage' => $this->build_task_debug_message(self::TASK_NAME, $input, ['Rules service: unavailable']),
+            ];
+        }
+
         $query = trim((string)($input['query'] ?? ''));
         $needle = core_text::strtolower($query);
         $limit = isset($input['limit']) ? max(1, (int)$input['limit']) : 25;

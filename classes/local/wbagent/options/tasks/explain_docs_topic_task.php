@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\lookup\docs_lookup_service;
@@ -30,7 +30,7 @@ use moodle_url;
  */
 class explain_docs_topic_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.explain_docs_topic';
+    public const TASK_NAME = 'mod_booking.explain_docs_topic';
 
     /** Minimum confidence required for topic-scoped retrieval. */
     private const TOPIC_CONFIDENCE_THRESHOLD = 0.45;

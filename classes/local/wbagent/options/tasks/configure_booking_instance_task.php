@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use context_module;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
@@ -40,7 +40,7 @@ use stdClass;
  */
 class configure_booking_instance_task extends booking_task_base {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.configure_booking_instance';
+    public const TASK_NAME = 'mod_booking.configure_booking_instance';
 
     /**
      * Fields the agent is allowed to read and change, with human-readable metadata.

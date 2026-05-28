@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use core_text;
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
@@ -32,7 +32,7 @@ use mod_booking\singleton_service;
  */
 class diagnose_booking_issue_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.diagnose_booking_issue';
+    public const TASK_NAME = 'mod_booking.diagnose_booking_issue';
 
     /**
      * Constructor.
@@ -118,7 +118,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.diagnose_booking_issue_self_help',
+                'id' => 'mod_booking.diagnose_booking_issue_self_help',
                 'description' => 'User asks why they or another person are not booked, cannot book, '
                     . 'did not receive mail for a booking option or have any other issue regarding a booking option.',
                 'examples' => [
@@ -139,7 +139,7 @@ class diagnose_booking_issue_task extends booking_task_base implements task_trig
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.self_help_diagnostics',
+                'id' => 'mod_booking.self_help_diagnostics',
                 'triggers' => [
                     'why am i not booked', 'why can i not book', 'why no email',
                     'cannot book', 'can not book', 'can\'t book',

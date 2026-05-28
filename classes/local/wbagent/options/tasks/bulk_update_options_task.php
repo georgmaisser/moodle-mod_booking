@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace bookingextension_agent\local\wbagent\booking\tasks;
+namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\booking\booking_task_mutation_execute_service;
 use bookingextension_agent\local\wbagent\booking\booking_task_support;
@@ -31,7 +31,7 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  */
 class bulk_update_options_task extends booking_task_base implements task_trigger_provider_interface {
     /** Task name constant. */
-    public const TASK_NAME = 'booking.bulk_update_options';
+    public const TASK_NAME = 'mod_booking.bulk_update_options';
 
     /**
      * Constructor.
@@ -97,15 +97,15 @@ class bulk_update_options_task extends booking_task_base implements task_trigger
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'booking.bulk_update_apply_to_all_confirmed',
+                'id' => 'mod_booking.bulk_update_apply_to_all_confirmed',
                 'description' => 'User explicitly confirms applying a bulk update to all booking options.',
             ],
             [
-                'id' => 'booking.bulk_update_selection_by_query',
+                'id' => 'mod_booking.bulk_update_selection_by_query',
                 'description' => 'User specifies that bulk target selection should be based on optionquery.',
             ],
             [
-                'id' => 'booking.bulk_update_by_optionids',
+                'id' => 'mod_booking.bulk_update_by_optionids',
                 'description' => 'User specifies explicit option ids for bulk update targets.',
             ],
         ];
@@ -249,7 +249,7 @@ class bulk_update_options_task extends booking_task_base implements task_trigger
     public function get_contextual_prompt_packs(): array {
         return [
             [
-                'id' => 'booking.bulk_mutation_flow',
+                'id' => 'mod_booking.bulk_mutation_flow',
                 'triggers' => [
                     'alle optionen', 'alle buchungsoptionen', 'bulk update', 'massenaktualisierung',
                     'update all', 'alle aktualisieren', 'alle setzen', 'für alle optionen',
