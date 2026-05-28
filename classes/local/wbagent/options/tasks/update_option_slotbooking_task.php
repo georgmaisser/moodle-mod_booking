@@ -17,17 +17,18 @@
 namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
+use bookingextension_agent\local\wbagent\services\task_prompt_contract;
 
 /**
- * Task definition for slot-based appointment options.
+ * Legacy alias for updating slot-booking options.
  *
  * @package    bookingextension_agent
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class create_slotbooking_option_task extends create_option_task {
+class update_option_slotbooking_task extends update_option_task {
     /** Task name constant. */
-    public const TASK_NAME = 'mod_booking.create_slotbooking_option';
+    public const TASK_NAME = 'mod_booking.update_option_slotbooking';
 
     /**
      * Return task name.
@@ -45,41 +46,44 @@ class create_slotbooking_option_task extends create_option_task {
      */
     public function get_schema(): array {
         $schema = parent::get_schema();
-        $properties = is_array($schema['properties'] ?? null) ? (array)$schema['properties'] : [];
-
-        unset($properties['optiontype'], $properties['slot_enabled']);
-        unset($properties['selflearningcourse'], $properties['duration'], $properties['disablecancel']);
-
-        $schema['description'] = 'Create a slot-based booking option (appointment scheduling) in one command. '
-            . 'Use this only when the user wants reusable appointment/availability slots with slot duration, '
-            . 'validity range, and per-slot capacity. Do not use it for numbered event series on weekdays; '
-            . 'those are normal booking options. Do not split into many commands; provide one complete slot configuration.';
-        $schema['properties'] = $properties;
-
+        $schema['governance'] = [
+            'alias_of' => update_option_task::TASK_NAME,
+            'deprecated_since' => '2026-05',
+        ];
         return $schema;
     }
 
     /**
-     * Return task-specific message triggers.
+     * Return explicit planner prompt contract.
      *
-     * @return array
+     * @return task_prompt_contract
      */
-    public function get_message_triggers(): array {
-        return [
-            [
-                'id' => 'mod_booking.create_slotbooking_request',
-                'description' => 'User asks for slot/appointment booking with reusable availability windows and slot duration. '
-                    . 'Do not use for numbered normal event series that happen on weekdays.',
-                'examples' => [
-                    'Mein Tennisplatz soll jeden Wochentag von 10 bis 18 Uhr buchbar sein, in 1h-Slots.',
-                    'Create appointment slots Monday to Friday from 09:00 to 17:00 for August.',
-                ],
+    public function get_prompt_contract(): task_prompt_contract {
+        return new task_prompt_contract([
+            'intent' => 'update_slotbooking',
+            'anchors' => ['option'],
+            'minimal_input' => [
+                'optionid',
+                'slot_opening_time',
+                'slot_closing_time',
+                'slot_duration_minutes',
+                'slot_valid_from',
+                'slot_valid_until',
             ],
-        ];
+            'example_input' => [
+                'optionid' => 1,
+                'slot_opening_time' => '09:00',
+                'slot_closing_time' => '11:00',
+                'slot_duration_minutes' => 20,
+            ],
+            'namespace' => 'mod_booking',
+            'version' => 1,
+            'context_scopes' => ['module'],
+        ]);
     }
 
     /**
-     * Deep preflight validation for slotbooking-specific create flow.
+     * Deep preflight validation for the legacy slot-booking alias.
      *
      * @param array $input
      * @param int $cmid
@@ -87,10 +91,9 @@ class create_slotbooking_option_task extends create_option_task {
      * @return preflight_result_v2
      */
     public function preflight(array $input, int $cmid, int $userid): preflight_result_v2 {
-        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
-        unset($input['selflearningcourse'], $input['duration'], $input['disablecancel']);
         $input['optiontype'] = 'slotbooking';
         $input['slot_enabled'] = true;
+        unset($input['selflearningcourse'], $input['duration'], $input['disablecancel']);
         return parent::preflight($input, $cmid, $userid);
     }
 
@@ -104,9 +107,10 @@ class create_slotbooking_option_task extends create_option_task {
      */
     public function execute(array $preparedinput, int $cmid, int $userid): array {
         $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
-        unset($preparedinput['selflearningcourse'], $preparedinput['duration'], $preparedinput['disablecancel']);
         $preparedinput['optiontype'] = 'slotbooking';
         $preparedinput['slot_enabled'] = true;
-        return parent::execute($preparedinput, $cmid, $userid);
+        unset($preparedinput['selflearningcourse'], $preparedinput['duration'], $preparedinput['disablecancel']);
+        $result = parent::execute($preparedinput, $cmid, $userid);
+        return $this->enrich_legacy_option_result($result, $preparedinput, $cmid, 'updated');
     }
 }

@@ -16,9 +16,15 @@
 
 namespace mod_booking\local\wbagent;
 
+use bookingextension_agent\local\wbagent\interfaces\preview_option_memory_interface;
+use bookingextension_agent\local\wbagent\interfaces\preview_option_memory_provider_interface;
+use bookingextension_agent\local\wbagent\interfaces\task_input_normalizer_interface;
+use bookingextension_agent\local\wbagent\interfaces\task_input_normalizer_provider_interface;
 use bookingextension_agent\local\wbagent\interfaces\task_interface;
 use bookingextension_agent\local\wbagent\interfaces\task_provider_interface;
 use bookingextension_agent\local\wbagent\task_discovery;
+use mod_booking\local\wbagent\booking\provider_preview_option_memory;
+use mod_booking\local\wbagent\booking\provider_task_input_normalizer;
 
 /**
  * mod_booking AI task provider entrypoint.
@@ -27,7 +33,10 @@ use bookingextension_agent\local\wbagent\task_discovery;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class task_provider implements task_provider_interface {
+class task_provider implements
+    preview_option_memory_provider_interface,
+    task_input_normalizer_provider_interface,
+    task_provider_interface {
     /**
      * Return the component name.
      *
@@ -107,5 +116,23 @@ class task_provider implements task_provider_interface {
      */
     public function get_prompt_guidance(): array {
         return [];
+    }
+
+    /**
+     * Return optional provider-owned task input normalizer.
+     *
+     * @return task_input_normalizer_interface|null
+     */
+    public function get_task_input_normalizer(): ?task_input_normalizer_interface {
+        return new provider_task_input_normalizer();
+    }
+
+    /**
+     * Return optional provider-owned preview option memory helper.
+     *
+     * @return preview_option_memory_interface|null
+     */
+    public function get_preview_option_memory(): ?preview_option_memory_interface {
+        return new provider_preview_option_memory();
     }
 }

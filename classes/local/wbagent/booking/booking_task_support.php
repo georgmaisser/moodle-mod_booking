@@ -197,10 +197,10 @@ class booking_task_support {
      * @return array
      */
     public function execute(string $taskname, array $input, int $cmid, int $userid): array {
-        $task = $this->get_task_instances()[$taskname] ?? null;
-        if ($task) {
-            $contextid = (int)context_module::instance($cmid, MUST_EXIST)->id;
-            return $task->execute($input, $contextid, $userid);
+        $mutationservice = new booking_task_mutation_execute_service();
+        $result = $mutationservice->execute($taskname, $input, $cmid, $userid, $this);
+        if ($result !== null) {
+            return $result;
         }
 
         return [
@@ -2244,6 +2244,10 @@ class booking_task_support {
      */
     private static function apply_optiondates_to_update_data(\stdClass $data, array $optiondates): void {
         $data->datescounter = count($optiondates);
+        $data->datesmarker = 1;
+        unset($data->coursestarttime, $data->courseendtime, $data->starttime, $data->endtime);
+        unset($data->coursestartdate, $data->courseenddate, $data->startdate, $data->enddate);
+
         $index = 1;
         foreach ($optiondates as $date) {
             $data->{'optiondateid_' . $index} = (int)($date['optiondateid'] ?? 0);

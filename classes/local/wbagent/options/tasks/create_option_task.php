@@ -80,11 +80,11 @@ class create_option_task extends booking_task_base implements task_trigger_provi
 
         $schema = [
             'version' => 1,
-            'description' => 'Create a new booking option inside the current booking instance. '
-                . 'Use this task for standard options (normal type with fixed dates/times). '
-                . 'For slot-based appointment booking use booking.create_slotbooking_option. '
-                . 'For self-learning courses use booking.create_selflearning_option. '
-                . 'New options are always created as invisible.',
+            'description' => 'Canonical create implementation for booking options inside the current booking instance. '
+                . 'For user-facing normal date/time requests and numbered weekday event series, prefer '
+                . 'mod_booking.create_option_normal. For slot-based appointment availability use '
+                . 'mod_booking.create_option_slotbooking. For self-learning courses use '
+                . 'mod_booking.create_option_selflearning. New options are always created as invisible.',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_create_option',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_create_option',
@@ -102,18 +102,10 @@ class create_option_task extends booking_task_base implements task_trigger_provi
     public function get_message_triggers(): array {
         return [
             [
-                'id' => 'mod_booking.create_booking_request',
-                'description' => 'User wants to create a booking or booking option
-                    and includes scheduling details like date, time, duration, or participant count.
-                    Treat booking/event/course/meeting synonymously.
-                    For recurring series phrased as next week without explicit weekdays,
-                    plan Monday-Friday only (5 occurrences).',
-                'examples' => [
-                    'I want a booking next Friday at 12h for one hour and eight people.',
-                    'Create a booking for next Friday, 12:00 to 13:00, with 8 seats.',
-                    'Eine Buchung nächsten Freitag um 12 Uhr, eine Stunde lang, für acht Leute.',
-                    'Erstelle für die nächste Woche durchlaufend nummerierte Lecture x, immer von 20:00 bis 22:00, 20 Personen, Billy ist Trainer. -> create exactly 5 options (Mon-Fri).',
-                ],
+                'id' => 'mod_booking.create_option_canonical_fallback',
+                'description' => 'Use only when the command explicitly names mod_booking.create_option or no specialized '
+                    . 'normal, self-learning, or slot-booking create task fits. For normal dated events and numbered '
+                    . 'weekday event series, use mod_booking.create_option_normal.',
             ],
             [
                 'id' => 'mod_booking.force_create_duplicate_title',
@@ -130,9 +122,9 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             [
                 'id' => 'mod_booking.select_option_type_change',
                 'description' => 'User explicitly selects or confirms option type. '
-                    . 'Use booking.create_option for normal options only. '
-                    . 'Use booking.create_slotbooking_option for slot-based appointment booking. '
-                    . 'Use booking.create_selflearning_option for self-learning courses.',
+                    . 'Use mod_booking.create_option_normal for normal options only. '
+                    . 'Use mod_booking.create_option_slotbooking for slot-based appointment booking. '
+                    . 'Use mod_booking.create_option_selflearning for self-learning courses.',
                 'examples' => [
                     'My tennis court should be bookable every weekday from 10 a.m. to 6 p.m., '
                         . 'in 1-hour slots. Create the booking availability for July.',
@@ -149,11 +141,54 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      * @return array
      */
     private static function normalize_create_option_input(array $input, array &$appliedaliases = []): array {
+        foreach (array_keys($input) as $rawkey) {
+            if (!is_string($rawkey)) {
+                continue;
+            }
+
+            $trimmedkey = trim($rawkey);
+            if ($trimmedkey === '' || $trimmedkey === $rawkey || array_key_exists($trimmedkey, $input)) {
+                continue;
+            }
+
+            $input[$trimmedkey] = $input[$rawkey];
+            $appliedaliases[$trimmedkey] = $rawkey;
+            unset($input[$rawkey]);
+        }
+
+        foreach (['option', 'args', 'params', 'input', 'arguments', 'fields'] as $wrapperkey) {
+            if (!isset($input[$wrapperkey]) || !is_array($input[$wrapperkey])) {
+                continue;
+            }
+
+            $nestedinput = $input[$wrapperkey];
+            if (isset($nestedinput['input']) && is_array($nestedinput['input'])) {
+                $nestedinput = array_merge($nestedinput, $nestedinput['input']);
+                unset($nestedinput['input']);
+            }
+
+            foreach ($nestedinput as $nestedkey => $nestedvalue) {
+                if (!is_string($nestedkey) || trim($nestedkey) === '' || self::is_placeholder_value($nestedvalue)) {
+                    continue;
+                }
+                $nestedkey = trim($nestedkey);
+                if (in_array($nestedkey, ['task', 'version', 'guard_token', 'response_type'], true)) {
+                    continue;
+                }
+                if (self::is_placeholder_value($input[$nestedkey] ?? null)) {
+                    $input[$nestedkey] = $nestedvalue;
+                    $appliedaliases[$nestedkey] = $wrapperkey . '.' . $nestedkey;
+                }
+            }
+            unset($input[$wrapperkey]);
+        }
+
         $aliasgroups = [
             'text' => ['title', 'name', 'optionname', 'option_title', 'identifier', 'label', 'option_name', 'optiontext'],
             'maxanswers' => ['limit', 'limitanswers', 'spots', 'capacity', 'maxparticipants', 'max_participants'],
             'coursestarttime' => ['starttime', 'start', 'from'],
             'courseendtime' => ['endtime', 'end', 'to'],
+            'optiondates' => ['bookingdates', 'dates', 'sessions', 'occurrences'],
             'teacherquery' => ['teacher', 'trainer', 'instructor', 'instructorty', 'lecturer', 'dozent'],
             'teacheremail' => ['instructoremail', 'teacher_mail', 'teacher_email'],
         ];
@@ -220,7 +255,58 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             }
         }
 
+        if (isset($input['optiondates']) && is_array($input['optiondates'])) {
+            $input['optiondates'] = self::normalize_optiondate_items($input['optiondates']);
+        }
+
         return $input;
+    }
+
+    /**
+     * Normalize common LLM aliases inside optiondates arrays.
+     *
+     * @param array $optiondates
+     * @return array
+     */
+    private static function normalize_optiondate_items(array $optiondates): array {
+        $normalized = [];
+        foreach ($optiondates as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $dateitem = [];
+            foreach ($item as $key => $value) {
+                if (is_string($key) && trim($key) !== '') {
+                    $dateitem[trim($key)] = $value;
+                }
+            }
+
+            foreach (['starttime', 'start', 'from', 'start_date', 'startdate'] as $alias) {
+                if (!array_key_exists('coursestarttime', $dateitem) && array_key_exists($alias, $dateitem)) {
+                    $dateitem['coursestarttime'] = $dateitem[$alias];
+                }
+            }
+            foreach (['endtime', 'end', 'to', 'end_date', 'enddate'] as $alias) {
+                if (!array_key_exists('courseendtime', $dateitem) && array_key_exists($alias, $dateitem)) {
+                    $dateitem['courseendtime'] = $dateitem[$alias];
+                }
+            }
+
+            $date = $dateitem['date'] ?? $dateitem['day'] ?? null;
+            if ($date !== null) {
+                if (!array_key_exists('coursestarttime', $dateitem) && array_key_exists('start_time', $dateitem)) {
+                    $dateitem['coursestarttime'] = trim((string)$date) . 'T' . trim((string)$dateitem['start_time']);
+                }
+                if (!array_key_exists('courseendtime', $dateitem) && array_key_exists('end_time', $dateitem)) {
+                    $dateitem['courseendtime'] = trim((string)$date) . 'T' . trim((string)$dateitem['end_time']);
+                }
+            }
+
+            $normalized[] = $dateitem;
+        }
+
+        return $normalized;
     }
 
     /**
@@ -231,9 +317,21 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      */
     private static function strip_llm_noise_keys(array $input): array {
         foreach (['booking_closed', 'booking_open', 'booking_opened', 'meta', 'metadata', 'minimal_input',
-            'confirmed', 'is_confirmed', 'confirm', 'acknowledged', 'approved', 'status'] as $noisekey) {
+            'confirmed', 'is_confirmed', 'confirm', 'acknowledged', 'approved', 'status', 'number', 'sequence',
+            'index'] as $noisekey) {
             if (array_key_exists($noisekey, $input)) {
                 unset($input[$noisekey]);
+            }
+        }
+
+        foreach (array_keys($input) as $key) {
+            if (!is_string($key) || $key === '') {
+                continue;
+            }
+
+            $keynorm = strtolower((string)preg_replace('/[^a-z0-9]+/', '', $key));
+            if (preg_match('/^(number|sequence|ordinal|index)[a-z0-9]*$/', $keynorm) === 1) {
+                unset($input[$key]);
             }
         }
 
@@ -1228,7 +1326,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      * @param int $contextidorcmid
      * @return int
      */
-    private function resolve_cmid_from_context_or_cmid(int $contextidorcmid): int {
+    protected function resolve_cmid_from_context_or_cmid(int $contextidorcmid): int {
         if ($contextidorcmid <= 0) {
             return 0;
         }

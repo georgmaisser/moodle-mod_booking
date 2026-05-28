@@ -20,6 +20,7 @@ use bookingextension_agent\local\wbagent\base_task;
 use mod_booking\local\wbagent\booking\booking_task_mutation_execute_service;
 use mod_booking\local\wbagent\booking\booking_task_support;
 use mod_booking\local\wbagent\booking\support\booking_mutation_validation;
+use mod_booking\singleton_service;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 
 /**
@@ -556,6 +557,125 @@ abstract class booking_task_base extends base_task {
 
         $schema['prompt_meta'] = self::$promptmeta[$taskname];
         return $schema;
+    }
+
+    /**
+     * Add legacy option result fields expected by split option task aliases.
+     *
+     * @param array $result
+     * @param array $input
+     * @param int $cmid
+     * @param string $action
+     * @return array
+     */
+    protected function enrich_legacy_option_result(array $result, array $input, int $cmid, string $action): array {
+        $optionid = (int)($result['optionid'] ?? $result['resultid'] ?? $input['optionid'] ?? 0);
+        if ($optionid <= 0) {
+            return $result;
+        }
+
+        $result['optionid'] = $optionid;
+
+        $cm = get_coursemodule_from_id('booking', $cmid);
+        if ($cm) {
+            $result['bookingid'] = (int)$cm->instance;
+        }
+
+        if (empty($result['observation_full'])) {
+            $result['observation_full'] = $this->build_legacy_option_observation($optionid, $input, $result, $action);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Apply an explicit legacy create visibility after creation.
+     *
+     * @param array $input
+     * @param int $optionid
+     * @param int $cmid
+     * @param int $userid
+     * @return string
+     */
+    protected function apply_legacy_create_visibility_if_requested(
+        array $input,
+        int $optionid,
+        int $cmid,
+        int $userid
+    ): string {
+        if (
+            $optionid <= 0
+            || (
+                !array_key_exists('invisible', $input)
+                && !array_key_exists('visibility', $input)
+                && !array_key_exists('visible', $input)
+            )
+        ) {
+            return '';
+        }
+
+        $normalized = booking_task_support::normalize_visibility_input($input);
+        if (!isset($normalized['value'])) {
+            return (string)($normalized['error'] ?? '');
+        }
+
+        $service = new booking_task_mutation_execute_service();
+        $result = $service->execute(
+            update_option_task::TASK_NAME,
+            ['optionid' => $optionid, 'invisible' => (int)$normalized['value']],
+            $cmid,
+            $userid,
+            $this->support
+        );
+
+        if (is_array($result) && (string)($result['status'] ?? '') === 'executed') {
+            return '';
+        }
+
+        return is_array($result) ? (string)($result['detail'] ?? '') : 'Visibility update did not run.';
+    }
+
+    /**
+     * Build legacy text observation for split option task aliases.
+     *
+     * @param int $optionid
+     * @param array $input
+     * @param array $result
+     * @param string $action
+     * @return string
+     */
+    private function build_legacy_option_observation(int $optionid, array $input, array $result, string $action): string {
+        $settings = null;
+        try {
+            $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+        } catch (\Throwable $e) {
+            $settings = null;
+        }
+
+        $title = trim((string)($settings->text ?? $input['text'] ?? ''));
+        $parts = ['Booking option ' . $action . ':', 'optionid=' . $optionid];
+        if (isset($result['bookingid'])) {
+            $parts[] = 'bookingid=' . (int)$result['bookingid'];
+        }
+        if ($title !== '') {
+            $parts[] = 'title="' . $title . '"';
+        }
+
+        if ($settings !== null) {
+            if (isset($settings->type)) {
+                $parts[] = 'type=' . (int)$settings->type;
+            } else if (isset($settings->optiontype)) {
+                $parts[] = 'type=' . (int)$settings->optiontype;
+            }
+            if (isset($settings->maxanswers)) {
+                $parts[] = 'maxanswers=' . (int)$settings->maxanswers;
+            }
+            if (isset($settings->invisible)) {
+                $parts[] = 'invisible=' . (int)$settings->invisible;
+            }
+        }
+
+        return implode(' ', $parts);
     }
 
     /**
