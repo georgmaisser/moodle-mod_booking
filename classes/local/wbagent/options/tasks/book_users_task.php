@@ -17,6 +17,7 @@
 namespace mod_booking\local\wbagent\options\tasks;
 
 use mod_booking\local\wbagent\booking\booking_task_support;
+use bookingextension_agent\local\wbagent\interfaces\queue_identity_provider_interface;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 use mod_booking\bo_availability\bo_info;
@@ -31,7 +32,9 @@ use mod_booking\bo_availability\bo_info;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class book_users_task extends booking_task_base implements task_trigger_provider_interface {
+class book_users_task extends booking_task_base implements
+    queue_identity_provider_interface,
+    task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'mod_booking.book_users';
 
@@ -49,6 +52,97 @@ class book_users_task extends booking_task_base implements task_trigger_provider
      */
     public function get_name(): string {
         return self::TASK_NAME;
+    }
+
+    /**
+     * Build queue business identity for book_users deduplication.
+     *
+     * @param array<string,mixed> $input
+     * @return array<string,mixed>
+     */
+    public function build_queue_business_identity(array $input): array {
+        $normalized = $input;
+
+        $targetid = (int)($normalized['resolvedoptionid'] ?? $normalized['optionid'] ?? 0);
+        $targetquery = $this->normalize_identity_query((string)($normalized['optionquery'] ?? ''));
+        $targetwhen = $this->normalize_identity_query((string)($normalized['optionwhen'] ?? ''));
+        $bookedat = $this->normalize_identity_datetime((string)($normalized['bookuserstimebooked'] ?? ''));
+        $bookusers = $this->extract_identity_users($normalized);
+
+        return [
+            'task_family' => 'mod_booking.book_users',
+            'target' => [
+                'optionid' => $targetid,
+                'optionquery' => $targetquery,
+                'optionwhen' => $targetwhen,
+            ],
+            'bookusers' => $bookusers,
+            'bookuserstimebooked' => $bookedat,
+            'bookuserscompleted' => !empty($normalized['bookuserscompleted']),
+            'bookusersupdateexisting' => !empty($normalized['bookusersupdateexisting']),
+        ];
+    }
+
+    /**
+     * Extract normalized users for identity hashing.
+     *
+     * @param array<string,mixed> $input
+     * @return array<int,string>
+     */
+    private function extract_identity_users(array $input): array {
+        $users = [];
+
+        foreach ((array)($input['resolvedbookuserids'] ?? []) as $userid) {
+            $id = (int)$userid;
+            if ($id > 0) {
+                $users[] = 'id:' . $id;
+            }
+        }
+
+        if (empty($users)) {
+            $query = trim((string)($input['bookusersquery'] ?? ''));
+            if ($query !== '') {
+                $parts = preg_split('/\s*,\s*/', $query) ?: [];
+                foreach ($parts as $part) {
+                    $token = $this->normalize_identity_query((string)$part);
+                    if ($token !== '') {
+                        $users[] = 'q:' . $token;
+                    }
+                }
+            }
+        }
+
+        $users = array_values(array_unique($users));
+        sort($users);
+        return $users;
+    }
+
+    /**
+     * Normalize query-like identity values.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_identity_query(string $value): string {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+        return trim((string)$value);
+    }
+
+    /**
+     * Normalize date/time identity values.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_identity_datetime(string $value): string {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        $value = preg_replace('/\s+/', ' ', $value);
+        $value = str_replace(' ', 'T', (string)$value);
+        return strtolower((string)$value);
     }
 
     /**

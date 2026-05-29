@@ -18,6 +18,7 @@ namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 use bookingextension_agent\local\wbagent\services\task_prompt_contract;
+use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 
 /**
  * Legacy alias for creating slot-booking options.
@@ -26,7 +27,7 @@ use bookingextension_agent\local\wbagent\services\task_prompt_contract;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class create_option_slotbooking_task extends create_slotbooking_option_task {
+class create_option_slotbooking_task extends create_slotbooking_option_task implements task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'mod_booking.create_option_slotbooking';
 
@@ -69,20 +70,46 @@ class create_option_slotbooking_task extends create_slotbooking_option_task {
                 'slot_duration_minutes',
                 'slot_valid_from',
                 'slot_valid_until',
+                'slot_max_participants_per_slot',
             ],
             'example_input' => [
                 'text' => 'Tennisplatz Slots Juli',
                 'slot_opening_time' => '10:00',
                 'slot_closing_time' => '18:00',
                 'slot_duration_minutes' => 60,
+                'slot_max_participants_per_slot' => 1,
                 'slot_valid_from' => '2026-07-01',
                 'slot_valid_until' => '2026-07-31',
                 'slot_day_1' => true,
+                'slot_day_3' => true,
             ],
             'namespace' => 'mod_booking',
             'version' => 1,
             'context_scopes' => ['module'],
         ]);
+    }
+
+    /**
+     * Return task-specific message triggers.
+     *
+     * @return array
+     */
+    public function get_message_triggers(): array {
+        return [
+            [
+                'id' => 'mod_booking.create_option_slotbooking_request',
+                'description' => 'User asks for the alias task create_option_slotbooking or wants recurring '
+                    . 'appointment windows, slot duration, or per-slot capacity. Map weekdays to slot_day_1..slot_day_7 '
+                    . '(Monday=1 ... Sunday=7) and set slot_max_participants_per_slot (default 1 for single appointments).',
+                'examples' => [
+                    'Erstelle mir meine Sprechstunde immer von 10 bis 14h Montag und Mittwoch, '
+                        . '25 Minuten je Termin, fuer den gesamten Juli.',
+                    'Create slot booking with 30-minute windows for the month.',
+                    'Set up appointment slots from 10:00 to 18:00.',
+                    'I need the slotbooking option for recurring office hours.',
+                ],
+            ],
+        ];
     }
 
     /**
@@ -127,14 +154,16 @@ class create_option_slotbooking_task extends create_slotbooking_option_task {
      * @return string
      */
     private static function first_missing_slot_field(array $input): string {
-        foreach ([
-            'slot_opening_time',
-            'slot_closing_time',
-            'slot_duration_minutes',
-            'slot_valid_from',
-            'slot_valid_until',
-            'slot_max_participants_per_slot',
-        ] as $fieldname) {
+        foreach (
+            [
+                'slot_opening_time',
+                'slot_closing_time',
+                'slot_duration_minutes',
+                'slot_valid_from',
+                'slot_valid_until',
+                'slot_max_participants_per_slot',
+            ] as $fieldname
+        ) {
             if (!self::has_meaningful_slot_value($input, $fieldname)) {
                 return $fieldname;
             }

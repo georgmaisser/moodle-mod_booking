@@ -39,6 +39,29 @@ class create_selflearning_option_task extends create_option_task {
     }
 
     /**
+     * Build queue business identity for selflearning create deduplication.
+     *
+     * @param array<string,mixed> $input
+     * @return array<string,mixed>
+     */
+    public function build_queue_business_identity(array $input): array {
+        $title = $this->normalize_identity_string((string)($input['text'] ?? ''));
+        $duration = max(0, (int)($input['duration'] ?? 0));
+        $maxanswers = max(0, (int)($input['maxanswers'] ?? 0));
+        $teacherquery = $this->normalize_identity_query((string)($input['teacherquery'] ?? ''));
+        $teacheremail = strtolower(trim((string)($input['teacheremail'] ?? '')));
+
+        return [
+            'task_family' => 'mod_booking.create_selflearning_option',
+            'text' => $title,
+            'duration' => $duration,
+            'maxanswers' => $maxanswers,
+            'teacherquery' => $teacherquery,
+            'teacheremail' => $teacheremail,
+        ];
+    }
+
+    /**
      * Return task schema.
      *
      * @return array
@@ -54,8 +77,11 @@ class create_selflearning_option_task extends create_option_task {
             }
         }
 
-        $schema['description'] = 'Create a self-learning booking option in one command. '
-            . 'Use this for e-learning style options where users are booked for a duration instead of fixed slot windows.';
+        $schema['description'] = 'Create a self-learning booking option for duration-based participation. '
+            . 'Use this task when the user wants a self-paced or e-learning style offer with a duration '
+            . '(for example 2h, 4h, or 14400 seconds) instead of fixed appointment slots. '
+            . 'This is the canonical self-learning create task and should be preferred over the general '
+            . 'create_option task whenever the request is about a course-like learning period.';
         $schema['properties'] = $properties;
 
         return $schema;
@@ -70,10 +96,14 @@ class create_selflearning_option_task extends create_option_task {
         return [
             [
                 'id' => 'mod_booking.create_selflearning_request',
-                'description' => 'User asks for a self-learning/e-learning option with duration-based participation.',
+                'description' => 'User asks for a self-learning/e-learning option with duration-based participation '
+                    . 'and no fixed appointment slots. Route here when the user mentions a learning duration, '
+                    . 'self-paced course, or e-learning style booking.',
                 'examples' => [
                     'Erstelle einen Selbstlernkurs mit einer Lerndauer von 4 Stunden.',
                     'Create a self-learning booking option for 2 hours duration.',
+                    'I need a self-paced learning option people can complete within 3 hours.',
+                    'Please create a course-like booking option that lasts one afternoon and is not tied to time slots.',
                 ],
             ],
         ];
@@ -121,5 +151,29 @@ class create_selflearning_option_task extends create_option_task {
         $preparedinput['optiontype'] = 'selflearning';
         $preparedinput['selflearningcourse'] = true;
         return parent::execute($preparedinput, $cmid, $userid);
+    }
+
+    /**
+     * Normalize title-like identity string.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_identity_string(string $value): string {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+        return trim((string)$value);
+    }
+
+    /**
+     * Normalize query-like identity values.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_identity_query(string $value): string {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+        return trim((string)$value);
     }
 }

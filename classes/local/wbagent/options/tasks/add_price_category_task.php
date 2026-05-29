@@ -77,7 +77,9 @@ class add_price_category_task extends booking_task_base implements task_trigger_
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Create a booking price category for option pricing.',
+            'description' => 'Create a new price category (for example student, member, external) '
+                . 'that can be used in booking option pricing. Use this when users ask to add '
+                . 'or manage named price types. Requires site-level configuration capability.',
             'readonly' => $this->is_read_only(),
             'properties' => [
                 'identifier' => [

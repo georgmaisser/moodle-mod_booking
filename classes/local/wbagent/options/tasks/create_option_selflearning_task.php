@@ -17,6 +17,7 @@
 namespace mod_booking\local\wbagent\options\tasks;
 
 use bookingextension_agent\local\wbagent\services\task_prompt_contract;
+use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 
 /**
  * Legacy alias for creating self-learning booking options.
@@ -25,7 +26,7 @@ use bookingextension_agent\local\wbagent\services\task_prompt_contract;
  * @copyright  2026 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class create_option_selflearning_task extends create_selflearning_option_task {
+class create_option_selflearning_task extends create_selflearning_option_task implements task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'mod_booking.create_option_selflearning';
 
@@ -71,6 +72,26 @@ class create_option_selflearning_task extends create_selflearning_option_task {
             'version' => 1,
             'context_scopes' => ['module'],
         ]);
+    }
+
+    /**
+     * Return task-specific message triggers.
+     *
+     * @return array
+     */
+    public function get_message_triggers(): array {
+        return [
+            [
+                'id' => 'mod_booking.create_option_selflearning_request',
+                'description' => 'User asks for the alias task create_option_selflearning or wants a self-learning '
+                    . 'booking option with a duration instead of appointment slots.',
+                'examples' => [
+                    'Create a self-learning booking option for 4 hours.',
+                    'Set up a duration-based course option without slots.',
+                    'I need the self-learning booking option for a course that lasts one afternoon.',
+                ],
+            ],
+        ];
     }
 
     /**

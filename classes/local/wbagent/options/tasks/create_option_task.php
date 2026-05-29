@@ -19,6 +19,7 @@ namespace mod_booking\local\wbagent\options\tasks;
 use mod_booking\local\wbagent\booking\booking_task_mutation_execute_service;
 use mod_booking\local\wbagent\booking\booking_task_support;
 use mod_booking\local\wbagent\booking\support\booking_mutation_validation;
+use bookingextension_agent\local\wbagent\interfaces\queue_identity_provider_interface;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
 use context;
@@ -31,7 +32,7 @@ use context_module;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class create_option_task extends booking_task_base implements task_trigger_provider_interface {
+class create_option_task extends booking_task_base implements task_trigger_provider_interface, queue_identity_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'mod_booking.create_option';
 
@@ -49,6 +50,45 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      */
     public function get_name(): string {
         return self::TASK_NAME;
+    }
+
+    /**
+     * Build queue business identity for create_option deduplication.
+     *
+     * The first implementation intentionally keys identity to title +
+     * start/end datetime as requested.
+     *
+     * @param array<string,mixed> $input
+     * @return array<string,mixed>
+     */
+    public function build_queue_business_identity(array $input): array {
+        $appliedaliases = [];
+        $normalized = self::normalize_create_option_input($input, $appliedaliases);
+        $normalized = self::strip_create_targeting_fields($normalized);
+        $normalized = self::strip_llm_noise_keys($normalized);
+
+        $title = self::normalize_identity_string((string)($normalized['text'] ?? ''));
+        $start = self::normalize_identity_datetime((string)($normalized['coursestarttime'] ?? ''));
+        $end = self::normalize_identity_datetime((string)($normalized['courseendtime'] ?? ''));
+
+        if (($start === '' || $end === '') && !empty($normalized['optiondates']) && is_array($normalized['optiondates'])) {
+            $firstdate = reset($normalized['optiondates']);
+            if (is_array($firstdate)) {
+                if ($start === '') {
+                    $start = self::normalize_identity_datetime((string)($firstdate['coursestarttime'] ?? ''));
+                }
+                if ($end === '') {
+                    $end = self::normalize_identity_datetime((string)($firstdate['courseendtime'] ?? ''));
+                }
+            }
+        }
+
+        return [
+            'task' => self::TASK_NAME,
+            'text' => $title,
+            'coursestarttime' => $start,
+            'courseendtime' => $end,
+        ];
     }
 
     /**
@@ -80,11 +120,12 @@ class create_option_task extends booking_task_base implements task_trigger_provi
 
         $schema = [
             'version' => 1,
-            'description' => 'Canonical create implementation for booking options inside the current booking instance. '
-                . 'For user-facing normal date/time requests and numbered weekday event series, prefer '
-                . 'mod_booking.create_option_normal. For slot-based appointment availability use '
-                . 'mod_booking.create_option_slotbooking. For self-learning courses use '
-                . 'mod_booking.create_option_selflearning. New options are always created as invisible.',
+            'description' => 'Create a new booking option in the current booking activity. '
+                . 'Use this general create task when the user asks for a standard dated option '
+                . '(for example "create a workshop next Tuesday from 10:00 to 12:00"). '
+                . 'Use the specialized slot-booking task for appointment-slot availability and '
+                . 'the specialized self-learning task for duration-based self-learning offers. '
+                . 'New options are created as invisible by default and can be made visible later via update.',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_create_option',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_create_option',
@@ -103,8 +144,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         return [
             [
                 'id' => 'mod_booking.create_option_canonical_fallback',
-                'description' => 'Use only when the command explicitly names mod_booking.create_option or no specialized '
-                    . 'normal, self-learning, or slot-booking create task fits. For normal dated events and numbered '
+                'description' => 'Use only when the command explicitly names mod_booking.create_option or when the '
+                    . 'user clearly wants a normal dated booking option. For normal dated events and numbered '
                     . 'weekday event series, use mod_booking.create_option_normal.',
             ],
             [
@@ -121,10 +162,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             ],
             [
                 'id' => 'mod_booking.select_option_type_change',
-                'description' => 'User explicitly selects or confirms option type. '
-                    . 'Use mod_booking.create_option_normal for normal options only. '
-                    . 'Use mod_booking.create_option_slotbooking for slot-based appointment booking. '
-                    . 'Use mod_booking.create_option_selflearning for self-learning courses.',
+                'description' => 'User explicitly selects or confirms a normal booking option type. '
+                    . 'Use mod_booking.create_option_normal for standard dated options and weekday series.',
                 'examples' => [
                     'My tennis court should be bookable every weekday from 10 a.m. to 6 p.m., '
                         . 'in 1-hour slots. Create the booking availability for July.',
@@ -1108,6 +1147,39 @@ class create_option_task extends booking_task_base implements task_trigger_provi
      */
     private static function is_placeholder_value($value): bool {
         return $value === 0 || $value === '0' || $value === '' || $value === null || (is_array($value) && empty($value));
+    }
+
+    /**
+     * Normalize free-text fields for stable queue identity hashing.
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function normalize_identity_string(string $value): string {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $value = preg_replace('/\s+/', ' ', $value);
+        return strtolower((string)$value);
+    }
+
+    /**
+     * Normalize datetime-ish values for stable queue identity hashing.
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function normalize_identity_datetime(string $value): string {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $value = preg_replace('/\s+/', ' ', $value);
+        $value = str_replace(' ', 'T', (string)$value);
+        return strtolower((string)$value);
     }
 
     /**

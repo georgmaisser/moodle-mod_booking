@@ -88,7 +88,8 @@ class create_rule_from_template_task extends booking_task_base implements task_t
             'version' => 1,
             'description' => 'Create a booking rule from a booking-rule template '
                 . 'via the existing server-side rules form pipeline. '
-                . 'Use this for requests like adding a booking confirmation, reminder, or cancellation notification rule. '
+                . 'Use this for natural-language requests like adding a booking confirmation, reminder, '
+                . 'waitlist, or cancellation notification rule. '
                 . 'If the user explicitly asks for a Buchungsbestaetigung/booking confirmation, '
                 . 'resolve templatequery directly to "booking confirmation" without asking for template type again. '
                 . 'If the user says "mit dem Namen ...", map that value to rulename (not to optionquery).',

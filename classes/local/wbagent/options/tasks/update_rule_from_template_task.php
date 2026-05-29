@@ -83,7 +83,10 @@ class update_rule_from_template_task extends booking_task_base implements task_t
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Update a booking rule in the current booking context and optionally reapply a rule template.',
+            'description' => 'Update an existing booking rule in the current booking context, '
+                . 'optionally by reapplying a template first. Use this for natural-language requests '
+                . 'like "rename this reminder rule", "disable that confirmation rule", '
+                . 'or "change the template for this rule".',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_update_option',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_update_option',

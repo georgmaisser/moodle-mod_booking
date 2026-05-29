@@ -18,6 +18,7 @@ namespace mod_booking\local\wbagent\options\tasks;
 
 use mod_booking\local\wbagent\booking\booking_task_mutation_execute_service;
 use mod_booking\local\wbagent\booking\booking_task_support;
+use bookingextension_agent\local\wbagent\interfaces\queue_identity_provider_interface;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\privacy_anonymizer;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
@@ -29,7 +30,9 @@ use bookingextension_agent\local\wbagent\services\preflight_result_v2;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class bulk_update_options_task extends booking_task_base implements task_trigger_provider_interface {
+class bulk_update_options_task extends booking_task_base implements
+    queue_identity_provider_interface,
+    task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'mod_booking.bulk_update_options';
 
@@ -47,6 +50,96 @@ class bulk_update_options_task extends booking_task_base implements task_trigger
      */
     public function get_name(): string {
         return self::TASK_NAME;
+    }
+
+    /**
+     * Build queue business identity for bulk_update_options deduplication.
+     *
+     * @param array<string,mixed> $input
+     * @return array<string,mixed>
+     */
+    public function build_queue_business_identity(array $input): array {
+        $normalized = $input;
+
+        $optionids = [];
+        foreach ((array)($normalized['optionids'] ?? []) as $optionid) {
+            $id = (int)$optionid;
+            if ($id > 0) {
+                $optionids[] = $id;
+            }
+        }
+        foreach ((array)($normalized['resolvedoptionids'] ?? []) as $optionid) {
+            $id = (int)$optionid;
+            if ($id > 0) {
+                $optionids[] = $id;
+            }
+        }
+        $optionids = array_values(array_unique($optionids));
+        sort($optionids);
+
+        $optionquery = $this->normalize_identity_query((string)($normalized['optionquery'] ?? ''));
+        $applytoall = !empty($normalized['apply_to_all']);
+
+        foreach (
+            [
+                'optionids',
+                'resolvedoptionids',
+                'optionquery',
+                'apply_to_all',
+                'outputlang',
+                'override',
+            ] as $key
+        ) {
+            unset($normalized[$key]);
+        }
+
+        return [
+            'task_family' => 'mod_booking.bulk_update_options',
+            'selection' => [
+                'apply_to_all' => $applytoall,
+                'optionids' => $optionids,
+                'optionquery' => $optionquery,
+            ],
+            'changes' => $this->normalize_identity_value($normalized),
+        ];
+    }
+
+    /**
+     * Normalize query-like identity values.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_identity_query(string $value): string {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+        return trim((string)$value);
+    }
+
+    /**
+     * Normalize identity payload recursively for stable hashing.
+     *
+     * @param mixed $value
+     * @return mixed
+     */
+    private function normalize_identity_value($value) {
+        if (is_array($value)) {
+            if (array_is_list($value)) {
+                return array_values(array_map(fn($entry) => $this->normalize_identity_value($entry), $value));
+            }
+
+            ksort($value);
+            foreach ($value as $key => $entry) {
+                $value[$key] = $this->normalize_identity_value($entry);
+            }
+            return $value;
+        }
+
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        return $value;
     }
 
     /**

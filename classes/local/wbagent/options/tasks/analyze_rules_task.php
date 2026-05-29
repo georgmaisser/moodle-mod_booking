@@ -84,7 +84,9 @@ class analyze_rules_task extends booking_task_base implements task_trigger_provi
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Inspect booking rules and notification behavior in this booking context (read-only).',
+            'description' => 'Read-only analysis of booking rules and notification behavior in the current booking context. '
+                . 'Use this for natural-language questions like "what emails are sent", '
+                . '"which rules are active", or "how are confirmations/reminders configured".',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_search_options',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_search_options',

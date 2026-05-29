@@ -193,7 +193,10 @@ class configure_booking_instance_task extends booking_task_base {
             'version' => 1,
             'description' => 'Configure the current booking activity instance settings.'
                 . ' Use action=list_fields to discover which fields exist and their current values.'
-                . ' Use action=update to apply specific changes.',
+                . ' Use action=update to apply specific changes.'
+                . ' Natural-language mapping: questions like "what can I configure" or "show current settings" '
+                . 'should map to action=list_fields; requests like "change X to Y" should map to action=update '
+                . 'with a changes array.',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_configure_booking_instance',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_configure_booking_instance',
@@ -201,7 +204,8 @@ class configure_booking_instance_task extends booking_task_base {
                 'action' => [
                     'type' => 'string',
                     'description' => 'Required. "list_fields" to get a catalog of all configurable fields with current values.'
-                        . ' "update" to apply changes (requires "changes" array).',
+                        . ' "update" to apply changes (requires "changes" array).'
+                        . ' Use "list_fields" for exploratory requests and "update" only for concrete change requests.',
                     'required' => true,
                 ],
                 'changes' => [
