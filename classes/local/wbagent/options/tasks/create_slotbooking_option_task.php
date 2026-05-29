@@ -91,6 +91,8 @@ class create_slotbooking_option_task extends create_option_task {
             . 'availability windows, slot duration, validity range and per-slot capacity. '
             . 'Use this canonical task for requests like consultation slots, court appointments, '
             . 'office-hour availability, or any recurring bookable time window. '
+            . 'Do not use it for fixed dated event series with trainer/capacity and numbered titles '
+            . '(for example Lecture 1..n on specific weekdays); those are normal dated options. '
             . 'Do not use it for single dated events or normal course sessions; those belong to the '
             . 'general create_option task.';
         $schema['properties'] = $properties;
@@ -145,11 +147,15 @@ class create_slotbooking_option_task extends create_option_task {
                 'description' => 'User asks for slot/appointment booking with reusable availability windows and '
                     . 'slot duration. Route here when the user wants bookable appointment windows rather than '
                     . 'a single dated event. Convert weekday phrases to slot_day_1..slot_day_7 '
-                    . '(Monday=1 ... Sunday=7) and set slot_max_participants_per_slot explicitly.',
+                    . '(Monday=1 ... Sunday=7) and set slot_max_participants_per_slot explicitly. '
+                    . 'Do not route fixed weekday lecture/session series with numbered titles '
+                    . '(Lecture x) to slotbooking.',
                 'examples' => [
                     'Erstelle mir meine Sprechstunde immer von 10 bis 14h Montag und Mittwoch, '
                         . '25 Minuten je Termin, fuer den gesamten Juli.',
                     'Mein Tennisplatz soll jeden Wochentag von 10 bis 18 Uhr buchbar sein, in 1h-Slots.',
+                    'Create appointment slots where each participant picks any available 30-minute slot '
+                        . 'inside a daily window next month.',
                     'Create appointment slots Monday to Friday from 09:00 to 17:00 for August.',
                     'Set up consultation slots every Wednesday afternoon for next month.',
                     'Build recurring office-hour availability in 30-minute windows for the next month.',

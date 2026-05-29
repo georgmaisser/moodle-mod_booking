@@ -123,6 +123,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             'description' => 'Create a new booking option in the current booking activity. '
                 . 'Use this general create task when the user asks for a standard dated option '
                 . '(for example "create a workshop next Tuesday from 10:00 to 12:00"). '
+                . 'Also use this task for recurring weekday event series with fixed start/end times, '
+                . 'numbered titles (for example "Lecture 1, Lecture 2, ..."), trainer assignment, and capacity. '
                 . 'Use the specialized slot-booking task for appointment-slot availability and '
                 . 'the specialized self-learning task for duration-based self-learning offers. '
                 . 'New options are created as invisible by default and can be made visible later via update.',
@@ -146,7 +148,9 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 'id' => 'mod_booking.create_option_canonical_fallback',
                 'description' => 'Use only when the command explicitly names mod_booking.create_option or when the '
                     . 'user clearly wants a normal dated booking option. For normal dated events and numbered '
-                    . 'weekday event series, use mod_booking.create_option.',
+                    . 'weekday event series, use mod_booking.create_option. Requests like "next week Monday, '
+                    . 'Wednesday, Thursday 20:00-22:00, 20 participants, trainer Billy, numbered Lecture x" are '
+                    . 'create_option (dated series), not slotbooking.',
             ],
             [
                 'id' => 'mod_booking.force_create_duplicate_title',
@@ -163,10 +167,13 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             [
                 'id' => 'mod_booking.select_option_type_change',
                 'description' => 'User explicitly selects or confirms a normal booking option type. '
-                    . 'Use mod_booking.create_option for standard dated options and weekday series.',
+                    . 'Use mod_booking.create_option for standard dated options and weekday series with fixed '
+                    . 'session times, numbering, trainer and capacity.',
                 'examples' => [
-                    'My tennis court should be bookable every weekday from 10 a.m. to 6 p.m., '
-                        . 'in 1-hour slots. Create the booking availability for July.',
+                    'Erstelle fuer die naechste Woche Montag, Mittwoch und Donnerstag durchlaufend nummerierte '
+                        . '"Lecture x", immer von 20:00 bis 22:00, 20 Personen koennen kommen. Billy ist Trainer.',
+                    'Create a dated weekday lecture series for next week (Mon/Wed/Thu, 20:00-22:00), '
+                        . 'with 20 participants and trainer Billy, numbered Lecture 1..n.',
                 ],
             ],
         ];
