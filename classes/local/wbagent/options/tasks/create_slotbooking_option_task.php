@@ -92,7 +92,7 @@ class create_slotbooking_option_task extends create_option_task {
             . 'Use this canonical task for requests like consultation slots, court appointments, '
             . 'office-hour availability, or any recurring bookable time window. '
             . 'Do not use it for single dated events or normal course sessions; those belong to the '
-            . 'general create_option or create_option_normal tasks.';
+            . 'general create_option task.';
         $schema['properties'] = $properties;
 
         return $schema;

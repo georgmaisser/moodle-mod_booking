@@ -146,7 +146,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 'id' => 'mod_booking.create_option_canonical_fallback',
                 'description' => 'Use only when the command explicitly names mod_booking.create_option or when the '
                     . 'user clearly wants a normal dated booking option. For normal dated events and numbered '
-                    . 'weekday event series, use mod_booking.create_option_normal.',
+                    . 'weekday event series, use mod_booking.create_option.',
             ],
             [
                 'id' => 'mod_booking.force_create_duplicate_title',
@@ -163,7 +163,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             [
                 'id' => 'mod_booking.select_option_type_change',
                 'description' => 'User explicitly selects or confirms a normal booking option type. '
-                    . 'Use mod_booking.create_option_normal for standard dated options and weekday series.',
+                    . 'Use mod_booking.create_option for standard dated options and weekday series.',
                 'examples' => [
                     'My tennis court should be bookable every weekday from 10 a.m. to 6 p.m., '
                         . 'in 1-hour slots. Create the booking availability for July.',
@@ -398,7 +398,6 @@ class create_option_task extends booking_task_base implements task_trigger_provi
 
         if ($includeenlabelkeymap) {
             $parts[] = 'Use canonical property keys only; do not use localized labels.';
-            $parts[] = 'If you need the full EN label -> key map, ask with: FULL_KEY_MAP ' . static::TASK_NAME . '.';
         }
 
         if (static::TASK_NAME === 'mod_booking.create_slotbooking_option') {
@@ -423,7 +422,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             $parts[] = 'Remove unknown keys: ' . implode(', ', $unknownprops) . '.';
         }
 
-        $parts[] = 'Resend exactly one corrected task_call.';
+        $parts[] = 'Do not switch task and do not call documentation tasks for this repair.';
+        $parts[] = 'Resend exactly one corrected task_call for the same task.';
 
         return implode(' ', $parts);
     }
@@ -1239,8 +1239,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                     '- If the user explicitly wants the option visible, first create it, then run booking.update_option '
                         . 'to set visibility/invisible.',
                     '- For create requests, set optiontype explicitly whenever possible: normal|selflearning|slotbooking.',
-                    '- Use this task for normal options. For slotbooking use booking.create_slotbooking_option.',
-                    '- For self-learning use booking.create_selflearning_option.',
+                    '- Use this task for normal options. For slotbooking use mod_booking.create_slotbooking_option.',
+                    '- For self-learning use mod_booking.create_selflearning_option.',
                     '- Do not ask end users for internal type names; infer the best type from intent and phrasing.',
                     '- If type is still unclear, ask behavior-focused questions (e.g. fixed dates, self-paced, or bookable slots),'
                         . ' not technical labels.',

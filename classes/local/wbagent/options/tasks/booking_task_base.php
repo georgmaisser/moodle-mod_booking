@@ -560,7 +560,7 @@ abstract class booking_task_base extends base_task {
     }
 
     /**
-     * Add legacy option result fields expected by split option task aliases.
+     * Add option result fields used by observation summaries.
      *
      * @param array $result
      * @param array $input
@@ -636,7 +636,7 @@ abstract class booking_task_base extends base_task {
     }
 
     /**
-     * Build legacy text observation for split option task aliases.
+     * Build text observation for option mutations.
      *
      * @param int $optionid
      * @param array $input
