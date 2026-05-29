@@ -85,6 +85,7 @@ class create_slotbooking_option_task extends create_option_task {
         $properties = is_array($schema['properties'] ?? null) ? (array)$schema['properties'] : [];
 
         unset($properties['optiontype'], $properties['slot_enabled']);
+        unset($properties['coursestarttime'], $properties['courseendtime']);
         unset($properties['selflearningcourse'], $properties['duration'], $properties['disablecancel']);
 
         $schema['description'] = 'Create a slot-based booking option for appointment scheduling with reusable '

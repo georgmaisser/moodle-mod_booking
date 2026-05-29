@@ -42,24 +42,25 @@ class option_schema_definition {
             'maxoverbooking' => ['type' => 'integer', 'description' => 'Waiting-list size.', 'required' => false],
             'optiondates' => [
                 'type' => 'array',
-                'description' => 'Optional list of date ranges. Each item should include '
-                    . 'coursestarttime and courseendtime (ISO 8601 or Unix timestamp).',
+                'description' => 'Optional list of sessions. Each item contains a coursestarttime/courseendtime pair'
+                    . '(ISO 8601 or Unix timestamp) and optional optiondateid/daystonotify. ',
                 'required' => false,
             ],
             'optiondatesmode' => [
                 'type' => 'string',
                 'description' => 'How optiondates are applied on update: append (default, keep existing sessions) '
-                    . 'or replace (overwrite all existing sessions).',
+                    . 'or replace (overwrite all existing sessions). Use append for adding new '
+                    . 'indexed entries (_0, _1, ... ) without deleting existing sessions.',
                 'required' => false,
             ],
             'coursestarttime' => [
                 'type' => 'string',
-                'description' => 'Legacy single-date start time (ISO 8601 or Unix timestamp). Prefer optiondates[].',
+                'description' => 'Single-session compatibility field (ISO 8601 or Unix timestamp).',
                 'required' => false,
             ],
             'courseendtime' => [
                 'type' => 'string',
-                'description' => 'Legacy single-date end time (ISO 8601 or Unix timestamp). Prefer optiondates[].',
+                'description' => 'Single-session compatibility field (ISO 8601 or Unix timestamp).',
                 'required' => false,
             ],
             'bookingopeningtime' => [

@@ -22,8 +22,6 @@ use mod_booking\local\wbagent\booking\support\booking_mutation_validation;
 use bookingextension_agent\local\wbagent\interfaces\queue_identity_provider_interface;
 use bookingextension_agent\local\wbagent\interfaces\task_trigger_provider_interface;
 use bookingextension_agent\local\wbagent\services\preflight_result_v2;
-use context;
-use context_module;
 
 /**
  * Task definition for booking.create_option.
@@ -32,7 +30,7 @@ use context_module;
  * @copyright  2025 Wunderbyte GmbH <info@wunderbyte.at>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class create_option_task extends booking_task_base implements task_trigger_provider_interface, queue_identity_provider_interface {
+class create_option_task extends booking_task_base implements queue_identity_provider_interface, task_trigger_provider_interface {
     /** Task name constant. */
     public const TASK_NAME = 'mod_booking.create_option';
 
@@ -65,7 +63,6 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         $appliedaliases = [];
         $normalized = self::normalize_create_option_input($input, $appliedaliases);
         $normalized = self::strip_create_targeting_fields($normalized);
-        $normalized = self::strip_llm_noise_keys($normalized);
 
         $title = self::normalize_identity_string((string)($normalized['text'] ?? ''));
         $start = self::normalize_identity_datetime((string)($normalized['coursestarttime'] ?? ''));
@@ -118,6 +115,19 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         // New options are always created hidden. Visibility can be changed later via booking.update_option only.
         unset($properties['invisible'], $properties['visibility']);
 
+        if (static::TASK_NAME === self::TASK_NAME) {
+            // General create_option must stay focused on normal dated options.
+            // Slot/self-learning variants are exposed via dedicated create tasks.
+            unset($properties['optiontype'], $properties['slot_enabled']);
+            unset($properties['coursestarttime'], $properties['courseendtime']);
+            unset($properties['selflearningcourse'], $properties['duration'], $properties['disablecancel']);
+            foreach (array_keys($properties) as $key) {
+                if (is_string($key) && str_starts_with($key, 'slot_')) {
+                    unset($properties[$key]);
+                }
+            }
+        }
+
         $schema = [
             'version' => 1,
             'description' => 'Create a new booking option in the current booking activity. '
@@ -149,7 +159,6 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 'description' => 'Use only when the command explicitly names mod_booking.create_option or when the '
                     . 'user clearly wants a normal dated booking option. For normal dated events and numbered '
                     . 'weekday event series, use mod_booking.create_option. Requests like "next week Monday, '
-                    . 'Wednesday, Thursday 20:00-22:00, 20 participants, trainer Billy, numbered Lecture x" are '
                     . 'create_option (dated series), not slotbooking.',
             ],
             [
@@ -170,10 +179,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                     . 'Use mod_booking.create_option for standard dated options and weekday series with fixed '
                     . 'session times, numbering, trainer and capacity.',
                 'examples' => [
-                    'Erstelle fuer die naechste Woche Montag, Mittwoch und Donnerstag durchlaufend nummerierte '
-                        . '"Lecture x", immer von 20:00 bis 22:00, 20 Personen koennen kommen. Billy ist Trainer.',
-                    'Create a dated weekday lecture series for next week (Mon/Wed/Thu, 20:00-22:00), '
-                        . 'with 20 participants and trainer Billy, numbered Lecture 1..n.',
+                    'Erstelle fuer die naechste Woche Montag, Mittwoch und Donnerstag durchlaufend nummerierte Veranstaltungen' .
+                    'Create a dated weekday lecture series for next week (Mon/Wed/Thu, 20:00-22:00)',
                 ],
             ],
         ];
@@ -202,38 +209,13 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             unset($input[$rawkey]);
         }
 
-        foreach (['option', 'args', 'params', 'input', 'arguments', 'fields'] as $wrapperkey) {
-            if (!isset($input[$wrapperkey]) || !is_array($input[$wrapperkey])) {
-                continue;
-            }
-
-            $nestedinput = $input[$wrapperkey];
-            if (isset($nestedinput['input']) && is_array($nestedinput['input'])) {
-                $nestedinput = array_merge($nestedinput, $nestedinput['input']);
-                unset($nestedinput['input']);
-            }
-
-            foreach ($nestedinput as $nestedkey => $nestedvalue) {
-                if (!is_string($nestedkey) || trim($nestedkey) === '' || self::is_placeholder_value($nestedvalue)) {
-                    continue;
-                }
-                $nestedkey = trim($nestedkey);
-                if (in_array($nestedkey, ['task', 'version', 'guard_token', 'response_type'], true)) {
-                    continue;
-                }
-                if (self::is_placeholder_value($input[$nestedkey] ?? null)) {
-                    $input[$nestedkey] = $nestedvalue;
-                    $appliedaliases[$nestedkey] = $wrapperkey . '.' . $nestedkey;
-                }
-            }
-            unset($input[$wrapperkey]);
-        }
-
         $aliasgroups = [
             'text' => ['title', 'name', 'optionname', 'option_title', 'identifier', 'label', 'option_name', 'optiontext'],
             'maxanswers' => ['limit', 'limitanswers', 'spots', 'capacity', 'maxparticipants', 'max_participants'],
             'coursestarttime' => ['starttime', 'start', 'from'],
             'courseendtime' => ['endtime', 'end', 'to'],
+            'bookingopeningtime' => ['bookingopen', 'booking_open', 'bookingopens', 'booking_opens'],
+            'bookingclosingtime' => ['bookingclose', 'booking_close', 'bookingcloses', 'booking_closes'],
             'optiondates' => ['bookingdates', 'dates', 'sessions', 'occurrences'],
             'teacherquery' => ['teacher', 'trainer', 'instructor', 'instructorty', 'lecturer', 'dozent'],
             'teacheremail' => ['instructoremail', 'teacher_mail', 'teacher_email'],
@@ -349,39 +331,27 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 }
             }
 
-            $normalized[] = $dateitem;
+            // Keep only canonical fields expected by downstream parsing.
+            $canonical = [];
+            if (array_key_exists('coursestarttime', $dateitem)) {
+                $canonical['coursestarttime'] = $dateitem['coursestarttime'];
+            }
+            if (array_key_exists('courseendtime', $dateitem)) {
+                $canonical['courseendtime'] = $dateitem['courseendtime'];
+            }
+            if (array_key_exists('optiondateid', $dateitem)) {
+                $canonical['optiondateid'] = $dateitem['optiondateid'];
+            }
+            if (array_key_exists('daystonotify', $dateitem)) {
+                $canonical['daystonotify'] = $dateitem['daystonotify'];
+            }
+
+            if (!empty($canonical)) {
+                $normalized[] = $canonical;
+            }
         }
 
         return $normalized;
-    }
-
-    /**
-     * Remove common non-schema noise keys emitted by LLM planners.
-     *
-     * @param array $input
-     * @return array
-     */
-    private static function strip_llm_noise_keys(array $input): array {
-        foreach (['booking_closed', 'booking_open', 'booking_opened', 'meta', 'metadata', 'minimal_input',
-            'confirmed', 'is_confirmed', 'confirm', 'acknowledged', 'approved', 'status', 'number', 'sequence',
-            'index'] as $noisekey) {
-            if (array_key_exists($noisekey, $input)) {
-                unset($input[$noisekey]);
-            }
-        }
-
-        foreach (array_keys($input) as $key) {
-            if (!is_string($key) || $key === '') {
-                continue;
-            }
-
-            $keynorm = strtolower((string)preg_replace('/[^a-z0-9]+/', '', $key));
-            if (preg_match('/^(number|sequence|ordinal|index)[a-z0-9]*$/', $keynorm) === 1) {
-                unset($input[$key]);
-            }
-        }
-
-        return $input;
     }
 
     /**
@@ -497,8 +467,6 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         $input = self::normalize_create_option_input($input, $appliedaliases);
         $input = self::strip_create_targeting_fields($input);
         $rawinput = self::strip_create_targeting_fields($rawinput);
-        $input = self::strip_llm_noise_keys($input);
-        $rawinput = self::strip_llm_noise_keys($rawinput);
 
         if (static::TASK_NAME === 'mod_booking.create_slotbooking_option') {
             unset($input['optiontype'], $input['slot_enabled']);
@@ -656,7 +624,15 @@ class create_option_task extends booking_task_base implements task_trigger_provi
         $appliedaliases = [];
         $input = self::normalize_create_option_input($input, $appliedaliases);
         $input = self::strip_create_targeting_fields($input);
-        $input = self::strip_llm_noise_keys($input);
+
+        if (static::TASK_NAME === self::TASK_NAME) {
+            unset($input['slot_enabled'], $input['selflearningcourse'], $input['duration'], $input['disablecancel']);
+            foreach (array_keys($input) as $key) {
+                if (is_string($key) && str_starts_with($key, 'slot_')) {
+                    unset($input[$key]);
+                }
+            }
+        }
 
         // Title is required (structural, but re-check for safety).
         if (empty($input['text'])) {
@@ -1245,7 +1221,9 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                     '- booking.create_option always creates options as invisible.',
                     '- If the user explicitly wants the option visible, first create it, then run booking.update_option '
                         . 'to set visibility/invisible.',
-                    '- For create requests, set optiontype explicitly whenever possible: normal|selflearning|slotbooking.',
+                    '- For mod_booking.create_option, do NOT send optiontype; choose the correct create task instead.',
+                    '- For dated sessions, provide optiondates as a list and let execution map this to '
+                        . 'booking_option::update indexed fields (_0, _1, ...).',
                     '- Use this task for normal options. For slotbooking use mod_booking.create_slotbooking_option.',
                     '- For self-learning use mod_booking.create_selflearning_option.',
                     '- Do not ask end users for internal type names; infer the best type from intent and phrasing.',
@@ -1304,7 +1282,7 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                 'guidance' => [
                     '- To book users directly to an option, use bookusersquery in booking.create_option'
                         . ' or booking.update_option.',
-                    '- If the user already provided a person name (e.g. "Billy Teachy"), pass it directly as bookusersquery.',
+                    '- If the user already provided a person name, pass it directly as bookusersquery.',
                     '- For utterances like "buche <person> in die option <option>", map <person> -> bookusersquery and'
                         . ' <option> -> optionquery.',
                     '- Do not ask for user id or e-mail when a name query is already present.',
@@ -1321,7 +1299,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
                     '- Resolve relative dates against current Moodle timezone and current datetime from system prompt.',
                     '- Prefer ISO 8601 for date/time fields in command input.',
                     '- Never use old hardcoded timestamps from examples.',
-                    '- For recurring series phrased as "next week" without explicit weekday constraints, default to Monday-Friday (5 occurrences).',
+                    '- For recurring series phrased as "next week" without explicit weekday constraints, '
+                        . 'default to Monday-Friday (5 occurrences).',
                     '- If a resolved date appears in the past and user did not ask for past dates, ask clarification.',
                 ],
             ],
@@ -1366,6 +1345,16 @@ class create_option_task extends booking_task_base implements task_trigger_provi
     public function execute(array $preparedinput, int $contextid, int $userid): array {
         $cmid = $this->resolve_cmid_from_context_or_cmid($contextid);
         $preparedinput = self::strip_create_targeting_fields($preparedinput);
+        if (static::TASK_NAME === self::TASK_NAME) {
+            unset($preparedinput['slot_enabled'], $preparedinput['selflearningcourse']);
+            foreach (array_keys($preparedinput) as $key) {
+                if (is_string($key) && str_starts_with($key, 'slot_')) {
+                    unset($preparedinput[$key]);
+                }
+            }
+            $preparedinput['optiontype'] = 'normal';
+            unset($preparedinput['duration'], $preparedinput['disablecancel']);
+        }
         $service = new booking_task_mutation_execute_service();
         $result = $service->execute(self::TASK_NAME, $preparedinput, $cmid, $userid, $this->support);
         if (is_array($result)) {
@@ -1415,8 +1404,8 @@ class create_option_task extends booking_task_base implements task_trigger_provi
             return (int)$cm->id;
         }
 
-        $ctx = context::instance_by_id($contextidorcmid, IGNORE_MISSING);
-        if ($ctx instanceof context_module && (int)($ctx->instanceid ?? 0) > 0) {
+        $ctx = \context::instance_by_id($contextidorcmid, IGNORE_MISSING);
+        if ($ctx instanceof \context_module && (int)($ctx->instanceid ?? 0) > 0) {
             return (int)$ctx->instanceid;
         }
 

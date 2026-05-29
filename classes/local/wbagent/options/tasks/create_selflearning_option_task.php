@@ -71,6 +71,8 @@ class create_selflearning_option_task extends create_option_task {
         $properties = is_array($schema['properties'] ?? null) ? (array)$schema['properties'] : [];
 
         unset($properties['optiontype'], $properties['slot_enabled']);
+        unset($properties['optiondates'], $properties['optiondatesmode']);
+        unset($properties['coursestarttime'], $properties['courseendtime']);
         foreach (array_keys($properties) as $key) {
             if (is_string($key) && str_starts_with($key, 'slot_')) {
                 unset($properties[$key]);

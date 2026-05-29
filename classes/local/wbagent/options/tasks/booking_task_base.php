@@ -768,11 +768,6 @@ abstract class booking_task_base extends base_task {
     /**
      * Run service-level preflight validation and return an enriched preflight_result_v2.
      *
-     * Centralises the repeated pattern across mutation tasks:
-    *  1. Run shared mutation validation.
-     *  2. On errors/ambiguities: append them to $existingissues and return invalid().
-     *  3. On success: apply normalized_input and return ok().
-     *
      * @param  string $taskname       Fully-qualified task name (e.g. booking.update_option).
      * @param  array  $preparedinput  Input with local resolution already applied.
      * @param  int    $cmid
@@ -816,27 +811,22 @@ abstract class booking_task_base extends base_task {
     }
 
     /**
-     * Accept both contextid and legacy cmid task-call styles.
+     * Resolve cmid strictly from module context id.
      *
-     * @param int $contextidorcmid
+     * @param int $contextid
      * @return int
      */
-    protected function resolve_cmid_from_context_or_cmid(int $contextidorcmid): int {
-        if ($contextidorcmid <= 0) {
+    protected function resolve_cmid_from_context_or_cmid(int $contextid): int {
+        if ($contextid <= 0) {
             return 0;
         }
 
-        $cm = get_coursemodule_from_id('booking', $contextidorcmid, 0, false, IGNORE_MISSING);
-        if ($cm && !empty($cm->id)) {
-            return (int)$cm->id;
-        }
-
-        $ctx = \context::instance_by_id($contextidorcmid, IGNORE_MISSING);
+        $ctx = \context::instance_by_id($contextid, IGNORE_MISSING);
         if ($ctx instanceof \context_module && (int)($ctx->instanceid ?? 0) > 0) {
             return (int)$ctx->instanceid;
         }
 
-        return $contextidorcmid;
+        return 0;
     }
 
     /**
