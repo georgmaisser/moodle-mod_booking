@@ -70,7 +70,7 @@ class create_selflearning_option_task extends create_option_task {
         $schema = parent::get_schema();
         $properties = is_array($schema['properties'] ?? null) ? (array)$schema['properties'] : [];
 
-        unset($properties['optiontype'], $properties['slot_enabled']);
+        unset($properties['slot_enabled']);
         unset($properties['optiondates'], $properties['optiondatesmode']);
         unset($properties['coursestarttime'], $properties['courseendtime']);
         foreach (array_keys($properties) as $key) {

@@ -119,7 +119,6 @@ class create_option_task extends booking_task_base implements queue_identity_pro
             // General create_option must stay focused on normal dated options.
             // Slot/self-learning variants are exposed via dedicated create tasks.
             unset($properties['optiontype'], $properties['slot_enabled']);
-            unset($properties['coursestarttime'], $properties['courseendtime']);
             unset($properties['selflearningcourse'], $properties['duration'], $properties['disablecancel']);
             foreach (array_keys($properties) as $key) {
                 if (is_string($key) && str_starts_with($key, 'slot_')) {

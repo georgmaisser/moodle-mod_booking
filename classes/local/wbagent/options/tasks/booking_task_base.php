@@ -784,7 +784,6 @@ abstract class booking_task_base extends base_task {
         array $existingissues = [],
         string $lang = ''
     ): preflight_result_v2 {
-        $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
         $servicepreflight = booking_mutation_validation::validate_common($preparedinput, $cmid, $taskname);
 
         $issues = $existingissues;
