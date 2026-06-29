@@ -907,7 +907,18 @@ class slot_availability {
             }
 
             $bookings = self::count_bookings($optionid, $slotstart, $slotend, 0, 0, $holds);
-            $evaluation = self::evaluate_slot_for_user($optionid, $slotstart, $slotend, $userid, [], 0, 0, false, $holds, $assignedteachers);
+            $evaluation = self::evaluate_slot_for_user(
+                $optionid,
+                $slotstart,
+                $slotend,
+                $userid,
+                [],
+                0,
+                0,
+                false,
+                $holds,
+                $assignedteachers
+            );
             $status = (string)($evaluation['status'] ?? 'unavailable');
 
             $result[] = [

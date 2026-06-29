@@ -1,8 +1,20 @@
+## Version 9.4.0 (xxx)
 * New feature: New "Bulk operations" tab on the booking instance view page. It is enabled via the "Views to show" instance setting, requires the 'mod/booking:executebulkoperations' capability in module context and only shows booking options of the current instance. Users without 'mod/booking:canseeinvisibleoptions' in the module context only see visible options there. Also, the "Send mail to teachers" functionality of bulk operations now needs the 'mod/booking:communicate' capability.
 * Improvement: The capability 'mod/booking:executebulkoperations' is now assignable in module context (system-level assignments keep working).
 * Improvement: Bulk operation forms now check capabilities on submission ('mod/booking:executebulkoperations' for bulk editing, 'mod/booking:communicate' for sending mail to teachers).
 * Improvement: All tabs on the booking instance view now show a fitting icon.
 * Bugfix: The English and German 'bulkoperations' language strings were swapped.
+* New feature: Booking AI agent integration for mod_booking (agent skills, providers, diagnostics).
+* Improvement: Performance — memoise the DB-server version check; defer system-wide cache broadcasts during bulk booking, single-booking and waiting-list sync; batch category lookups.
+* Improvement: Slotbooking — hoist option-wide queries out of the per-slot loop.
+* Bugfix: Availability SQL filter — tolerate NULL availability; make user-profile-field </> operators numeric and DB-agnostic (MariaDB/PostgreSQL).
+* Bugfix: Add a per-option capacity lock to close an overbooking race.
+* Bugfix: Resolve REST after-booking action JSON-body placeholders per token; gate "user affected by event" by the selected event.
+* Improvement: After booking actions — REST (executerestscript, cancel trigger).
+* Improvement: Load bookingextension settings regardless of the Booking PRO license.
+* Improvement: Scheduled mails page — align context resolution with edit_rules.php.
+* Improvement: Entity cross-option availability and capacity/equipment booking (with behat coverage).
+* Tests: gated concurrency/overbooking benchmark for booking capacity; further test improvements.
 
 ## Version 9.4.0 (2026062201)
 * New feature: Slot booking - book and manage time slots inside a booking option: slot calendar picker and report, self-service move/cancel of booked slots, a unified "update booking" editor (move + cancel + change in one dynamic form), optional move-with-payment via shopping_cart, and per-slot booking rules (Wunderbyte-GmbH/Wunderbyte-GmbH#1596).
