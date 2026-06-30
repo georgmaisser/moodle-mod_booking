@@ -1,0 +1,4 @@
+[submodule "bookingextension/agent"]
+	path = bookingextension/agent
+	url = git@github.com:georgmaisser/moodle-bookingextension_agent.git
+	branch = SOFABOOKING
