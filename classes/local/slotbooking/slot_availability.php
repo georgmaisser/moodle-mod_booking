@@ -117,6 +117,7 @@ class slot_availability {
      * @param int $slotend slot end timestamp
      * @param int $excludeanswerid booking answer id to ignore in overlap checks
      * @param int $excludemoveid pending move id to ignore (holder re-validating their own target)
+     * @param array|null $holds pending holds to include in overlap checks
      * @return int
      */
     public static function count_bookings(
@@ -384,6 +385,8 @@ class slot_availability {
      * @param int $excludeanswerid booking answer id to ignore in overlap checks
      * @param int $excludemoveid pending move id to ignore (holder re-validating their own target)
      * @param bool $uselivedata whether to query live (uncached) booking data
+     * @param array|null $holds pending holds to include in overlap checks
+     * @param array|null $assignedteachers pre-resolved assigned teachers for this slot
      * @return array
      */
     public static function evaluate_slot_for_user(

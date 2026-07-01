@@ -38,7 +38,6 @@ defined('MOODLE_INTERNAL') || die();
 global $CFG;
 require_once($CFG->dirroot . '/mod/booking/lib.php');
 require_once($CFG->dirroot . '/mod/booking/classes/price.php');
-require_once($CFG->dirroot . '/mod/booking/tests/booking_advanced_testcase.php');
 
 /**
  * Class handling tests certificate conditions.

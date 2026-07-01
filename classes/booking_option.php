@@ -1948,6 +1948,7 @@ class booking_option {
      * @param stdClass $user
      * @param int $waitinglist
      * @param int $timebooked
+     * @param int $baid
      * @return bool
      */
     public function after_successful_booking_routine(stdClass $user, int $waitinglist, int $timebooked = 0, int $baid = 0) {
@@ -4336,9 +4337,11 @@ class booking_option {
             // Normal options can link entities at optiondate level, so targeted-purge the
             // occupancy cache of each optiondate's entity as well.
             $optiondateids = $DB->get_fieldset_select('booking_optiondates', 'id', 'optionid = ?', [$optionid]);
-            foreach ($optiondateids as $optiondateid) {
-                (new \local_entities\entitiesrelation_handler('mod_booking', 'optiondate', (int)$optiondateid))
-                    ->purge_dates_cache();
+            if (method_exists('local_entities\entitiesrelation_handler', 'purge_dates_cache')) {
+                foreach ($optiondateids as $optiondateid) {
+                    (new \local_entities\entitiesrelation_handler('mod_booking', 'optiondate', (int)$optiondateid))
+                        ->purge_dates_cache();
+                }
             }
         }
     }
@@ -4381,7 +4384,10 @@ class booking_option {
 
         // Booked slots feed the entity occupancy of this option's entity, so a changed answer must
         // targeted-purge that entity's occupancy cache (resolved option -> entity by the handler).
-        if (class_exists('local_entities\entitiesrelation_handler')) {
+        if (
+            class_exists('local_entities\entitiesrelation_handler')
+            && method_exists('local_entities\entitiesrelation_handler', 'purge_dates_cache')
+        ) {
             (new \local_entities\entitiesrelation_handler('mod_booking', 'option', $optionid))->purge_dates_cache();
         }
     }
