@@ -1,0 +1,26 @@
+# calendar_helper — Methoden-Doku
+**Datei:** `classes/local/calendar/calendar_helper.php` · **LOC:** 231 · **Subsystem:** S01 · **Klassen-Score:** B / P2
+> [Subsystem-Doc](../../subsystems/S01_core_domain.md)
+
+## Klassenueberblick
+`calendar_helper` ist eine rein statische Service-Klasse, die die Moodle-Kalender-Events (Tabelle `event`) einer Buchungsoption verwaltet: sichtbar/unsichtbar schalten, loeschen (Kurs- und User-Events getrennt) sowie nach Aenderungen von Option/Optiondate aktualisieren. Sie haelt keinen Zustand. Kollaborateure: `$DB` (direkte Roh-SQL gegen `event`, `booking_userevents`, `booking_options`), `singleton_service` (Option-Settings), `description_calendarevent` (Render der Event-Beschreibung), Event `bookingoptiondate_created`, `context_module`. Kurs-Events werden ueber die `uuid`-Konvention `"<optionid>-%"` identifiziert, User-Events ueber die Verknuepfungstabelle `booking_userevents`.
+
+## Methoden
+
+### `public static function option_set_visibility_for_all_calendar_events(int $optionid, int $visible = 1): void` — public static
+- **Zweck:** Setzt `visible` aller Kurs- und User-Events einer Option (z. B. wenn die Option auf unsichtbar gestellt wird). **Seiteneffekte:** Roh-SQL `SELECT * FROM event WHERE uuid LIKE '<optionid>-%'` (via `sql_concat`), dann `update_record('event', …)` pro Datensatz; analog ein JOIN ueber `booking_userevents`. `booking_userevents`-Records bleiben fuer spaetere Reaktivierung erhalten. **Bewertung:** B — N+1-Update-Schleife (ein `update_record` pro Event statt Set-Update via `set_field_select`); `$params['optionid']` wird ohne vorherige Initialisierung von `$params` befuellt (funktioniert, da impliziter Array-Aufbau, aber stilistisch unsauber).
+
+### `public static function option_delete_all_calendar_events(int $optionid): void` — public static
+- **Zweck:** Loescht saemtliche Kalender-Events einer Option, indem Kurs- und User-Loeschpfad delegiert werden. **Seiteneffekte:** ruft `option_delete_course_calendar_events` + `option_delete_user_calendar_events`. **Bewertung:** A — schlanke Delegation.
+
+### `public static function option_delete_course_calendar_events(int $optionid): void` — public static
+- **Zweck:** Loescht die Kurs-Events (per `uuid LIKE '<optionid>-%'`) und setzt zusaetzlich `booking_options.calendarid = 0`. **Seiteneffekte:** `get_records_sql` + `delete_records('event', ['id'=>…])` pro Datensatz; `update_record('booking_options', …)`. **Bewertung:** B — die per-Row-Loeschschleife koennte durch `delete_records_select('event', $DB->sql_like('uuid', …))` ersetzt werden (N+1, P3); ansonsten korrekt.
+
+### `public static function option_delete_user_calendar_events(int $optionid): void` — public static
+- **Zweck:** Loescht alle User-Events der Option und raeumt danach die Verknuepfungen in `booking_userevents` auf. **Seiteneffekte:** liest `booking_userevents WHERE optionid=…`, `delete_records('event', ['id'=>eventid])` pro Datensatz, anschliessend `delete_records('booking_userevents', ['optionid'=>…])`. **Bewertung:** B — DocBlock sagt faelschlich „Hide all user calendar events", tatsaechlich werden sie geloescht; per-Row-Loeschung (N+1, P3).
+
+### `public static function option_optiondate_update_event(int $optionid, int $cmid, ?stdClass $optiondate = null)` — public static
+- **Zweck:** Synchronisiert die Event-Datensaetze nach Aenderung einer Option bzw. eines einzelnen Optiondate. Zwei Pfade: (a) mit `$optiondate` — falls keine `eventid`/kein Event existiert, wird ueber `bookingoptiondate_created` ein Event neu erzeugt und `false` zurueckgegeben (Wechsel zu Multisession); andernfalls werden alle zu diesem optiondate gehoerenden User-Events plus das Haupt-Event gesammelt. (b) ohne `$optiondate` — sammelt alle User-Events der Option plus das Event mit `settings->calendarid`. Anschliessend werden fuer jeden Eventrecord Beschreibung (`description_calendarevent`), Name (`get_title_with_prefix`), `timestart`/`timeduration`/`timesort` neu gesetzt und per `update_record` geschrieben. **Seiteneffekte:** mehrere `get_record`/`get_records_sql` gegen `event`/`booking_userevents`; triggert ggf. `bookingoptiondate_created`; rendert pro Event ein `description_calendarevent`; schreibt `event`-Records. Liest `$USER` fuer den Event-Trigger. **Rueckgabe:** `false` bei Multisession-Neuanlage bzw. fehlgeschlagenem `update_record`, sonst kein expliziter Wert (`null`). **Bewertung:** C — komplexeste Methode der Klasse; verschachtelte if/else-Pfade mit dupliziertem Event-Sammel-/Append-Block; pro Event wird ein neues `description_calendarevent`-Objekt gebaut (potentielle N+1-Render-Last bei vielen User-Events, P3); inkonsistente Rueckgabe (mal `false`, mal implizit `null`).
+
+## Bewertungs-Resümee
+Zweckmaessige, aber roh gehaltene Kalender-Synchronisations-Helfer mit direkter SQL gegen `event`. Wiederkehrende Schwaeche sind die per-Row-Update-/Delete-Schleifen (mehrfach N+1, je P3) und in `option_optiondate_update_event` die verschachtelte Sammel-Logik mit dupliziertem Append-Block und inkonsistentem Rueckgabewert. Keine echten Datenverlust- oder Sicherheitsfehler gefunden — die `uuid LIKE`-Pattern-Bildung verwendet korrekt `sql_concat` mit gecastetem `optionid`. Funktional solide, aber wartungsbeduerftig. Klassen-Score **B / P2**.

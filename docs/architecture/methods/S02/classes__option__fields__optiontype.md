@@ -1,0 +1,26 @@
+# optiontype — Methoden-Doku
+**Datei:** `classes/option/fields/optiontype.php` · **LOC:** 295 · **Subsystem:** S02 · **Klassen-Score:** C / P2
+> [Subsystem-Doc](../../subsystems/S02_option_fields.md)
+
+## Klassenueberblick
+`optiontype` ist das oberste Typ-Auswahlfeld (`field_base`-Subklasse) einer Buchungsoption und entscheidet ueber den Grundcharakter: `MOD_BOOKING_OPTIONTYPE_DEFAULT` (mit Terminen), `_SELFLEARNINGCOURSE` (Selbstlernkurs) oder `_SLOTBOOKING` (Slot-Buchung, PRO + Admin-Toggle). Es ist Bruecke zu `type_resolver`, der die Form-Felder (`optiontype`/`selflearningcourse`) in die persistierte `booking_options.type` normalisiert. Save-Timing `MOD_BOOKING_EXECUTION_NORMAL`, Header `MOD_BOOKING_HEADER_GENERAL`, Kategorien NECESSARY + STANDARD. Besonderheit: ein Slot→Nicht-Slot-Wechsel bei vorhandenen Slot-Buchungen erfordert eine explizite Bestaetigung (Warn-Checkbox `slot_type_change_confirm`). Kollaborateure: `type_resolver`, `slot_feature::is_enabled`, `wb_payment::pro_version_is_activated`, `singleton_service`, `fields_info`, `$DB`, `MoodleQuickForm`.
+
+## Methoden
+
+### `public static function prepare_save_field(stdClass &$formdata, stdClass &$newoption, int $updateparam, $returnvalue = null): array` — public static
+- **Zweck:** Setzt `$newoption->type` ueber `type_resolver::normalize_formdata($formdata, (int)($newoption->type ?? 0))`. **Seiteneffekte:** Delegation an `type_resolver` (keine direkte DB). **Rueckgabe:** immer `[]` (kein Change-Tracking). **Bewertung:** A — schlank, gesamte Typ-Logik an den Resolver delegiert.
+
+### `public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig, $fieldstoinstanciate = [], $applyheader = true)` — public static
+- **Zweck:** Baut das Typ-`select` (DEFAULT/SELFLEARNING, plus SLOTBOOKING nur wenn `slot_feature::is_enabled()`), den selbstlern-Label-Override aus Config, einen Nicht-PRO-Hinweis, sowie die versteckten Steuer-Elemente fuer den Slot-Typ-Wechsel: `slot_type_change_has_answers` (1 wenn die aktuell als Slot-Option gespeicherte Option aktive `booking_answers` hat), eine Warntext-`static` und die Bestaetigungs-`advcheckbox`, beide per `hideIf` an Answers-Flag und Zieltyp gekoppelt; dazu ein versteckter NoSubmit-Button `btn_optiontype`. **Seiteneffekte:** ggf. Header-Injektion; bei vorhandener Option `singleton_service::get_instance_of_booking_option_settings`; bei bestehender Slot-Option `$DB->record_exists_select` auf `booking_answers`; `get_config`/`get_string`; mutiert `$mform`. **Rueckgabe:** void. **Bewertung:** B — viel UI-Verdrahtung, aber kohaerent; die DB-Pruefung laeuft nur fuer bereits gespeicherte Slot-Optionen (kein Hot-Path-N+1). `'xxx'` als Button-Label (Z.183) ist ein sichtbarkeitsloses Platzhalter-Label (Button per `d-none` ausgeblendet) — kosmetisch.
+
+### `public static function set_data(stdClass &$data, booking_option_settings $settings)` — public static
+- **Zweck:** Belegt `optiontype`/`selflearningcourse` als Form-Defaults aus `$settings`. Behandelt Import-Fall, leitet bei gesetztem `selflearningcourse` den Typ ab, mappt einen gespeicherten `type` (whitelisted auf die drei bekannten Konstanten, sonst DEFAULT) und faellt bei deaktiviertem Slot-Feature von SLOTBOOKING auf DEFAULT zurueck; abschliessend `type_resolver::normalize_formdata`. **Seiteneffekte:** mutiert `$data`; `slot_feature::is_enabled`; `type_resolver`. **Rueckgabe:** void. **Bewertung:** B — korrekt, aber dichte verschachtelte Bedingungskette (Import/selflearning/optiontype-default); die Whitelist-Pruefung schuetzt sinnvoll vor unbekannten Typ-Werten.
+
+### `public static function validation(array $data, array $files, array &$errors): array` — public static
+- **Zweck:** Validiert die Typ-Auswahl. SLOTBOOKING: Fehler wenn nicht PRO bzw. wenn PRO aber Admin-Toggle aus. SELFLEARNINGCOURSE: Fehler wenn (PRO-gated) `selflearningcourseactive != 1`. Bei bestehender Option, die aktuell Slot-Typ ist und auf einen Nicht-Slot-Typ wechselt: prueft via `$DB->record_exists_select`, ob aktive Answers existieren, und verlangt dann die gesetzte Bestaetigungs-Checkbox `slot_type_change_confirm`. **Seiteneffekte:** `wb_payment::pro_version_is_activated`, `slot_feature::is_enabled`, `get_config`, bei bestehender Option `singleton_service::...` + `$DB->record_exists_select`; mutiert `$errors`. **Rueckgabe:** `$errors`. **Bewertung:** B — gruendliche Mehrstufen-Validierung, die Daten-Verlust beim Slot→Default-Wechsel mit Antworten absichert; die DB-Pruefung dupliziert die Abfrage aus `instance_form_definition` (gleiche `record_exists_select`), liegt aber im Validate-Pfad (kein Hot-Path).
+
+### Triviale Properties
+Sechs statische Registry-Properties (`$id`, `$save`, `$header`, `$fieldcategories`, `$alternativeimportidentifiers`, `$incompatiblefields`, Z.43–61).
+
+## Bewertungs-Resümee
+Zentrales, vergleichsweise komplexes Feld: drei Typen mit Lizenz-/Feature-Gating und einem datenverlust-sichernden Bestaetigungsfluss fuer den Slot→Nicht-Slot-Wechsel. Die Logik ist korrekt, aber dicht verschachtelt und enthaelt eine bewusst duplizierte Answers-Pruefung (Form + Validate) sowie kosmetische Platzhalter (`'xxx'`-Label). Keine funktionalen Bugs gefunden; Komplexitaet rechtfertigt P2. Klassen-Score **C / P2**.
