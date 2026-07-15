@@ -10,6 +10,7 @@ This `docs/` directory is the central reference for administrators, teachers, an
 
 | I want to… | Go to… |
 |------------|--------|
+| Ask the built-in AI assistant to do it for me | [AI Booking Assistant](user/ai-assistant/README.md) |
 | Understand how booking messages work | [Booking messages](user/00_booking_messages/README.md) |
 | Create a new booking option | [Create a booking option (first steps)](#create-a-booking-option-first-steps) |
 | Send any kind of messages and reminders in relation to booking events or course start etc. | [Booking rules](user/booking_rules/README.md) |

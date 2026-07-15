@@ -19,3 +19,8 @@ bookingextension/*/
 # Do not ignore confirmation_trainer
 !bookingextension/confirmation_trainer/
 !bookingextension/confirmation_trainer/**  # Unignore contents too
+
+# agent-bundle branch: the agent subplugin is bundled as tracked files
+# (vendored from the private repo by release/sync_to_booking.sh - never edit here).
+!bookingextension/agent/
+!bookingextension/agent/**
