@@ -27,3 +27,7 @@ bookingextension/*/
 # But keep local dev/session data of the agent worktree out of the vendored code
 bookingextension/agent/.claude/
 
+# Do not ignore the vendored oneclick subplugin (SOFABOOKING carries it inline)
+!bookingextension/oneclick/
+!bookingextension/oneclick/**
+bookingextension/oneclick/.claude/
