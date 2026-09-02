@@ -956,9 +956,45 @@ abstract class booking_skill_base extends base_skill {
      * @param int $resolvedcmid result of resolve_cmid_from_context_or_cmid()
      * @return array<string,mixed>|null primitive invalid result, or null when a booking instance is in scope
      */
-    protected function require_booking_instance_scope(int $resolvedcmid): ?array {
+    protected function require_booking_instance_scope(int $resolvedcmid, array $input = []): ?array {
         if ($resolvedcmid > 0) {
             return null;
+        }
+
+        // Option-aware first (#2334 residual): ambiguous -> candidates, nowhere -> honest
+        // not-found. Only a truly unnamed target gets the generic scope clarification.
+        $optionquery = trim((string)($input['optionquery'] ?? ''));
+        if ($optionquery !== '' && empty($input['optionid'])) {
+            $resolved = booking_skill_support::activity_for_option_query(
+                $optionquery,
+                trim((string)($input['optionwhen'] ?? ''))
+            );
+            if (($resolved['status'] ?? '') === 'ambiguous') {
+                $labels = [];
+                foreach ((array)($resolved['candidates'] ?? []) as $candidate) {
+                    $labels[] = booking_skill_support::build_option_link_for_output(
+                        (int)$candidate->cmid,
+                        (int)$candidate->optionid
+                    ) . ' (' . format_string($candidate->coursename) . ')';
+                }
+                return $this->invalid([[
+                    'code' => 'CONTEXT_TARGET_UNRESOLVED',
+                    'severity' => 'needs_clarification',
+                    'message' => $this->localized_string('agent_booking_option_target_ambiguous', s($optionquery), '')
+                        . ' ' . implode('; ', $labels),
+                    'repair' => 'Retry with the optionid of the intended candidate, or name the '
+                        . 'booking activity via activityquery.',
+                ]]);
+            }
+            if (($resolved['status'] ?? '') === 'not_found') {
+                return $this->invalid([[
+                    'code' => 'OPTION_NOT_FOUND',
+                    'severity' => 'needs_clarification',
+                    'message' => get_string('agent_booking_option_query_notfound_anywhere', 'mod_booking', s($optionquery)),
+                    'repair' => 'No option matched anywhere. Retry with a different optionquery, '
+                        . 'an optionid, or name the booking activity via activityquery.',
+                ]]);
+            }
         }
 
         return $this->invalid([[
@@ -980,9 +1016,50 @@ abstract class booking_skill_base extends base_skill {
      * @param int $resolvedcmid result of resolve_cmid_from_context_or_cmid()
      * @return array<string,mixed>|null null when a booking instance is in scope
      */
-    protected function build_no_instance_scope_result(int $resolvedcmid): ?array {
+    protected function build_no_instance_scope_result(int $resolvedcmid, array $input = []): ?array {
         if ($resolvedcmid > 0) {
             return null;
+        }
+
+        // Option-aware first (#2334 residual): a NAMED option that is ambiguous across
+        // activities gets its candidates listed; one matching nothing gets the honest
+        // not-found - never the generic open-an-activity text.
+        $optionquery = trim((string)($input['optionquery'] ?? ''));
+        if ($optionquery !== '' && empty($input['optionid'])) {
+            $resolved = booking_skill_support::activity_for_option_query(
+                $optionquery,
+                trim((string)($input['optionwhen'] ?? ''))
+            );
+            if (($resolved['status'] ?? '') === 'ambiguous') {
+                $labels = [];
+                foreach ((array)($resolved['candidates'] ?? []) as $candidate) {
+                    $labels[] = booking_skill_support::build_option_link_for_output(
+                        (int)$candidate->cmid,
+                        (int)$candidate->optionid
+                    ) . ' (' . format_string($candidate->coursename) . ')';
+                }
+                $message = $this->localized_string('agent_booking_option_target_ambiguous', s($optionquery), '')
+                    . ' ' . implode('; ', $labels);
+                return [
+                    'status' => 'error',
+                    'detail' => $message,
+                    'usermessage' => $message,
+                    'resultid' => null,
+                    'observation_full' => $message,
+                    'debugmessage' => 'Ambiguous option across activities: ' . s($optionquery),
+                ];
+            }
+            if (($resolved['status'] ?? '') === 'not_found') {
+                $message = get_string('agent_booking_option_query_notfound_anywhere', 'mod_booking', s($optionquery));
+                return [
+                    'status' => 'error',
+                    'detail' => $message,
+                    'usermessage' => $message,
+                    'resultid' => null,
+                    'observation_full' => $message,
+                    'debugmessage' => 'Option query matched nothing anywhere: ' . s($optionquery),
+                ];
+            }
         }
 
         $instances = $this->list_accessible_booking_instances();
@@ -1107,9 +1184,10 @@ abstract class booking_skill_base extends base_skill {
             // hold the capability). Mirrors how the course skills clarify a missing course context.
             return $this->invalid([[
                 'severity' => 'needs_clarification',
-                'message' => 'This action needs a target booking activity. Please open a booking activity, '
-                    . 'or tell me which booking activity (and course) it should apply to.',
+                'message' => get_string('agent_booking_missing_target_activity', 'mod_booking'),
                 'code' => 'MISSING_TARGET_ACTIVITY',
+                'repair' => 'No target activity resolved. Retry with optionid, a sharper optionquery, '
+                    . 'or name the booking activity via activityquery.',
             ]]);
         }
         if (!has_capability($capability, \context_module::instance($cmid), $userid)) {
@@ -1160,6 +1238,21 @@ abstract class booking_skill_base extends base_skill {
                     $optionquery,
                     trim((string)($input['optionwhen'] ?? ''))
                 );
+                if (($resolved['status'] ?? '') === 'not_found') {
+                    // Not-found stays a not-found (#2334): the old fallback blamed the missing
+                    // ambient activity and dead-ended API clients on "open a booking activity".
+                    return ['clarification' => $this->invalid([[
+                        'severity' => 'needs_clarification',
+                        'code' => 'OPTION_NOT_FOUND',
+                        'message' => $this->localized_string(
+                            'agent_booking_option_query_notfound_anywhere',
+                            s($optionquery),
+                            $lang
+                        ),
+                        'repair' => 'No option matched anywhere. Retry with a different optionquery, '
+                            . 'an optionid, or name the booking activity via activityquery.',
+                    ]])];
+                }
                 if (($resolved['status'] ?? '') === 'ambiguous') {
                     $labels = [];
                     foreach ($resolved['candidates'] as $candidate) {
@@ -1404,5 +1497,63 @@ abstract class booking_skill_base extends base_skill {
             'html' => $html,
             'payload' => ['optionids' => $optionids],
         ];
+    }
+
+    /**
+     * Resolve a diagnose-family option strictly within the current instance.
+     *
+     * @param array $input
+     * @param int $cmid
+     * @param int $userid
+     * @param string $lang
+     * @return array{status:string,optionid?:int,message?:string,issue_code?:string}
+     */
+    protected function resolve_diagnose_option(array $input, int $cmid, int $userid, string $lang = ''): array {
+        global $DB;
+
+        $optionid = (int)($input['optionid'] ?? 0);
+        $optionquery = trim((string)($input['optionquery'] ?? ''));
+        if ($optionid > 0) {
+            $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
+            if ($DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])) {
+                return ['status' => 'ok', 'optionid' => $optionid];
+            }
+
+            // Stale or foreign optionid: prefer resolving a given title over failing hard.
+            if ($optionquery !== '') {
+                return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
+            }
+
+            return [
+                'status' => 'error',
+                'message' => $this->localized_string('agent_booking_diagnose_error_option_not_in_instance', null, $lang),
+            ];
+        }
+
+        if ($optionquery === '') {
+            return [
+                'status' => 'ambiguity',
+                'message' => $this->localized_string('agent_booking_diagnose_ambiguity_option_title_or_id', null, $lang),
+            ];
+        }
+
+        if (booking_skill_support::is_last_option_reference($optionquery)) {
+            $lastids = booking_skill_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
+            if (count($lastids) === 1) {
+                return ['status' => 'ok', 'optionid' => (int)$lastids[0]];
+            }
+            if (count($lastids) > 1) {
+                return [
+                    'status' => 'ambiguity',
+                    'message' => $this->localized_string('agent_booking_diagnose_ambiguity_last_preview_multiple', null, $lang),
+                ];
+            }
+            return [
+                'status' => 'error',
+                'message' => $this->localized_string('agent_booking_diagnose_error_last_preview_none', null, $lang),
+            ];
+        }
+
+        return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
     }
 }

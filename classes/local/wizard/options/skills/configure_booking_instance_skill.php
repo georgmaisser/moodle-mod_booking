@@ -257,7 +257,8 @@ class configure_booking_instance_skill extends booking_skill_base {
                 'changes' => [
                     'type' => 'array',
                     'description' => 'For action=update: array of {field, value} objects to apply.'
-                        . ' Use action=list_fields first to discover valid field names.',
+                        . ' Use the read-only skill mod_booking.list_instance_settings first to'
+                        . ' discover valid field names.',
                     'required' => false,
                     'items' => [
                         'type' => 'object',
@@ -306,7 +307,8 @@ class configure_booking_instance_skill extends booking_skill_base {
                         $errors[] = "changes[$idx]: \"field\" is required.";
                     } else if (!in_array($field, $validfields, true)) {
                         $errors[] = "changes[$idx]: unknown field \"$field\"."
-                            . ' Use action=list_fields to see valid field names.';
+                            . ' Use the read-only skill mod_booking.list_instance_settings'
+                            . ' to see valid field names.';
                     }
                     if (!array_key_exists('value', $change)) {
                         $errors[] = "changes[$idx]: \"value\" is required.";
@@ -340,8 +342,8 @@ class configure_booking_instance_skill extends booking_skill_base {
             // and not a place to call context_module::instance() (which would throw) — ask which one.
             return $this->invalid([[
                 'severity' => 'needs_clarification',
-                'message' => 'This action needs a target booking activity. Please open a booking activity, '
-                    . 'or tell me which booking activity (and course) it should apply to.',
+                'message' => get_string('agent_booking_missing_target_activity', 'mod_booking'),
+                'repair' => 'Name the booking activity via activityquery.',
                 'code' => 'MISSING_TARGET_ACTIVITY',
             ]]);
         }

@@ -56,6 +56,15 @@ class diagnose_waitinglist_skill extends booking_skill_base {
     }
 
     /**
+     * Free-text queries here may arrive masked as anonymized person tokens.
+     *
+     * @return bool
+     */
+    public function is_person_centric_readonly(): bool {
+        return true;
+    }
+
+    /**
      * Return the task name.
      *
      * @return string
@@ -171,7 +180,7 @@ class diagnose_waitinglist_skill extends booking_skill_base {
         global $DB;
 
         $cmid = $this->resolve_cmid_from_context_or_cmid($contextid);
-        if ($scoperesult = $this->build_no_instance_scope_result($cmid)) {
+        if ($scoperesult = $this->build_no_instance_scope_result($cmid, $input)) {
             return $scoperesult;
         }
 
@@ -254,48 +263,6 @@ class diagnose_waitinglist_skill extends booking_skill_base {
      * @return array
      */
     private function resolve_option_id(array $input, int $cmid, int $userid, string $lang = ''): array {
-        global $DB;
-
-        $optionid = (int)($input['optionid'] ?? 0);
-        $optionquery = trim((string)($input['optionquery'] ?? ''));
-        if ($optionid > 0) {
-            $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
-            if ($DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])) {
-                return ['status' => 'ok', 'optionid' => $optionid];
-            }
-            if ($optionquery !== '') {
-                return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
-            }
-            return [
-                'status' => 'error',
-                'message' => $this->localized_string('agent_booking_diagnose_error_option_not_in_instance', null, $lang),
-            ];
-        }
-
-        if ($optionquery === '') {
-            return [
-                'status' => 'ambiguity',
-                'message' => $this->localized_string('agent_booking_diagnose_ambiguity_option_title_or_id', null, $lang),
-            ];
-        }
-
-        if (booking_skill_support::is_last_option_reference($optionquery)) {
-            $lastids = booking_skill_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
-            if (count($lastids) === 1) {
-                return ['status' => 'ok', 'optionid' => (int)$lastids[0]];
-            }
-            if (count($lastids) > 1) {
-                return [
-                    'status' => 'ambiguity',
-                    'message' => $this->localized_string('agent_booking_diagnose_ambiguity_last_preview_multiple', null, $lang),
-                ];
-            }
-            return [
-                'status' => 'error',
-                'message' => $this->localized_string('agent_booking_diagnose_error_last_preview_none', null, $lang),
-            ];
-        }
-
-        return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
+        return $this->resolve_diagnose_option($input, $cmid, $userid, $lang);
     }
 }

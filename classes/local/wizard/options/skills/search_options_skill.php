@@ -93,7 +93,8 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
             'properties' => [
                 'query' => [
                     'type' => 'string',
-                    'description' => 'Optional search text (title/description/location), e.g. "next monday". '
+                    'description' => 'Optional search text matching title/description/location, e.g. "yoga". '
+                        . 'A time reference NEVER belongs here - it goes into "when". '
                         . 'If omitted, returns a short list of options in this booking instance.',
                     'required' => false,
                 ],
@@ -109,7 +110,10 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
                 ],
                 'when' => [
                     'type' => 'string',
-                    'description' => 'Optional temporal hint (e.g. "next monday").',
+                    'description' => 'Optional single day the user asks about, as a concrete date, '
+                        . 'e.g. "2026-09-08". Resolve relative phrases ("next monday") to the concrete '
+                        . 'date using the current date. Leave EMPTY for vague phrases like "soon" or '
+                        . '"demnaechst" - upcoming options are already the default.',
                     'required' => false,
                 ],
                 'activityquery' => [
@@ -163,6 +167,8 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
                 ],
                 'guidance' => [
                     '- If the user asks to find booking options, use booking.search_options.',
+                    '- Time reference -> {"when": "2026-09-08"}; text match -> {"query": "yoga"};'
+                        . ' vague "soon"-style phrases -> leave both empty.',
                     '- Prefer exact title matches when the user mentions a quoted title or the word "title".',
                     '- Return a short structured list with id, name and link for preview.',
                     '- If the follow-up asks for specific option fields (trainer/teacher, sessions, times),',
@@ -280,7 +286,14 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
             }
         }
 
-        $rows = booking_skill_support::search_option_candidates_for_preview($cmid, $effectivequery, $limit, $when);
+        // Browsing without a search text never offers what is already over (#2318).
+        $rows = booking_skill_support::search_option_candidates_for_preview(
+            $cmid,
+            $effectivequery,
+            $limit,
+            $when,
+            $effectivequery === ''
+        );
         if ($exacttitlequery !== '' && !empty($rows)) {
             $rows = array_values(array_filter($rows, static function (array $row) use ($exacttitlequery): bool {
                 $title = trim((string)($row['text'] ?? ''));

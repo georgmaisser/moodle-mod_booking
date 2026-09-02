@@ -860,7 +860,12 @@ class create_option_skill extends booking_skill_base implements
 
         $overrides = self::normalize_overrides(is_array($input['override'] ?? null) ? $input['override'] : []);
 
-        // Duplicate-title check.
+        // Duplicate-title check. The issues are COLLECTED, not returned early:
+        // DUPLICATE_TITLE_* is a prevalidation-confirmable soft block, so it must reach the
+        // confirmable() tail below — it keeps the prepared input, which is what lets the
+        // engine stamp the execution guard token onto the staged confirmation. An early
+        // invalid() dropped the prepared input and every confirm looped on
+        // EXECUTION_GUARD_MISSING.
         $duplicatecheck = booking_skill_support::find_existing_options_by_exact_title($cmid, (string)$input['text']);
         $allowduplicatetitle = in_array('duplicate_title', $overrides, true);
         if (!$allowduplicatetitle && ($duplicatecheck['status'] ?? '') === 'single') {
@@ -876,7 +881,6 @@ class create_option_skill extends booking_skill_base implements
                 ),
                 'remedy_options' => ['CONFIRM_CREATE_WITH_DUPLICATE_TITLE', 'UPDATE_EXISTING_INSTEAD'],
             ];
-            return $this->invalid($issues);
         } else if (!$allowduplicatetitle && ($duplicatecheck['status'] ?? '') === 'multiple') {
             $issues[] = [
                 'code'           => 'DUPLICATE_TITLE_MULTI_CONFIRM_REQUIRED',
@@ -893,7 +897,6 @@ class create_option_skill extends booking_skill_base implements
                 ),
                 'remedy_options' => ['CONFIRM_CREATE_WITH_DUPLICATE_TITLE', 'SELECT_EXISTING_OPTION_TO_UPDATE'],
             ];
-            return $this->invalid($issues);
         }
 
         // Duplicate-signature check: same title plus same normalized start/end window.
@@ -1504,6 +1507,9 @@ class create_option_skill extends booking_skill_base implements
                 ],
                 'guidance' => [
                     '- For mutating intent, prepare booking.create_option and use confirmation_request first.',
+                    '- Resolve relative date phrases (e.g. "next Thursday") against now_iso and the timezone',
+                    '  from the runtime context; state the resolved date as ISO (YYYY-MM-DD, weekday) in your',
+                    '  message and keep it consistent with the timestamps you send.',
                     '- booking.create_option always creates options as invisible.',
                     '- If the user explicitly wants the option visible, first create it, then run booking.update_option '
                         . 'to set visibility/invisible.',

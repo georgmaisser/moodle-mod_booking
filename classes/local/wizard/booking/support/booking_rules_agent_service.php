@@ -318,6 +318,18 @@ class booking_rules_agent_service {
                     return ['status' => 'ok', 'rule' => $rule];
                 }
             }
+            // A missing id may really mean a rule NAMED like the number (numeric names are
+            // legal): offer that reading as a question - the engine never guesses.
+            foreach ($rules as $rule) {
+                if (trim((string)($rule['name'] ?? '')) === (string)$ruleid) {
+                    return [
+                        'status' => 'ambiguity',
+                        'message' => 'Es gibt keine Regel mit der ID ' . $ruleid . ', aber eine Regel mit dem '
+                            . 'NAMEN "' . $ruleid . '" (id=' . (int)$rule['id'] . '). Meinten Sie diese Regel? '
+                            . 'Bitte bestätigen Sie den Namen oder geben Sie eine andere ID an.',
+                    ];
+                }
+            }
             return ['status' => 'error', 'message' => get_string('agent_booking_rules_ruleid_not_found_in_context', 'mod_booking')];
         }
 

@@ -66,6 +66,15 @@ class diagnose_cancellation_issue_skill extends booking_skill_base implements sk
     }
 
     /**
+     * A person is this skill's direct object and it executes without confirmation (#2226 R3).
+     *
+     * @return bool
+     */
+    public function is_person_centric_readonly(): bool {
+        return true;
+    }
+
+    /**
      * Return task schema.
      *
      * @return array
@@ -90,6 +99,12 @@ class diagnose_cancellation_issue_skill extends booking_skill_base implements sk
                         . 'Omit only when the option is already identified via optionquery or optionid.',
                     'required' => false,
                     'from_user_message' => true,
+                ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity when it is not the current one'
+                        . ' (e.g. over MCP, which runs at the system context). Names only - never a course.',
+                    'required' => false,
                 ],
                 'optionquery' => [
                     'type' => 'string',
@@ -209,7 +224,7 @@ class diagnose_cancellation_issue_skill extends booking_skill_base implements sk
      */
     protected function run_preflight(array $input, int $cmid, int $userid): array {
         $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
-        if ($guard = $this->require_booking_instance_scope($cmid)) {
+        if ($guard = $this->require_booking_instance_scope($cmid, $input)) {
             return $guard;
         }
         $structure = $this->check_structure($input);
@@ -288,7 +303,7 @@ class diagnose_cancellation_issue_skill extends booking_skill_base implements sk
      */
     public function execute(array $input, int $cmid, int $userid): array {
         $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
-        if ($scoperesult = $this->build_no_instance_scope_result($cmid)) {
+        if ($scoperesult = $this->build_no_instance_scope_result($cmid, $input)) {
             return $scoperesult;
         }
         global $DB;
@@ -883,52 +898,6 @@ class diagnose_cancellation_issue_skill extends booking_skill_base implements sk
      * @return array
      */
     private function resolve_option_id(array $input, int $cmid, int $userid, string $lang = ''): array {
-        global $DB;
-
-        $optionid = (int)($input['optionid'] ?? 0);
-        $optionquery = trim((string)($input['optionquery'] ?? ''));
-        if ($optionid > 0) {
-            $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
-            if ($DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])) {
-                return ['status' => 'ok', 'optionid' => $optionid];
-            }
-
-            // If a model provided a stale/wrong optionid but also a concrete title,
-            // prefer resolving by query over failing hard.
-            if ($optionquery !== '') {
-                return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
-            }
-
-            return [
-                'status' => 'error',
-                'message' => $this->localized_string('agent_booking_diagnose_error_option_not_in_instance', null, $lang),
-            ];
-        }
-
-        if ($optionquery === '') {
-            return [
-                'status' => 'ambiguity',
-                'message' => $this->localized_string('agent_booking_diagnose_ambiguity_option_title_or_id', null, $lang),
-            ];
-        }
-
-        if (booking_skill_support::is_last_option_reference($optionquery)) {
-            $lastids = booking_skill_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
-            if (count($lastids) === 1) {
-                return ['status' => 'ok', 'optionid' => (int)$lastids[0]];
-            }
-            if (count($lastids) > 1) {
-                return [
-                    'status' => 'ambiguity',
-                    'message' => $this->localized_string('agent_booking_diagnose_ambiguity_last_preview_multiple', null, $lang),
-                ];
-            }
-            return [
-                'status' => 'error',
-                'message' => $this->localized_string('agent_booking_diagnose_error_last_preview_none', null, $lang),
-            ];
-        }
-
-        return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
+        return $this->resolve_diagnose_option($input, $cmid, $userid, $lang);
     }
 }

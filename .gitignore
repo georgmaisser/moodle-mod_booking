@@ -19,3 +19,11 @@ bookingextension/*/
 # Do not ignore confirmation_trainer
 !bookingextension/confirmation_trainer/
 !bookingextension/confirmation_trainer/**  # Unignore contents too
+
+# Do not ignore the vendored agent subplugin (agent-release / SOFABOOKING carry it inline)
+!bookingextension/agent/
+!bookingextension/agent/**
+
+# But keep local dev/session data of the agent worktree out of the vendored code
+bookingextension/agent/.claude/
+
