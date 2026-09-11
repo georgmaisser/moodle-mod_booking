@@ -82,7 +82,7 @@ class create_selflearning_option_skill extends create_option_skill {
             // must stay valid schema keys (the shared validator rejects unknown keys, and the
             // planner naturally emits them for a self-learning request).
             'optiontype', 'selflearningcourse',
-            'override', 'outputlang', 'activityquery', 'linkedcoursequery',
+            'override', 'outputlang', 'activityquery', 'cmid', 'linkedcoursequery',
         ]);
         $properties = array_intersect_key($properties, $allowed);
 

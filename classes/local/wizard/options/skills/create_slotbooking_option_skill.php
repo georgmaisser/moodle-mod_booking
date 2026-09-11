@@ -105,7 +105,7 @@ class create_slotbooking_option_skill extends create_option_skill {
             'text', 'description',
             'maxanswers', 'teacherquery', 'teacheremail', 'prices',
             'bookingopeningtime', 'bookingclosingtime', 'maxoverbooking',
-            'override', 'outputlang', 'activityquery', 'linkedcoursequery',
+            'override', 'outputlang', 'activityquery', 'cmid', 'linkedcoursequery',
         ]);
         // Keep the core fields plus ALL slot_* properties (opening/closing/duration/interval/
         // validity/capacity AND the slot_day_1..7 weekday toggles) — they are all slot-relevant.

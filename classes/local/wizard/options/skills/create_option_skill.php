@@ -139,6 +139,13 @@ class create_option_skill extends booking_skill_base implements
                 'description' => 'Optional language code override for the user-facing summary, e.g. de or en.',
                 'required' => false,
             ],
+            'cmid' => [
+                'type' => 'integer',
+                'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                    . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                    . 'activityquery; use it to pick one of several activities that share a name.',
+                'required' => false,
+            ],
             'activityquery' => [
                 'type' => 'string',
                 'description' => 'The booking activity the user named as the target, if any. If the user names a '
@@ -179,7 +186,7 @@ class create_option_skill extends booking_skill_base implements
                 'text', 'description', 'coursestarttime', 'courseendtime', 'optiondates', 'optiondatesmode',
                 'maxanswers', 'teacherquery', 'teacheremail', 'prices',
                 'bookingopeningtime', 'bookingclosingtime', 'maxoverbooking',
-                'override', 'outputlang', 'activityquery', 'linkedcoursequery', 'headerimage_token',
+                'override', 'outputlang', 'activityquery', 'cmid', 'linkedcoursequery', 'headerimage_token',
             ]);
             $properties = array_intersect_key($properties, $allowed);
         }
