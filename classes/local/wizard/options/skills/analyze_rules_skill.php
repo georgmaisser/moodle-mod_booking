@@ -108,6 +108,13 @@ class analyze_rules_skill extends booking_skill_base implements skill_trigger_pr
                 'Explain what automations are active on this instance',
             ],
             'properties' => [
+                'cmid' => [
+                    'type' => 'integer',
+                    'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                        . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                        . 'activityquery; use it to pick one of several activities that share a name.',
+                    'required' => false,
+                ],
                 'activityquery' => [
                     'type' => 'string',
                     'description' => 'Optional: name of the target booking activity whose rules are meant, when it'
