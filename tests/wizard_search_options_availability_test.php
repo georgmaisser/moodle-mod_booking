@@ -150,12 +150,18 @@ final class wizard_search_options_availability_test extends booking_advanced_tes
      * duplicate-title check keeps seeing them.
      */
     public function test_title_search_and_duplicate_check_still_see_past_options(): void {
-        $this->assertContains($this->pastid, $this->preview_ids('Bygone Pottery Class'),
-            'a targeted title search must still find a past option');
+        $this->assertContains(
+            $this->pastid,
+            $this->preview_ids('Bygone Pottery Class'),
+            'a targeted title search must still find a past option'
+        );
 
         $exact = booking_skill_support::find_existing_options_by_exact_title($this->cmid, 'Bygone Pottery Class');
-        $this->assertNotSame('none', (string)($exact['status'] ?? 'none'),
-            'the duplicate-title check must keep seeing past options');
+        $this->assertNotSame(
+            'none',
+            (string)($exact['status'] ?? 'none'),
+            'the duplicate-title check must keep seeing past options'
+        );
     }
 
     /**

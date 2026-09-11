@@ -102,9 +102,15 @@ final class wizard_option_target_channel_test extends advanced_testcase {
 
         $this->assertArrayHasKey('clarification', $result);
         $message = json_encode($result['clarification']);
-        $this->assertStringNotContainsString('open a booking activity', $message,
-            'an API client cannot open pages — the instruction is a dead end');
-        $this->assertStringContainsString('zzz definitiv nirgends vorhanden', $message,
-            'the honest cause names the query that matched nothing');
+        $this->assertStringNotContainsString(
+            'open a booking activity',
+            $message,
+            'an API client cannot open pages — the instruction is a dead end'
+        );
+        $this->assertStringContainsString(
+            'zzz definitiv nirgends vorhanden',
+            $message,
+            'the honest cause names the query that matched nothing'
+        );
     }
 }

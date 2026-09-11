@@ -116,6 +116,8 @@ $string['agent_booking_bulk_update_completed'] = 'Massenaktualisierung abgeschlo
 $string['agent_booking_bulk_update_failed'] = 'Massenaktualisierung fehlgeschlagen.';
 $string['agent_booking_bulk_update_issue_user_question'] = 'Welche Optionen soll ich aktualisieren: alle Optionen, eine Auswahl per Abfrage, oder explizite Option-IDs?';
 $string['agent_booking_bulk_update_missing_target'] = 'Bitte geben Sie optionids (Array), optionquery (String) an oder setzen Sie apply_to_all=true, um anzugeben, welche Optionen aktualisiert werden sollen.';
+$string['agent_booking_bulk_update_no_matches'] = 'Keine Buchungsoptionen in dieser Instanz passen auf „{$a}".';
+$string['agent_booking_bulk_update_no_options'] = 'Diese Buchungsinstanz hat keine Optionen, die geändert werden könnten.';
 $string['agent_booking_bulk_update_no_preview'] = 'Es stehen keine kürzlich vorgeschauten Buchungsoptionen für diese Folgeanfrage zur Verfügung.';
 $string['agent_booking_bulk_update_option_not_in_instance'] = 'Option id {$a} existiert nicht in dieser Buchungsinstanz.';
 $string['agent_booking_cohort_multiple_match'] = 'Mehrere Kohorten stimmen mit "{$a->query}" überein: {$a->candidates}.';
@@ -2703,6 +2705,7 @@ $string['presenceoptions'] = "Möglicher Anwesenheitsstatus";
 $string['presenceoptions_desc'] = "Welcher Status soll zur Verfügung stehen?";
 $string['presencestatustoissuecertificate'] = 'Zertifikatsausstellung mit Anwesenheitsstatus <span class="badge bg-success text-light"><i class="fa fa-cogs" aria-hidden="true"></i> PRO</span>';
 $string['presencestatustoissuecertificate_desc'] = "Wenn aktiviert, kann ein Zertifikat NUR mit dem ausgewählten Anwesenheitsstatus ausgestellt werden. Der Abschluss der Buchungsoption hat dann keine Auswirkung mehr.";
+$string['previewlabel_matchcount'] = 'Passende Optionen';
 $string['previous'] = 'Vorherige';
 $string['previouslybooked'] = 'Bereits gebucht';
 $string['price'] = 'Preis';

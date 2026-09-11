@@ -803,7 +803,7 @@ class booking_skill_support {
             $optionsfields[] = 'booknow';
         }
 
-        // #2318: the window comes from the calendar, never from vocabulary. An explicit,
+        // Issue #2318: the window comes from the calendar, never from vocabulary. An explicit,
         // parseable "when" narrows to that day (may deliberately point at the past).
         $range = null;
         $whents = $when !== '' ? self::parse_datetime($when) : false;
@@ -821,7 +821,10 @@ class booking_skill_support {
             ? '(courseendtime > :wizardtimenow OR courseendtime = 0)'
             : '';
 
-        $fetchrows = static function (string $searchtext, int $pagesize) use (
+        $fetchrows = static function (
+            string $searchtext,
+            int $pagesize
+        ) use (
             $booking,
             $cmid,
             $optionsfields,

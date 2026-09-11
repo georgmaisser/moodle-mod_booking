@@ -314,7 +314,7 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
      */
     public function execute(array $preparedinput, int $cmid, int $userid): array {
         $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
-        if ($scoperesult = $this->build_no_instance_scope_result($cmid, $input)) {
+        if ($scoperesult = $this->build_no_instance_scope_result($cmid, $preparedinput)) {
             return $scoperesult;
         }
         global $DB;

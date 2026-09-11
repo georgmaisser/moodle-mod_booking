@@ -898,12 +898,16 @@ class booking_skill_mutation_execute_service {
             );
             $storedparts = [];
             if (!empty($stored->coursestarttime)) {
-                $storedparts[] = 'start=' . userdate((int)$stored->coursestarttime,
-                    get_string('strftimedaydatetime', 'langconfig'));
+                $storedparts[] = 'start=' . userdate(
+                    (int)$stored->coursestarttime,
+                    get_string('strftimedaydatetime', 'langconfig')
+                );
             }
             if (!empty($stored->courseendtime)) {
-                $storedparts[] = 'end=' . userdate((int)$stored->courseendtime,
-                    get_string('strftimedaydatetime', 'langconfig'));
+                $storedparts[] = 'end=' . userdate(
+                    (int)$stored->courseendtime,
+                    get_string('strftimedaydatetime', 'langconfig')
+                );
             }
             if (isset($stored->maxanswers)) {
                 $storedparts[] = 'seats=' . (int)$stored->maxanswers;

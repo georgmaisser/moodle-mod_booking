@@ -83,9 +83,15 @@ final class wizard_diagnose_ambiguous_scope_test extends advanced_testcase {
         );
 
         $message = json_encode($result);
-        $this->assertStringNotContainsString('no booking activity in the current context', strtolower($message),
-            'the generic scope text is a dead end when candidates are known');
-        $this->assertStringContainsString('Pilates L2R', $message,
-            'the reply must show the ambiguous option with its candidate activities');
+        $this->assertStringNotContainsString(
+            'no booking activity in the current context',
+            strtolower($message),
+            'the generic scope text is a dead end when candidates are known'
+        );
+        $this->assertStringContainsString(
+            'Pilates L2R',
+            $message,
+            'the reply must show the ambiguous option with its candidate activities'
+        );
     }
 }

@@ -82,8 +82,11 @@ final class wizard_rule_target_channel_test extends advanced_testcase {
         );
 
         $this->assertSame('error', (string)($result['status'] ?? ''));
-        $this->assertStringContainsString('booking activity', strtolower((string)($result['message'] ?? '')),
-            'the user must learn that naming the activity unblocks the search');
+        $this->assertStringContainsString(
+            'booking activity',
+            strtolower((string)($result['message'] ?? '')),
+            'the user must learn that naming the activity unblocks the search'
+        );
     }
 
     /**
@@ -101,7 +104,9 @@ final class wizard_rule_target_channel_test extends advanced_testcase {
             'isactive' => 0,
         ]);
 
-        $this->assertGreaterThan(0,
-            \mod_booking\local\wizard\booking\booking_skill_support::context_for_rule(0, 'Exakter Testname'));
+        $this->assertGreaterThan(
+            0,
+            \mod_booking\local\wizard\booking\booking_skill_support::context_for_rule(0, 'Exakter Testname')
+        );
     }
 }

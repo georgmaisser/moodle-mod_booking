@@ -77,14 +77,16 @@ class update_option_skill extends booking_skill_base implements
         $targetquery = $this->normalize_identity_query((string)($normalized['optionquery'] ?? ''));
         $targetwhen = $this->normalize_identity_query((string)($normalized['optionwhen'] ?? ''));
 
-        foreach ([
+        foreach (
+            [
                 'resolvedoptionid',
                 'optionid',
                 'optionquery',
                 'optionwhen',
                 'outputlang',
                 'override',
-            ] as $key) {
+            ] as $key
+        ) {
             unset($normalized[$key]);
         }
 

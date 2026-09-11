@@ -51,7 +51,8 @@ final class wizard_create_result_reports_stored_values_test extends booking_adva
         ]);
         $contextid = (int)context_module::instance((int)$booking->cmid)->id;
 
-        $saturday = strtotime('2026-09-05 14:00');
+        // A Saturday at least a week ahead: a fixed date turns into "start in the past" once it passes.
+        $saturday = strtotime('next saturday 14:00') + WEEKSECS;
         $skill = new create_option_skill();
         $dto = $skill->preflight([
             'text' => 'Truth Seminar',
@@ -66,7 +67,7 @@ final class wizard_create_result_reports_stored_values_test extends booking_adva
         $this->assertSame('executed', (string)($result['status'] ?? ''), (string)($result['detail'] ?? ''));
         $detail = (string)($result['detail'] ?? '');
         $this->assertStringContainsString('Saturday', $detail, 'stored start must be reported with its weekday');
-        $this->assertStringContainsString('September 2026', $detail);
+        $this->assertStringContainsString(userdate($saturday, '%B %Y'), $detail);
         $this->assertStringContainsString('12', $detail, 'stored seat count must be reported');
     }
 }

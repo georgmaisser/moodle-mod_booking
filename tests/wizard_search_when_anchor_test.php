@@ -53,10 +53,16 @@ final class wizard_search_when_anchor_test extends advanced_testcase {
         $props = (array)((new search_options_skill())->get_schema()['properties'] ?? []);
         $querydesc = strtolower((string)($props['query']['description'] ?? ''));
 
-        $this->assertStringNotContainsString('next monday', $querydesc,
-            'a temporal example on query lets the model route time phrases into the substring search');
-        $this->assertStringContainsString('never', $querydesc,
-            'the contrast steering (#2275 pattern) must be present');
+        $this->assertStringNotContainsString(
+            'next monday',
+            $querydesc,
+            'a temporal example on query lets the model route time phrases into the substring search'
+        );
+        $this->assertStringContainsString(
+            'never',
+            $querydesc,
+            'the contrast steering (#2275 pattern) must be present'
+        );
     }
 
     /**
@@ -66,12 +72,21 @@ final class wizard_search_when_anchor_test extends advanced_testcase {
         $props = (array)((new search_options_skill())->get_schema()['properties'] ?? []);
         $whendesc = (string)($props['when']['description'] ?? '');
 
-        $this->assertMatchesRegularExpression('/\d{4}-\d{2}-\d{2}/', $whendesc,
-            'the when anchor must be a concrete date the strict parser (#2318) can read');
-        $this->assertStringContainsString('resolve', strtolower($whendesc),
-            'relative phrases must be resolved by the constructor, not shipped verbatim');
-        $this->assertStringContainsString('empty', strtolower($whendesc),
-            'vague phrases must leave the field empty — upcoming is the default since #2318');
+        $this->assertMatchesRegularExpression(
+            '/\d{4}-\d{2}-\d{2}/',
+            $whendesc,
+            'the when anchor must be a concrete date the strict parser (#2318) can read'
+        );
+        $this->assertStringContainsString(
+            'resolve',
+            strtolower($whendesc),
+            'relative phrases must be resolved by the constructor, not shipped verbatim'
+        );
+        $this->assertStringContainsString(
+            'empty',
+            strtolower($whendesc),
+            'vague phrases must leave the field empty — upcoming is the default since #2318'
+        );
     }
 
     /**

@@ -90,14 +90,16 @@ class bulk_update_options_skill extends booking_skill_base implements
         $optionquery = $this->normalize_identity_query((string)($normalized['optionquery'] ?? ''));
         $applytoall = !empty($normalized['apply_to_all']);
 
-        foreach ([
+        foreach (
+            [
                 'optionids',
                 'resolvedoptionids',
                 'optionquery',
                 'apply_to_all',
                 'outputlang',
                 'override',
-            ] as $key) {
+            ] as $key
+        ) {
             unset($normalized[$key]);
         }
 
