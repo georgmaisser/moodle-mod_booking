@@ -888,13 +888,35 @@ class booking_skill_mutation_execute_service {
             }
 
             $createdtitle = trim((string)($data->text ?? $input['text'] ?? ''));
+            // Report the STORED core values (read back from the DB, not the request) so the
+            // reply is grounded in what was actually saved.
+            global $DB;
+            $stored = $DB->get_record(
+                'booking_options',
+                ['id' => (int)$newoptionid],
+                'coursestarttime, courseendtime, maxanswers'
+            );
+            $storedparts = [];
+            if (!empty($stored->coursestarttime)) {
+                $storedparts[] = 'start=' . userdate((int)$stored->coursestarttime,
+                    get_string('strftimedaydatetime', 'langconfig'));
+            }
+            if (!empty($stored->courseendtime)) {
+                $storedparts[] = 'end=' . userdate((int)$stored->courseendtime,
+                    get_string('strftimedaydatetime', 'langconfig'));
+            }
+            if (isset($stored->maxanswers)) {
+                $storedparts[] = 'seats=' . (int)$stored->maxanswers;
+            }
+            $storedsuffix = empty($storedparts) ? '' : ', ' . implode(', ', $storedparts);
             if ($taskname === create_option_skill::TASK_NAME && $createdtitle !== '') {
-                $detail = 'Booking option created (title="' . $createdtitle . '", id=' . (int)$newoptionid . ', link='
+                $detail = 'Booking option created (title="' . $createdtitle . '", id=' . (int)$newoptionid
+                    . $storedsuffix . ', link='
                     . booking_skill_support::build_option_link_for_output($cmid, (int)$newoptionid)
                     . ').';
             } else {
                 $detail = 'Booking option ' . ($taskname === create_option_skill::TASK_NAME ? 'created' : 'updated')
-                    . ' (id=' . (int)$newoptionid . ', link='
+                    . ' (id=' . (int)$newoptionid . $storedsuffix . ', link='
                     . booking_skill_support::build_option_link_for_output($cmid, (int)$newoptionid)
                     . ').';
             }

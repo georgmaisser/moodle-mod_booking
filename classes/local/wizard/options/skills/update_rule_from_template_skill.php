@@ -96,6 +96,27 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
     }
 
     /**
+     * Representative FLAT example input for the construction-phase catalog.
+     *
+     * @return array
+     */
+    public function get_example_input(): array {
+        return ['rulequery' => 'confirmation rule', 'isactive' => false];
+    }
+
+    /**
+     * Strictly parse an isactive override: quoted booleans keep their meaning, junk is null.
+     *
+     * A bare !empty() would read the string 'false' as TRUE and invert the user's intent.
+     *
+     * @param mixed $value Raw isactive value from the command input.
+     * @return bool|null Null when the value carries no parseable boolean.
+     */
+    public static function parse_isactive_override($value): ?bool {
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+    }
+
+    /**
      * Human-readable preview of the rule update (tier-3): target + changed fields.
      *
      * @param array $input Prepared input.
@@ -130,12 +151,20 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
             'properties' => [
                 'ruleid' => [
                     'type' => 'integer',
-                    'description' => 'Target booking rule id.',
+                    'description' => 'Numeric id of the target rule. A number the user mentions '
+                        . '("Regel 3", "rule with id 7") belongs HERE, never into rulequery.',
+                    'required' => false,
+                ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity whose rules are meant, when it'
+                        . ' is not the current one (e.g. over MCP, which runs at the system context).',
                     'required' => false,
                 ],
                 'rulequery' => [
                     'type' => 'string',
-                    'description' => 'Rule name fragment when ruleid is unknown.',
+                    'description' => 'Rule NAME fragment when no id was given. Names only — '
+                        . 'never numbers or "id:N".',
                     'required' => false,
                 ],
                 'templateid' => [
@@ -155,13 +184,32 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
                 ],
                 'isactive' => [
                     'type' => 'boolean',
-                    'description' => 'Optional active flag override.',
+                    'description' => 'Set false to DISABLE/deactivate the rule, true to enable/activate it. '
+                        . 'Use this whenever the user asks to switch a rule on or off.',
                     'required' => false,
                 ],
                 'outputlang' => [
                     'type' => 'string',
                     'description' => 'Optional language code for user-facing wrapper strings, e.g. de or en.',
                     'required' => false,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Contextual guidance for the construction phase (surfaced unconditionally there).
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_contextual_prompt_packs(): array {
+        return [
+            [
+                'id' => 'mod_booking.rule_target_reference',
+                'triggers' => ['rule', 'regel'],
+                'guidance' => [
+                    '- Numeric rule reference -> {"ruleid": 3}; name reference -> {"rulequery": "reminder rule"}.',
+                    '- Never encode ids inside rulequery (no "3", no "id:3") — rulequery is for name text only.',
                 ],
             ],
         ];
@@ -391,7 +439,10 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
             $overrides['rulename'] = trim((string)$input['rulename']);
         }
         if (array_key_exists('isactive', $input)) {
-            $overrides['isactive'] = !empty($input['isactive']);
+            $parsed = self::parse_isactive_override($input['isactive']);
+            if ($parsed !== null) {
+                $overrides['isactive'] = $parsed;
+            }
         }
 
         $result = $this->ruleservice->update_rule_from_template(

@@ -77,16 +77,14 @@ class update_option_skill extends booking_skill_base implements
         $targetquery = $this->normalize_identity_query((string)($normalized['optionquery'] ?? ''));
         $targetwhen = $this->normalize_identity_query((string)($normalized['optionwhen'] ?? ''));
 
-        foreach (
-            [
+        foreach ([
                 'resolvedoptionid',
                 'optionid',
                 'optionquery',
                 'optionwhen',
                 'outputlang',
                 'override',
-            ] as $key
-        ) {
+            ] as $key) {
             unset($normalized[$key]);
         }
 
@@ -114,6 +112,12 @@ class update_option_skill extends booking_skill_base implements
             'optionquery'      => 'Code Swap',
             'text'             => 'New option title',
             'headerimage_token' => 'tok_abc123',
+            // The date-range shape is load-bearing: without a concrete example the model
+            // falls back to Moodle-idiomatic timestart/timeend and the validator drops it.
+            'optiondates'      => [
+                ['coursestarttime' => '2046-09-30 18:00', 'courseendtime' => '2046-09-30 20:00'],
+            ],
+            'optiondatesmode'  => 'append',
         ];
     }
 
@@ -150,6 +154,12 @@ class update_option_skill extends booking_skill_base implements
                 'optionid' => [
                     'type' => 'integer',
                     'description' => 'ID of the booking option to update. If omitted, provide optionquery.',
+                    'required' => false,
+                ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity when it is not the current one'
+                        . ' (e.g. over MCP, which runs at the system context). Names only - never a course.',
                     'required' => false,
                 ],
                 'optionquery' => [

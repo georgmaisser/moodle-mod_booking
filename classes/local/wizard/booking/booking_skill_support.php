@@ -325,7 +325,7 @@ class booking_skill_support {
             if ($userid > 0 && self::is_last_preview_selection_reference((string)$input['optionquery'])) {
                 return self::resolve_last_preview_option_ids_for_user($cmid, $userid);
             }
-            $rows = self::search_option_candidates($cmid, trim((string)$input['optionquery']), 500, '');
+            $rows = self::search_option_candidates($cmid, trim((string)$input['optionquery']), 500, '')['rows'];
             return array_values(array_map(fn(array $row): int => (int)($row['optionid'] ?? 0), $rows));
         }
 
@@ -784,13 +784,15 @@ class booking_skill_support {
      * @param string $query
      * @param int $limit
      * @param string $when
+     * @param bool $upcomingdefault browse default: hide options that are already over
      * @return array
      */
     private static function search_option_candidates(
         int $cmid,
         string $query,
         int $limit = 10,
-        string $when = ''
+        string $when = '',
+        bool $upcomingdefault = false
     ): array {
         $query = self::sanitize_person_lookup_query($query);
         $booking = singleton_service::get_instance_of_booking_by_cmid($cmid);
@@ -801,9 +803,30 @@ class booking_skill_support {
             $optionsfields[] = 'booknow';
         }
 
-        $range = self::extract_time_window_from_text($when !== '' ? $when : $query);
+        // #2318: the window comes from the calendar, never from vocabulary. An explicit,
+        // parseable "when" narrows to that day (may deliberately point at the past).
+        $range = null;
+        $whents = $when !== '' ? self::parse_datetime($when) : false;
+        if ($whents !== false) {
+            $tz = new \DateTimeZone(\core_date::get_server_timezone());
+            $day = (new \DateTimeImmutable('@' . $whents))->setTimezone($tz);
+            $range = [
+                'start' => $day->setTime(0, 0, 0)->getTimestamp(),
+                'end' => $day->setTime(23, 59, 59)->getTimestamp(),
+            ];
+        }
 
-        $fetchrows = static function (string $searchtext, int $pagesize) use ($booking, $cmid, $optionsfields): array {
+        // Same availability semantics as the UI's active-options table (view.php).
+        $upcomingwhere = ($range === null && $upcomingdefault)
+            ? '(courseendtime > :wizardtimenow OR courseendtime = 0)'
+            : '';
+
+        $fetchrows = static function (string $searchtext, int $pagesize) use (
+            $booking,
+            $cmid,
+            $optionsfields,
+            $upcomingwhere
+        ): array {
             $table = new bookingoptions_wbtable("cmid_{$cmid} aioptionsearch");
             view::apply_standard_params_for_bookingtable(
                 $table,
@@ -828,10 +851,13 @@ class booking_skill_support {
                 $wherearray,
                 null,
                 [MOD_BOOKING_STATUSPARAM_BOOKED],
-                '',
+                $upcomingwhere,
                 '',
                 $table
             );
+            if ($upcomingwhere !== '') {
+                $params['wizardtimenow'] = strtotime('today 00:00');
+            }
             $table->set_filter_sql($fields, $from, $where, $filter, $params);
 
             if ($searchtext !== '') {
@@ -845,7 +871,9 @@ class booking_skill_support {
             return (array)($table->rawdata ?? []);
         };
 
-        $rows = $fetchrows(trim($query), max(1, $limit));
+        // Fetch a ranking window larger than the visible limit: relevance must be decided
+        // here, not by the accidental row order of the database cut.
+        $rows = $fetchrows(trim($query), max(50, $limit));
         if (empty($rows) && $range !== null) {
             $rows = $fetchrows('', max(50, $limit * 5));
         }
@@ -872,13 +900,28 @@ class booking_skill_support {
             ];
         }
 
+        // Rank: exact title, then title substring, then matches in other fields
+        // (description/location/teacher); start time orders within each band.
+        $needle = \core_text::strtolower(trim($query));
+        foreach ($normalized as $index => $row) {
+            $title = \core_text::strtolower(trim((string)$row['text']));
+            $fulltitle = \core_text::strtolower(trim($row['titleprefix'] . ' ' . $row['text']));
+            $normalized[$index]['searchrank'] = $title === $needle
+                ? 0
+                : (($needle !== '' && strpos($fulltitle, $needle) !== false) ? 1 : 2);
+        }
         usort($normalized, static function (array $a, array $b): int {
-            $ats = (int)($a['coursestarttime'] ?? 0);
-            $bts = (int)($b['coursestarttime'] ?? 0);
-            return $ats <=> $bts;
+            $rank = (int)($a['searchrank'] ?? 2) <=> (int)($b['searchrank'] ?? 2);
+            if ($rank !== 0) {
+                return $rank;
+            }
+            return (int)($a['coursestarttime'] ?? 0) <=> (int)($b['coursestarttime'] ?? 0);
         });
 
-        return array_slice($normalized, 0, max(1, $limit));
+        return [
+            'rows' => array_slice($normalized, 0, max(1, $limit)),
+            'total' => count($normalized),
+        ];
     }
 
     /**
@@ -888,15 +931,17 @@ class booking_skill_support {
      * @param string $query
      * @param int $limit
      * @param string $when
+     * @param bool $upcomingdefault browse default: hide options that are already over
      * @return array
      */
     public static function search_option_candidates_for_preview(
         int $cmid,
         string $query,
         int $limit = 10,
-        string $when = ''
+        string $when = '',
+        bool $upcomingdefault = false
     ): array {
-        return self::search_option_candidates($cmid, $query, $limit, $when);
+        return self::search_option_candidates($cmid, $query, $limit, $when, $upcomingdefault)['rows'];
     }
 
     /**
@@ -969,7 +1014,9 @@ class booking_skill_support {
             ];
         }
 
-        $rows = self::search_option_candidates($cmid, $query, 5, $when);
+        $found = self::search_option_candidates($cmid, $query, 5, $when);
+        $rows = $found['rows'];
+        $total = (int)$found['total'];
         if (empty($rows)) {
             return [
                 'status' => 'error',
@@ -990,8 +1037,8 @@ class booking_skill_support {
             return [
                 'status' => 'ambiguity',
                 'issue_code' => 'OPTION_AMBIGUOUS',
-                'message' => 'Multiple options matched: ' . implode(', ', $candidates)
-                    . '. Please provide optionid.',
+                'message' => 'Multiple options matched (' . $total . ' matches, showing ' . count($rows)
+                    . '): ' . implode(', ', $candidates) . '. Please provide optionid.',
             ];
         }
 
@@ -1014,7 +1061,7 @@ class booking_skill_support {
             return ['status' => 'none'];
         }
 
-        $rows = self::search_option_candidates($cmid, $title, 20);
+        $rows = self::search_option_candidates($cmid, $title, 20)['rows'];
         if (empty($rows)) {
             return ['status' => 'none'];
         }
@@ -1161,21 +1208,14 @@ class booking_skill_support {
                      JOIN {course_modules} cm ON cm.instance = b.id AND cm.module = m.id
                     WHERE ";
 
-        // Exact (case-insensitive) title first; fall back to a LIKE match only when nothing matched.
+        // Exact and partial title matches judged together: uniqueness is only honest over
+        // the complete candidate set (a LIKE match includes every exact match).
         $rows = $DB->get_records_sql(
-            $select . $DB->sql_equal('bo.text', ':title', false, false),
-            ['title' => $query],
+            $select . $DB->sql_like('bo.text', ':title', false),
+            ['title' => '%' . $DB->sql_like_escape($query) . '%'],
             0,
             50
         );
-        if (empty($rows)) {
-            $rows = $DB->get_records_sql(
-                $select . $DB->sql_like('bo.text', ':title', false),
-                ['title' => '%' . $DB->sql_like_escape($query) . '%'],
-                0,
-                50
-            );
-        }
 
         if (empty($rows)) {
             return ['status' => 'not_found'];
@@ -2343,49 +2383,6 @@ class booking_skill_support {
 
         sort($forbidden);
         return $forbidden;
-    }
-
-    /**
-     * Extract a day-range from natural-language hints like "next monday".
-     *
-     * @param string $text
-     * @return array|null
-     */
-    private static function extract_time_window_from_text(string $text): ?array {
-        $text = trim(strtolower($text));
-        if ($text === '') {
-            return null;
-        }
-
-        $timezonename = (string)(get_config('core', 'timezone') ?? '');
-        if ($timezonename === '' || $timezonename === '99') {
-            $timezonename = date_default_timezone_get();
-        }
-
-        try {
-            $tz = new \DateTimeZone($timezonename);
-        } catch (\Throwable $e) {
-            $tz = new \DateTimeZone(date_default_timezone_get());
-        }
-
-        $now = new \DateTimeImmutable('now', $tz);
-
-        if (preg_match('/\b(today|tomorrow)\b/i', $text, $m)) {
-            $day = $m[1] === 'tomorrow' ? $now->modify('+1 day') : $now;
-            $start = $day->setTime(0, 0, 0)->getTimestamp();
-            $end = $day->setTime(23, 59, 59)->getTimestamp();
-            return ['start' => $start, 'end' => $end];
-        }
-
-        if (preg_match('/\b(next|this)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i', $text, $m)) {
-            $phrase = strtolower($m[1] . ' ' . $m[2]);
-            $day = $now->modify($phrase);
-            $start = $day->setTime(0, 0, 0)->getTimestamp();
-            $end = $day->setTime(23, 59, 59)->getTimestamp();
-            return ['start' => $start, 'end' => $end];
-        }
-
-        return null;
     }
 
     /**

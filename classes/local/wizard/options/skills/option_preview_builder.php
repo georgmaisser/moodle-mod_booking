@@ -175,8 +175,11 @@ class option_preview_builder {
             $optionids = self::sanitize_ids($input['resolvedoptionids'] ?? null);
         }
 
+        $query = trim((string)($input['optionquery'] ?? ''));
         if (!empty($input['apply_to_all'])) {
             $target = self::str('previewvalue_alloptions', $lang);
+        } else if ($query !== '') {
+            $target = $query;
         } else if (!empty($optionids)) {
             $target = self::str('previewvalue_noptions', $lang, count($optionids));
         } else {
@@ -185,6 +188,15 @@ class option_preview_builder {
 
         $rows = self::target_rows($input, $lang);
         self::push_str($rows, 'previewlabel_appliesto', $lang, $target);
+        // The resolved match count: the user must see the real scope before confirming.
+        if (!empty($optionids) && ($query !== '' || !empty($input['apply_to_all']))) {
+            self::push_str(
+                $rows,
+                'previewlabel_matchcount',
+                $lang,
+                self::str('previewvalue_noptions', $lang, count($optionids))
+            );
+        }
         self::push_str($rows, 'previewlabel_options', $lang, self::format_option_list($optionids, $lang));
         foreach (self::changed_field_rows($input, $lang) as $row) {
             $rows[] = $row;
@@ -705,7 +717,7 @@ class option_preview_builder {
      */
     private static function format_date($value, string $lang): ?string {
         $ts = self::to_timestamp($value);
-        return $ts === null ? null : userdate($ts, self::str('strftimedate', $lang, null, 'langconfig'));
+        return $ts === null ? null : userdate($ts, self::str('strftimedaydate', $lang, null, 'langconfig'));
     }
 
     /**
@@ -717,7 +729,7 @@ class option_preview_builder {
      */
     private static function format_datetime($value, string $lang): ?string {
         $ts = self::to_timestamp($value);
-        return $ts === null ? null : userdate($ts, self::str('strftimedatetime', $lang, null, 'langconfig'));
+        return $ts === null ? null : userdate($ts, self::str('strftimedaydatetime', $lang, null, 'langconfig'));
     }
 
     /**

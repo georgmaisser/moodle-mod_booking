@@ -107,15 +107,30 @@ class update_option_trainer_skill extends booking_skill_base implements
     public function get_schema(): array {
         $schema = [
             'version' => 1,
-            'description' => 'Assign or replace trainer(s) for an existing booking option. '
-                . 'This task only updates trainer assignment and does not change other option fields.',
+            'description' => 'Assign or replace the trainer(s) of an existing booking option — the people '
+                . 'who RUN, lead or teach it. Never for adding participants: booking people INTO an option '
+                . 'is mod_booking.book_users. This task only updates the trainer assignment and does not '
+                . 'change other option fields.',
             'readonly' => $this->is_read_only(),
+            'example_utterances' => [
+                'The course needs two people running it: add both as trainers',
+                'Assign Tom as the trainer of the welding seminar',
+                'Replace the teacher of the Friday pilates session',
+                'Maria is leading the workshop from now on',
+                'Add userid 91 as a second trainer for this option',
+            ],
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_update_option',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_update_option',
             'properties' => [
                 'optionid' => [
                     'type' => 'integer',
                     'description' => 'ID of the booking option to update. If omitted, provide optionquery.',
+                    'required' => false,
+                ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity when it is not the current one'
+                        . ' (e.g. over MCP, which runs at the system context). Names only - never a course.',
                     'required' => false,
                 ],
                 'optionquery' => [
@@ -210,6 +225,7 @@ class update_option_trainer_skill extends booking_skill_base implements
         $allowedkeys = [
             'optionid',
             'optionquery',
+            'activityquery',
             'optionwhen',
             'teacheremail',
             'teacherquery',
@@ -363,6 +379,7 @@ class update_option_trainer_skill extends booking_skill_base implements
         $allowedkeys = [
             'optionid',
             'optionquery',
+            'activityquery',
             'optionwhen',
             'teacheremail',
             'teacherquery',

@@ -90,16 +90,14 @@ class bulk_update_options_skill extends booking_skill_base implements
         $optionquery = $this->normalize_identity_query((string)($normalized['optionquery'] ?? ''));
         $applytoall = !empty($normalized['apply_to_all']);
 
-        foreach (
-            [
+        foreach ([
                 'optionids',
                 'resolvedoptionids',
                 'optionquery',
                 'apply_to_all',
                 'outputlang',
                 'override',
-            ] as $key
-        ) {
+            ] as $key) {
             unset($normalized[$key]);
         }
 
@@ -173,6 +171,12 @@ class bulk_update_options_skill extends booking_skill_base implements
                     'description' => 'Array of specific option IDs to update.',
                     'required' => false,
                 ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity when it is not the current one'
+                        . ' (e.g. over MCP, which runs at the system context). Names only - never a course.',
+                    'required' => false,
+                ],
                 'optionquery' => [
                     'type' => 'string',
                     'description' => 'Search query to select multiple options to update '
@@ -223,7 +227,7 @@ class bulk_update_options_skill extends booking_skill_base implements
      * @var array<int,string>
      */
     private const BULK_CONTROL_KEYS = [
-        'optionids', 'resolvedoptionids', 'optionquery', 'optionwhen', 'apply_to_all',
+        'optionids', 'resolvedoptionids', 'optionquery', 'activityquery', 'optionwhen', 'apply_to_all',
         'outputlang', 'override',
     ];
 
@@ -401,6 +405,25 @@ class bulk_update_options_skill extends booking_skill_base implements
                 'message'  => $this->localized_string('agent_booking_bulk_update_bookusersquery_unsupported', null, $lang),
             ];
             return $this->invalid($issues);
+        }
+
+        // Resolve the query / apply-to-all match set now: the confirm card must state the
+        // real scope, and an empty set is a clarification, never a confirmable command.
+        if (empty($preparedinput['optionids'])) {
+            $matchedids = booking_skill_support::resolve_bulk_option_ids_for_execute($cmid, $input, $userid);
+            if (empty($matchedids)) {
+                $query = trim((string)($input['optionquery'] ?? ''));
+                $issues[] = [
+                    'code'          => 'EMPTY_BULK_TARGET_SELECTION',
+                    'severity'      => 'needs_clarification',
+                    'message'       => $query === ''
+                        ? $this->localized_string('agent_booking_bulk_update_no_options', null, $lang)
+                        : $this->localized_string('agent_booking_bulk_update_no_matches', $query, $lang),
+                    'user_question' => $this->localized_string('agent_booking_bulk_update_issue_user_question', null, $lang),
+                ];
+                return $this->invalid($issues);
+            }
+            $preparedinput['optionids'] = array_values(array_map('intval', $matchedids));
         }
 
         // Run service-level preflight (teacher resolution, dates, etc.) and enrich prepared_input.
