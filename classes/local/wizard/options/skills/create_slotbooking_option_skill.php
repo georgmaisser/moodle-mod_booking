@@ -105,7 +105,7 @@ class create_slotbooking_option_skill extends create_option_skill {
             'text', 'description',
             'maxanswers', 'teacherquery', 'teacheremail', 'prices',
             'bookingopeningtime', 'bookingclosingtime', 'maxoverbooking',
-            'override', 'outputlang', 'activityquery', 'linkedcoursequery',
+            'override', 'outputlang', 'activityquery', 'cmid', 'linkedcoursequery',
         ]);
         // Keep the core fields plus ALL slot_* properties (opening/closing/duration/interval/
         // validity/capacity AND the slot_day_1..7 weekday toggles) — they are all slot-relevant.
@@ -148,6 +148,9 @@ class create_slotbooking_option_skill extends create_option_skill {
         return [
             'intent' => 'create_slotbooking',
             'anchors' => ['option'],
+            // Every weekday flag is listed: the constructor only sees this card, and a weekday it
+            // cannot see is a weekday it silently leaves false (W1 CSB-1: "Tuesdays and Thursdays"
+            // produced slot_day_4=false, #2399).
             'minimal_input' => [
                 'text',
                 'slot_opening_time',
@@ -156,6 +159,13 @@ class create_slotbooking_option_skill extends create_option_skill {
                 'slot_valid_from',
                 'slot_valid_until',
                 'slot_max_participants_per_slot',
+                'slot_day_1',
+                'slot_day_2',
+                'slot_day_3',
+                'slot_day_4',
+                'slot_day_5',
+                'slot_day_6',
+                'slot_day_7',
                 'activityquery',
             ],
             'example_input' => [
@@ -167,7 +177,12 @@ class create_slotbooking_option_skill extends create_option_skill {
                 'slot_valid_from' => '2026-07-01',
                 'slot_valid_until' => '2026-07-31',
                 'slot_day_1' => true,
+                'slot_day_2' => false,
                 'slot_day_3' => true,
+                'slot_day_4' => false,
+                'slot_day_5' => false,
+                'slot_day_6' => false,
+                'slot_day_7' => false,
             ],
             'namespace' => 'mod_booking',
             'version' => 1,

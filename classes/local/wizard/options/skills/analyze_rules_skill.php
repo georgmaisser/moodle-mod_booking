@@ -28,6 +28,17 @@ use mod_booking\local\wizard\engine\skill_trigger_provider_interface;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class analyze_rules_skill extends booking_skill_base implements skill_trigger_provider_interface {
+    use \mod_booking\local\wizard\engine\module_targeted_skill;
+
+    /**
+     * Rules live on booking activities - the named one becomes the operating context (#2335).
+     *
+     * @return string
+     */
+    public function get_target_modname(): string {
+        return 'booking';
+    }
+
     /** Task name constant. */
     public const TASK_NAME = 'mod_booking.analyze_rules';
 
@@ -97,6 +108,19 @@ class analyze_rules_skill extends booking_skill_base implements skill_trigger_pr
                 'Explain what automations are active on this instance',
             ],
             'properties' => [
+                'cmid' => [
+                    'type' => 'integer',
+                    'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                        . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                        . 'activityquery; use it to pick one of several activities that share a name.',
+                    'required' => false,
+                ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity whose rules are meant, when it'
+                        . ' is not the current one (e.g. over MCP, which runs at the system context).',
+                    'required' => false,
+                ],
                 'query' => [
                     'type' => 'string',
                     'description' => 'Optional keyword filter applied to rule name, rule type, condition or action. '

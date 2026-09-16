@@ -136,7 +136,9 @@ class book_users_skill extends booking_skill_base implements
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Book one or more users into an existing booking option. '
+            'description' => 'Book one or more users into an existing booking option as PARTICIPANTS. '
+                . 'For changing who runs or teaches an option (the trainers), use '
+                . 'mod_booking.update_option_trainer instead. '
                 . 'All booking conditions are enforced. Use bookusersquery to name the users and '
                 . 'optionquery to name the target option directly (a title or fragment, e.g. the '
                 . 'course/event name) — this skill resolves the option itself, so do NOT run a '
@@ -151,6 +153,12 @@ class book_users_skill extends booking_skill_base implements
                 'Sign me up for the yoga class',
             ],
             'properties' => [
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity when it is not the current one'
+                        . ' (e.g. over MCP, which runs at the system context). Names only - never a course.',
+                    'required' => false,
+                ],
                 'optionquery' => [
                     'type' => 'string',
                     'description' => 'Booking option title or text fragment to identify the target option.',
@@ -168,8 +176,10 @@ class book_users_skill extends booking_skill_base implements
                 ],
                 'bookusersquery' => [
                     'type' => 'string',
-                    'description' => 'Comma-separated list of user names, e-mails or ids to book.',
-                    'required' => true,
+                    'description' => 'Comma-separated list of user names, e-mails or ids to book. OMIT this '
+                        . 'field entirely (do NOT send an empty string) to book the CURRENT user - '
+                        . 'self-referencing requests like "book me in" need no name.',
+                    'required' => false,
                 ],
                 'bookuserstimebooked' => [
                     'type' => 'string',
@@ -216,6 +226,7 @@ class book_users_skill extends booking_skill_base implements
                     'Book a user into an option.',
                     'Book ANON_USER into option "Spring Workshop".',
                     'Please register ANON_USER1 and ANON_USER2 for the cooking course.',
+                    'Book me into option "Spring Workshop".',
                 ],
             ],
         ];
@@ -238,6 +249,8 @@ class book_users_skill extends booking_skill_base implements
                     '- If you know only the user\'s name (not their id), call booking.search_users FIRST,',
                     '  wait for the observation with the resolved userid, then call booking.book_users.',
                     '- Pass bookusersquery as a comma-separated list of names, e-mails, or user ids.',
+                    '- For self-reference (the requester themselves), OMIT bookusersquery entirely:',
+                    '  the engine books the current user - never ask the requester for their own name.',
                     '- Pass optionquery with the option title when the option is named in the request.',
                     '- If the user already named a concrete option title (e.g. "My event"),',
                     '  pass it directly as optionquery and do not ask for optionid first.',
@@ -261,12 +274,8 @@ class book_users_skill extends booking_skill_base implements
         $errors = [];
         $lang = $this->get_output_language($input);
 
-        $bookusersquery = $this->normalize_query_text($input['bookusersquery'] ?? '');
-        $explicituserids = $this->extract_explicit_user_ids($input);
-        if ($bookusersquery === '' && empty($explicituserids)) {
-            $errors[] = $this->localized_string('agent_booking_book_users_required_bookusersquery', null, $lang);
-        }
-
+        // An omitted user selector is valid: it books the acting user (self-reference),
+        // mirroring the diagnose skills' omit-userquery contract.
         $optionid = (int)($input['optionid'] ?? 0);
         $optionquery = $this->normalize_query_text($input['optionquery'] ?? '');
         if ($optionid <= 0 && $optionquery === '') {
@@ -331,8 +340,13 @@ class book_users_skill extends booking_skill_base implements
         }
 
         $bookuserids = $this->extract_explicit_user_ids($input);
+        $bookusersquery = $this->normalize_query_text($input['bookusersquery'] ?? '');
+        if (empty($bookuserids) && $bookusersquery === '') {
+            // Omitted selector: the acting user is the booking target. The engine knows who
+            // is asking, so a self-reference must never trigger a name question.
+            $bookuserids = [(int)$userid];
+        }
         if (empty($bookuserids)) {
-            $bookusersquery = $this->normalize_query_text($input['bookusersquery'] ?? '');
             $usersforbooking = booking_skill_support::resolve_users_for_booking($bookusersquery);
             if (!empty($usersforbooking['issues']) && is_array($usersforbooking['issues'])) {
                 foreach ($usersforbooking['issues'] as $entry) {
@@ -526,8 +540,12 @@ class book_users_skill extends booking_skill_base implements
         if (empty($bookuserids)) {
             $bookuserids = $this->extract_explicit_user_ids($input);
         }
+        $bookusersquery = $this->normalize_query_text($input['bookusersquery'] ?? '');
+        if (empty($bookuserids) && $bookusersquery === '') {
+            // Omitted selector = self-booking for the acting user (see run_preflight).
+            $bookuserids = [(int)$userid];
+        }
         if (empty($bookuserids)) {
-            $bookusersquery = $this->normalize_query_text($input['bookusersquery'] ?? '');
             $usersforbooking = booking_skill_support::resolve_users_for_booking($bookusersquery);
             if (!empty($usersforbooking['errors']) || !empty($usersforbooking['ambiguities'])) {
                 return [

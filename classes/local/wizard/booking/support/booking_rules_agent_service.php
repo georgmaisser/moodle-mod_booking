@@ -114,6 +114,11 @@ class booking_rules_agent_service {
         if ($query === '') {
             return ['status' => 'error', 'message' => get_string('agent_booking_rules_provide_templateid_or_query', 'mod_booking')];
         }
+        // A query that carries nothing but an id is the id the planner copied from the candidate
+        // list ("-12", "templateid=-12"): resolve it as such, a name lookup can never match it (#2402).
+        if (preg_match('/^(?:templateid\s*=\s*)?(-?\d+)$/i', $query, $matches)) {
+            return $this->resolve_template((int)$matches[1], '');
+        }
 
         $exact = [];
         $contains = [];
@@ -318,6 +323,18 @@ class booking_rules_agent_service {
                     return ['status' => 'ok', 'rule' => $rule];
                 }
             }
+            // A missing id may really mean a rule NAMED like the number (numeric names are
+            // legal): offer that reading as a question - the engine never guesses.
+            foreach ($rules as $rule) {
+                if (trim((string)($rule['name'] ?? '')) === (string)$ruleid) {
+                    return [
+                        'status' => 'ambiguity',
+                        'message' => 'Es gibt keine Regel mit der ID ' . $ruleid . ', aber eine Regel mit dem '
+                            . 'NAMEN "' . $ruleid . '" (id=' . (int)$rule['id'] . '). Meinten Sie diese Regel? '
+                            . 'Bitte bestätigen Sie den Namen oder geben Sie eine andere ID an.',
+                    ];
+                }
+            }
             return ['status' => 'error', 'message' => get_string('agent_booking_rules_ruleid_not_found_in_context', 'mod_booking')];
         }
 
@@ -409,11 +426,11 @@ class booking_rules_agent_service {
         if (isset($overrides['rulename']) && trim((string)$overrides['rulename']) !== '') {
             $data->rule_name = trim((string)$overrides['rulename']);
         }
-        if (array_key_exists('isactive', $overrides)) {
-            $data->ruleisactive = !empty($overrides['isactive']) ? 1 : 0;
-        } else if (!isset($data->ruleisactive)) {
-            $data->ruleisactive = 0;
-        }
+        // A new rule is active unless the caller says otherwise: the schema promises
+        // "isactive (default true)" and the rule form defaults to active. Template records carry
+        // no flag, so the handler defaults would otherwise persist 0 (F34, #2241).
+        $data->ruleisactive = array_key_exists('isactive', $overrides) && empty($overrides['isactive']) ? 0 : 1;
+        $this->apply_days_override($data, $overrides);
 
         $newruleid = rules_info::save_booking_rule($data);
 
@@ -512,6 +529,7 @@ class booking_rules_agent_service {
         }
 
         $this->apply_handler_defaults_from_record($data, $record);
+        $this->apply_days_override($data, $overrides);
 
         rules_info::save_booking_rule($data);
 
@@ -565,6 +583,58 @@ class booking_rules_agent_service {
      * @param stdClass $record
      * @param int      $currentcontextid Optional – current module context id.
      * @return array<string,mixed>
+     */
+    /**
+     * Rule handler type ("rule_daysbefore", "rule_react_on_event") of a template or saved rule.
+     *
+     * @param int $id Negative id = built-in template, positive id = booking_rules record.
+     * @return string Empty when unknown.
+     */
+    public function rule_type_of(int $id): string {
+        global $DB;
+        if ($id < 0) {
+            $record = templaterule::get_template_record_by_id($id);
+            return (string)($record->rulename ?? '');
+        }
+        if ($id > 0) {
+            return (string)($DB->get_field('booking_rules', 'rulename', ['id' => $id], IGNORE_MISSING) ?: '');
+        }
+        return '';
+    }
+
+    /**
+     * Whether a rule type carries the "days before/after a date" model.
+     *
+     * @param string $ruletype
+     * @return bool
+     */
+    public function rule_type_has_days(string $ruletype): bool {
+        return $ruletype === 'rule_daysbefore';
+    }
+
+    /**
+     * Apply the days override to the form data of a days-before rule (#2403).
+     *
+     * @param stdClass $data
+     * @param array $overrides
+     * @return void
+     */
+    private function apply_days_override(stdClass $data, array $overrides): void {
+        if (!array_key_exists('days', $overrides) || $overrides['days'] === null || $overrides['days'] === '') {
+            return;
+        }
+        if (!$this->rule_type_has_days((string)($data->bookingruletype ?? ''))) {
+            return;
+        }
+        $data->rule_daysbefore_days = (int)$overrides['days'];
+    }
+
+    /**
+     * Normalize a booking_rules record into the array the skills report (names, components, flags, days).
+     *
+     * @param stdClass $record
+     * @param int $currentcontextid
+     * @return array
      */
     private function normalize_rule_record(stdClass $record, int $currentcontextid = 0): array {
         $json = json_decode((string)($record->rulejson ?? '{}'));
@@ -621,6 +691,7 @@ class booking_rules_agent_service {
             'actionname'             => $actionname,
             'localizedactionname'    => $localizedactionname,
             'isactive'               => (int)($record->isactive ?? 0),
+            'days'                   => (is_object($json) && isset($json->ruledata->days)) ? (int)$json->ruledata->days : null,
             'editlink'               => $editlink,
         ];
     }

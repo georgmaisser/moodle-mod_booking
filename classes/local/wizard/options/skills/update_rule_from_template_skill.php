@@ -96,6 +96,28 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
     }
 
     /**
+     * Representative FLAT example input for the construction-phase catalog.
+     *
+     * @return array
+     */
+    public function get_example_input(): array {
+        // The constructor only sees this card: without "days" here it never fills the property (#2403).
+        return ['rulequery' => 'confirmation rule', 'isactive' => false, 'days' => 5];
+    }
+
+    /**
+     * Strictly parse an isactive override: quoted booleans keep their meaning, junk is null.
+     *
+     * A bare !empty() would read the string 'false' as TRUE and invert the user's intent.
+     *
+     * @param mixed $value Raw isactive value from the command input.
+     * @return bool|null Null when the value carries no parseable boolean.
+     */
+    public static function parse_isactive_override($value): ?bool {
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+    }
+
+    /**
      * Human-readable preview of the rule update (tier-3): target + changed fields.
      *
      * @param array $input Prepared input.
@@ -130,12 +152,20 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
             'properties' => [
                 'ruleid' => [
                     'type' => 'integer',
-                    'description' => 'Target booking rule id.',
+                    'description' => 'Numeric id of the target rule. A number the user mentions '
+                        . '("Regel 3", "rule with id 7") belongs HERE, never into rulequery.',
+                    'required' => false,
+                ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity whose rules are meant, when it'
+                        . ' is not the current one (e.g. over MCP, which runs at the system context).',
                     'required' => false,
                 ],
                 'rulequery' => [
                     'type' => 'string',
-                    'description' => 'Rule name fragment when ruleid is unknown.',
+                    'description' => 'Rule NAME fragment when no id was given. Names only — '
+                        . 'never numbers or "id:N".',
                     'required' => false,
                 ],
                 'templateid' => [
@@ -155,13 +185,38 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
                 ],
                 'isactive' => [
                     'type' => 'boolean',
-                    'description' => 'Optional active flag override.',
+                    'description' => 'Set false to DISABLE/deactivate the rule, true to enable/activate it. '
+                        . 'Use this whenever the user asks to switch a rule on or off.',
+                    'required' => false,
+                ],
+                'days' => [
+                    'type' => 'integer',
+                    'description' => 'New number of days for a "days before/after a date" reminder rule, e.g. 5 for '
+                        . '"remind five days before". Only for rules with a days model.',
                     'required' => false,
                 ],
                 'outputlang' => [
                     'type' => 'string',
                     'description' => 'Optional language code for user-facing wrapper strings, e.g. de or en.',
                     'required' => false,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Contextual guidance for the construction phase (surfaced unconditionally there).
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_contextual_prompt_packs(): array {
+        return [
+            [
+                'id' => 'mod_booking.rule_target_reference',
+                'triggers' => ['rule', 'regel'],
+                'guidance' => [
+                    '- Numeric rule reference -> {"ruleid": 3}; name reference -> {"rulequery": "reminder rule"}.',
+                    '- Never encode ids inside rulequery (no "3", no "id:3") — rulequery is for name text only.',
                 ],
             ],
         ];
@@ -337,6 +392,18 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
             }
         }
 
+        // A number of days only applies to a days-model rule (or a days-model template being
+        // reapplied); anything else is asked back, never silently dropped (W15, #2403).
+        $days = $input['days'] ?? null;
+        if ($days !== null && $days !== '') {
+            $typesource = (int)($prepared['templateid'] ?? 0) !== 0 ? (int)$prepared['templateid'] : (int)$prepared['ruleid'];
+            if (!$this->ruleservice->rule_type_has_days($this->ruleservice->rule_type_of($typesource))) {
+                // Dropped visibly (preview row), never silently and never as a claim in the answer.
+                unset($prepared['days']);
+                $prepared['days_not_applicable'] = 1;
+            }
+        }
+
         return $this->pass($prepared);
     }
 
@@ -390,8 +457,14 @@ class update_rule_from_template_skill extends booking_skill_base implements skil
         if (isset($input['rulename'])) {
             $overrides['rulename'] = trim((string)$input['rulename']);
         }
+        if (isset($input['days']) && $input['days'] !== '') {
+            $overrides['days'] = (int)$input['days'];
+        }
         if (array_key_exists('isactive', $input)) {
-            $overrides['isactive'] = !empty($input['isactive']);
+            $parsed = self::parse_isactive_override($input['isactive']);
+            if ($parsed !== null) {
+                $overrides['isactive'] = $parsed;
+            }
         }
 
         $result = $this->ruleservice->update_rule_from_template(

@@ -18,6 +18,7 @@ namespace mod_booking\local\wizard\options\skills;
 
 use mod_booking\local\wizard\booking\booking_skill_mutation_execute_service;
 use mod_booking\local\wizard\booking\booking_skill_support;
+use mod_booking\local\wizard\booking\support\entity_location;
 use mod_booking\local\wizard\engine\queue_identity_provider_interface;
 use mod_booking\local\wizard\engine\skill_trigger_provider_interface;
 
@@ -173,6 +174,12 @@ class bulk_update_options_skill extends booking_skill_base implements
                     'description' => 'Array of specific option IDs to update.',
                     'required' => false,
                 ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity when it is not the current one'
+                        . ' (e.g. over MCP, which runs at the system context). Names only - never a course.',
+                    'required' => false,
+                ],
                 'optionquery' => [
                     'type' => 'string',
                     'description' => 'Search query to select multiple options to update '
@@ -223,7 +230,7 @@ class bulk_update_options_skill extends booking_skill_base implements
      * @var array<int,string>
      */
     private const BULK_CONTROL_KEYS = [
-        'optionids', 'resolvedoptionids', 'optionquery', 'optionwhen', 'apply_to_all',
+        'optionids', 'resolvedoptionids', 'optionquery', 'activityquery', 'optionwhen', 'apply_to_all',
         'outputlang', 'override',
     ];
 
@@ -327,6 +334,12 @@ class bulk_update_options_skill extends booking_skill_base implements
         $issues = [];
         $preparedinput = $input;
 
+        // Bulk mirrors update_option: a bare numeric price becomes the default category before the
+        // confirm preview, so the card shows what execute will write (run 9, P3, #2409).
+        if (isset($preparedinput['prices']) && is_numeric($preparedinput['prices'])) {
+            $preparedinput['prices'] = ['default' => (float)$preparedinput['prices']];
+        }
+
         $hasids   = !empty($input['optionids']) && is_array($input['optionids'])
             && count($input['optionids']) > 0;
         $hasquery = !empty($input['optionquery']) && trim((string)$input['optionquery']) !== '';
@@ -400,6 +413,40 @@ class bulk_update_options_skill extends booking_skill_base implements
                 'severity' => 'needs_clarification',
                 'message'  => $this->localized_string('agent_booking_bulk_update_bookusersquery_unsupported', null, $lang),
             ];
+            return $this->invalid($issues);
+        }
+
+        // Resolve the query / apply-to-all match set now: the confirm card must state the
+        // real scope, and an empty set is a clarification, never a confirmable command.
+        if (empty($preparedinput['optionids'])) {
+            $matchedids = booking_skill_support::resolve_bulk_option_ids_for_execute($cmid, $input, $userid);
+            if (empty($matchedids)) {
+                $query = trim((string)($input['optionquery'] ?? ''));
+                $nomatch = $query === ''
+                    ? $this->localized_string('agent_booking_bulk_update_no_options', null, $lang)
+                    : $this->localized_string('agent_booking_bulk_update_no_matches', $query, $lang);
+                // The engine shows user_question, not message: the "nothing matched" fact must be
+                // part of the question, or the user only sees the generic scope question again.
+                $issues[] = [
+                    'code'           => 'EMPTY_BULK_TARGET_SELECTION',
+                    'severity'       => 'needs_clarification',
+                    'message'        => $nomatch,
+                    'user_question'  => $nomatch . ' '
+                        . $this->localized_string('agent_booking_bulk_update_issue_user_question', null, $lang),
+                    'remedy_options' => ['PROVIDE_OPTIONQUERY', 'PROVIDE_OPTIONIDS', 'SET_APPLY_TO_ALL'],
+                ];
+                return $this->invalid($issues);
+            }
+            $preparedinput['optionids'] = array_values(array_map('intval', $matchedids));
+        }
+
+        // Bulk mirrors update_option: an entity-managed location is resolved before the card (#2414).
+        $entityissue = entity_location::preflight_issue(
+            $preparedinput,
+            fn(string $id, $a): string => $this->localized_string($id, $a, $lang)
+        );
+        if ($entityissue !== null) {
+            $issues[] = $entityissue;
             return $this->invalid($issues);
         }
 

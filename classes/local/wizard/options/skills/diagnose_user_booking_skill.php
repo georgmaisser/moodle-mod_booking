@@ -122,6 +122,15 @@ class diagnose_user_booking_skill extends booking_skill_base implements skill_tr
     }
 
     /**
+     * A person is this skill's direct object and it executes without confirmation (#2226 R3).
+     *
+     * @return bool
+     */
+    public function is_person_centric_readonly(): bool {
+        return true;
+    }
+
+    /**
      * Native capability required to read other users' booking responses (Gate 2).
      *
      * @return string[]
@@ -439,17 +448,15 @@ class diagnose_user_booking_skill extends booking_skill_base implements skill_tr
      * @return int 0 when no option focus is requested or it could not be resolved.
      */
     private function resolve_focus_optionid(array $input, int $cmid, int $actinguserid): int {
-        $optionid = (int)($input['optionid'] ?? 0);
-        if ($optionid > 0) {
-            return $optionid;
+        if ($cmid <= 0) {
+            return 0;
         }
-
-        $query = trim((string)($input['optionquery'] ?? ''));
-        if ($query === '' || $cmid <= 0) {
+        if ((int)($input['optionid'] ?? 0) <= 0 && trim((string)($input['optionquery'] ?? '')) === '') {
             return 0;
         }
 
-        $resolved = booking_skill_support::resolve_single_option($cmid, $query, '');
+        // Instance-scoped: a foreign or stale optionid degrades to the instance-wide report.
+        $resolved = $this->resolve_diagnose_option($input, $cmid, $actinguserid);
         if (($resolved['status'] ?? '') === 'ok') {
             return (int)($resolved['optionid'] ?? 0);
         }

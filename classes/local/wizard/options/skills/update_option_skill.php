@@ -18,6 +18,7 @@ namespace mod_booking\local\wizard\options\skills;
 
 use mod_booking\local\wizard\booking\booking_skill_mutation_execute_service;
 use mod_booking\local\wizard\booking\booking_skill_support;
+use mod_booking\local\wizard\booking\support\entity_location;
 use mod_booking\local\wizard\engine\queue_identity_provider_interface;
 use mod_booking\local\wizard\engine\skill_trigger_provider_interface;
 
@@ -114,6 +115,11 @@ class update_option_skill extends booking_skill_base implements
             'optionquery'      => 'Code Swap',
             'text'             => 'New option title',
             'headerimage_token' => 'tok_abc123',
+            // The date-range shape is load-bearing: without a concrete example the model
+            // falls back to Moodle-idiomatic timestart/timeend and the validator drops it.
+            'optiondates'      => [
+                ['coursestarttime' => '2046-09-30 18:00', 'courseendtime' => '2046-09-30 20:00'],
+            ],
         ];
     }
 
@@ -150,6 +156,12 @@ class update_option_skill extends booking_skill_base implements
                 'optionid' => [
                     'type' => 'integer',
                     'description' => 'ID of the booking option to update. If omitted, provide optionquery.',
+                    'required' => false,
+                ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity when it is not the current one'
+                        . ' (e.g. over MCP, which runs at the system context). Names only - never a course.',
                     'required' => false,
                 ],
                 'optionquery' => [
@@ -227,8 +239,8 @@ class update_option_skill extends booking_skill_base implements
                     '- Do not ask for slot details when the user asks to book participants into a normal option.',
                     '- For mutating requests, do not ask for permission to run internal lookup steps.',
                     '- Do not output standalone search tasks as final action for mutating intent.',
-                    '- For date additions on existing options, use optiondates with optiondatesmode=append '
-                        . '(or omit optiondatesmode; append is default).',
+                    '- For dates use optiondates: optiondatesmode=append ADDS sessions, replace SETS the whole list; '
+                        . 'without a mode a single date on a single-session option MOVES that session, otherwise dates are added.',
                     '- Use confirmation_request for updates and follow structured validation issues when returned.',
                 ],
             ],
@@ -319,6 +331,13 @@ class update_option_skill extends booking_skill_base implements
         // real query here — no anonymized-token short-circuit needed at the skill level.
 
         $preparedinput = $input;
+
+        // Canonicalize the prices SHAPE before the confirm preview, exactly like create_option: a
+        // bare numeric ("prices": 25) means the default price category. Execute normalizes the same
+        // way, so without this the price is written but never shown on the card (run 9, P3, #2409).
+        if (isset($preparedinput['prices']) && is_numeric($preparedinput['prices'])) {
+            $preparedinput['prices'] = ['default' => (float)$preparedinput['prices']];
+        }
 
         if (empty($input['optionid'])) {
             if (empty($input['optionquery'])) {
@@ -427,6 +446,17 @@ class update_option_skill extends booking_skill_base implements
                 ];
                 return $this->invalid($issues);
             }
+        }
+
+        // With local_entities the location is an entity: resolve it here so the card and the save
+        // carry the entity link; an unknown name is a clarification with the entities as remedies (#2414).
+        $entityissue = entity_location::preflight_issue(
+            $preparedinput,
+            fn(string $id, $a): string => $this->localized_string($id, $a, $lang)
+        );
+        if ($entityissue !== null) {
+            $issues[] = $entityissue;
+            return $this->invalid($issues);
         }
 
         // Run service-level preflight (teacher resolution, dates, etc.) and enrich prepared_input.

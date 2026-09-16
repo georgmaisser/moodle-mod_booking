@@ -83,11 +83,13 @@ class list_instance_settings_skill extends booking_skill_base implements skill_t
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'List the configurable settings of a booking activity instance: the full'
-                . ' field catalog (name, label, type, description) with the current values.'
-                . ' Read-only — use this for questions like "what can I configure" or "show the'
-                . ' current settings". To CHANGE a setting, use mod_booking.configure_booking_instance'
-                . ' (action=update) afterwards.',
+            // The selector sees only the first 240 characters: read-only mode and the mutation sibling
+            // come first (#2411, run 9 CBI-2).
+            'description' => 'List (read-only) the configurable settings of a booking activity instance with their'
+                . ' current values. To CHANGE a setting use mod_booking.configure_booking_instance. Returns the'
+                . ' full field catalog (name, label, type, description) — use this for questions like "what can'
+                . ' I configure" or "show the current settings"; changes need'
+                . ' mod_booking.configure_booking_instance (action=update) afterwards.',
             'readonly' => $this->is_read_only(),
             'example_utterances' => [
                 'What can I configure for this booking instance?',
@@ -96,6 +98,13 @@ class list_instance_settings_skill extends booking_skill_base implements skill_t
                 'List the instance settings of the booking activity',
             ],
             'properties' => [
+                'cmid' => [
+                    'type' => 'integer',
+                    'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                        . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                        . 'activityquery; use it to pick one of several activities that share a name.',
+                    'required' => false,
+                ],
                 'activityquery' => [
                     'type' => 'string',
                     'description' => 'Optional: the name of the target booking activity, when it is not the '

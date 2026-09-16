@@ -71,7 +71,7 @@ class option_preview_builder {
         }
         self::push($rows, self::str('duration', $lang), self::humanize_duration($input['duration'] ?? null, $lang));
 
-        foreach (self::curated_option_rows($input, $lang) as $row) {
+        foreach (self::curated_option_rows($input, $lang, true) as $row) {
             $rows[] = $row;
         }
 
@@ -175,8 +175,11 @@ class option_preview_builder {
             $optionids = self::sanitize_ids($input['resolvedoptionids'] ?? null);
         }
 
+        $query = trim((string)($input['optionquery'] ?? ''));
         if (!empty($input['apply_to_all'])) {
             $target = self::str('previewvalue_alloptions', $lang);
+        } else if ($query !== '') {
+            $target = $query;
         } else if (!empty($optionids)) {
             $target = self::str('previewvalue_noptions', $lang, count($optionids));
         } else {
@@ -185,6 +188,15 @@ class option_preview_builder {
 
         $rows = self::target_rows($input, $lang);
         self::push_str($rows, 'previewlabel_appliesto', $lang, $target);
+        // The resolved match count: the user must see the real scope before confirming.
+        if (!empty($optionids) && ($query !== '' || !empty($input['apply_to_all']))) {
+            self::push_str(
+                $rows,
+                'previewlabel_matchcount',
+                $lang,
+                self::str('previewvalue_noptions', $lang, count($optionids))
+            );
+        }
         self::push_str($rows, 'previewlabel_options', $lang, self::format_option_list($optionids, $lang));
         foreach (self::changed_field_rows($input, $lang) as $row) {
             $rows[] = $row;
@@ -518,10 +530,10 @@ class option_preview_builder {
      * @param string $lang
      * @return array[]
      */
-    private static function curated_option_rows(array $input, string $lang): array {
+    private static function curated_option_rows(array $input, string $lang, bool $create = false): array {
         $teacher = self::text_value($input['teacherquery'] ?? ($input['teacheremail'] ?? null));
         $rows = [];
-        self::push_str($rows, 'previewlabel_seats', $lang, self::positive_int_string($input['maxanswers'] ?? null));
+        self::push_str($rows, 'previewlabel_seats', $lang, self::seats_value($input, $lang, $create));
         self::push_str($rows, 'previewlabel_waitinglist', $lang, self::positive_int_string($input['maxoverbooking'] ?? null));
         self::push_str($rows, 'previewlabel_start', $lang, self::format_datetime($input['coursestarttime'] ?? null, $lang));
         self::push_str($rows, 'previewlabel_end', $lang, self::format_datetime($input['courseendtime'] ?? null, $lang));
@@ -705,7 +717,7 @@ class option_preview_builder {
      */
     private static function format_date($value, string $lang): ?string {
         $ts = self::to_timestamp($value);
-        return $ts === null ? null : userdate($ts, self::str('strftimedate', $lang, null, 'langconfig'));
+        return $ts === null ? null : userdate($ts, self::str('strftimedaydate', $lang, null, 'langconfig'));
     }
 
     /**
@@ -717,7 +729,7 @@ class option_preview_builder {
      */
     private static function format_datetime($value, string $lang): ?string {
         $ts = self::to_timestamp($value);
-        return $ts === null ? null : userdate($ts, self::str('strftimedatetime', $lang, null, 'langconfig'));
+        return $ts === null ? null : userdate($ts, self::str('strftimedaydatetime', $lang, null, 'langconfig'));
     }
 
     /**
@@ -848,6 +860,33 @@ class option_preview_builder {
 
     /**
      * Positive integer as string, or null.
+     *
+     * @param mixed $value
+     * @return string|null
+     */
+    /**
+     * Seats row: an explicit 0 means unlimited; on a create card an omitted capacity is unlimited too
+     * (capacity is optional, #2413). On update/bulk cards an omitted capacity is simply not a change.
+     *
+     * @param array $input
+     * @param string $lang
+     * @param bool $create Whether the card describes a creation.
+     * @return string|null
+     */
+    private static function seats_value(array $input, string $lang, bool $create): ?string {
+        $present = array_key_exists('maxanswers', $input) && $input['maxanswers'] !== null && $input['maxanswers'] !== '';
+        $seats = $present ? self::positive_int_string($input['maxanswers']) : null;
+        if ($seats !== null) {
+            return $seats;
+        }
+        if ($create || ($present && is_numeric($input['maxanswers']) && (int)$input['maxanswers'] === 0)) {
+            return self::str('previewvalue_unlimited', $lang);
+        }
+        return null;
+    }
+
+    /**
+     * Positive integer as string, null otherwise.
      *
      * @param mixed $value
      * @return string|null
