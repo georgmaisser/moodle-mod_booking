@@ -255,6 +255,108 @@ class option_preview_builder {
     }
 
     /**
+     * Build the preview descriptor for creating a booking option field.
+     *
+     * @param array $input Prepared input.
+     * @return array|null
+     */
+    public static function create_option_field_descriptor(array $input): ?array {
+        $lang = self::lang($input);
+
+        $rows = [];
+        self::push_str($rows, 'previewlabel_fieldshortname', $lang, self::text_value($input['shortname'] ?? null));
+        self::push_str($rows, 'previewlabel_fieldname', $lang, self::text_value($input['name'] ?? null));
+        self::push_str($rows, 'previewlabel_fieldtype', $lang, self::text_value($input['typename'] ?? $input['type'] ?? null));
+        self::push_str($rows, 'previewlabel_fieldcategory', $lang, self::text_value($input['categoryname'] ?? null));
+        self::push_str(
+            $rows,
+            'previewlabel_fieldrequired',
+            $lang,
+            empty($input['required'])
+                ? self::str('no', $lang, null, 'core')
+                : self::str('yes', $lang, null, 'core')
+        );
+        self::push_str(
+            $rows,
+            'previewlabel_fieldunique',
+            $lang,
+            empty($input['uniquevalues'])
+                ? self::str('no', $lang, null, 'core')
+                : self::str('yes', $lang, null, 'core')
+        );
+        self::push_str($rows, 'previewlabel_fielddefault', $lang, self::text_value($input['defaultvalue'] ?? null));
+        $options = (array)($input['options'] ?? []);
+        if (!empty($options)) {
+            self::push_str($rows, 'previewlabel_fieldoptions', $lang, implode(', ', array_map('strval', $options)));
+        }
+
+        return [
+            'title' => self::str('previewtitle_createoptionfield', $lang),
+            'summary' => '',
+            'rows' => $rows,
+        ];
+    }
+
+    /**
+     * Build the preview descriptor for updating a booking option field.
+     *
+     * Only the values the caller actually changes are listed, so the confirmation shows the change
+     * and not the whole field.
+     *
+     * @param array $input Prepared input.
+     * @return array|null
+     */
+    public static function update_option_field_descriptor(array $input): ?array {
+        $lang = self::lang($input);
+
+        $rows = [];
+        self::push_str($rows, 'previewlabel_fieldshortname', $lang, self::text_value($input['currentshortname'] ?? null));
+
+        if (array_key_exists('shortname', $input)) {
+            self::push_str($rows, 'previewlabel_fieldnewshortname', $lang, self::text_value($input['shortname'] ?? null));
+        }
+        if (array_key_exists('name', $input)) {
+            self::push_str($rows, 'previewlabel_fieldname', $lang, self::text_value($input['name'] ?? null));
+        }
+        if (array_key_exists('categoryname', $input)) {
+            self::push_str($rows, 'previewlabel_fieldcategory', $lang, self::text_value($input['categoryname'] ?? null));
+        }
+        if (array_key_exists('required', $input)) {
+            self::push_str(
+                $rows,
+                'previewlabel_fieldrequired',
+                $lang,
+                empty($input['required'])
+                    ? self::str('no', $lang, null, 'core')
+                    : self::str('yes', $lang, null, 'core')
+            );
+        }
+        if (array_key_exists('uniquevalues', $input)) {
+            self::push_str(
+                $rows,
+                'previewlabel_fieldunique',
+                $lang,
+                empty($input['uniquevalues'])
+                    ? self::str('no', $lang, null, 'core')
+                    : self::str('yes', $lang, null, 'core')
+            );
+        }
+        if (array_key_exists('defaultvalue', $input)) {
+            self::push_str($rows, 'previewlabel_fielddefault', $lang, self::text_value($input['defaultvalue'] ?? null));
+        }
+        $options = (array)($input['options'] ?? []);
+        if (!empty($options)) {
+            self::push_str($rows, 'previewlabel_fieldoptions', $lang, implode(', ', array_map('strval', $options)));
+        }
+
+        return [
+            'title' => self::str('previewtitle_updateoptionfield', $lang),
+            'summary' => '',
+            'rows' => $rows,
+        ];
+    }
+
+    /**
      * Build the preview descriptor for configuring booking-instance settings.
      *
      * @param array $input Prepared input ({action, changes:[{field,value}]}).
