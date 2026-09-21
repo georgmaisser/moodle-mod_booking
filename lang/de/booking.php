@@ -871,6 +871,7 @@ die man entweder selbst angelegt hat oder bei denen man als Trainer:in zugewiese
 $string['booking:managecustomfields'] = 'Buchungsoptionsfelder verwalten';
 $string['booking:manageoptiondates'] = 'Bearbeite Termine';
 $string['booking:manageoptiontemplates'] = "Buchungsoptionsvorlagen verwalten";
+$string['booking:managepricecategories'] = 'Preiskategorien verwalten';
 $string['booking:manageslotunavailability'] = 'Abwesenheiten für Slot-Lehrende verwalten';
 $string['booking:moveslots'] = 'Gebuchte Slots verschieben';
 $string['booking:moveslotsself'] = 'Eigene gebuchte Slots umbuchen';
