@@ -111,9 +111,9 @@ class create_rule_from_template_skill extends booking_skill_base implements skil
                 . 'via the existing server-side rules form pipeline. '
                 . 'Use this for natural-language requests like adding a booking confirmation, reminder, '
                 . 'waitlist, or cancellation notification rule. '
-                . 'If the user explicitly asks for a booking confirmation, '
-                . 'resolve templatequery directly to "booking confirmation" without asking for template type again. '
                 . 'If the user says "with the name ...", map that value to rulename (not to optionquery).',
+            'is' => 'Creating a booking rule.',
+            'not' => 'Changing an existing rule (update_rule_from_template); taskflow rules (local_taskflow.create_rule).',
             'readonly' => $this->is_read_only(),
             'example_utterances' => [
                 'Set up a confirmation email when someone books',
@@ -123,6 +123,13 @@ class create_rule_from_template_skill extends booking_skill_base implements skil
                 'Add an automatic booking confirmation message',
             ],
             'properties' => [
+                'cmid' => [
+                    'type' => 'integer',
+                    'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                        . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                        . 'activityquery; use it to pick one of several activities that share a name.',
+                    'required' => false,
+                ],
                 'activityquery' => [
                     'type' => 'string',
                     'description' => 'Optional: the name of the target booking activity, when it is not the '
@@ -156,6 +163,12 @@ class create_rule_from_template_skill extends booking_skill_base implements skil
                 'isactive' => [
                     'type' => 'boolean',
                     'description' => 'Optional active flag for the new rule (default true).',
+                    'required' => false,
+                ],
+                'days' => [
+                    'type' => 'integer',
+                    'description' => 'Number of days for a "days before/after a date" reminder template, e.g. 2 for '
+                        . '"two days before the course starts". Only for templates with a days model.',
                     'required' => false,
                 ],
                 'outputlang' => [
@@ -347,6 +360,16 @@ class create_rule_from_template_skill extends booking_skill_base implements skil
         $prepared['templateid'] = (int)$template['templateid'];
         $prepared['template_name_resolved'] = (string)($template['name'] ?? '');
 
+        // A number of days only applies to templates with a days model. On any other template the
+        // value is dropped VISIBLY: the confirm card shows that it does not apply (W14, #2403), so
+        // neither the execution nor the answer can claim it.
+        $days = $input['days'] ?? null;
+        $templatetype = $this->ruleservice->rule_type_of((int)$template['templateid']);
+        if ($days !== null && $days !== '' && !$this->ruleservice->rule_type_has_days($templatetype)) {
+            unset($prepared['days']);
+            $prepared['days_not_applicable'] = 1;
+        }
+
         return $this->pass($prepared);
     }
 
@@ -452,6 +475,9 @@ class create_rule_from_template_skill extends booking_skill_base implements skil
         }
         if (array_key_exists('isactive', $input)) {
             $overrides['isactive'] = !empty($input['isactive']);
+        }
+        if (isset($input['days']) && $input['days'] !== '') {
+            $overrides['days'] = (int)$input['days'];
         }
 
         $result = $this->ruleservice->create_rule_from_template(

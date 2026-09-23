@@ -32,6 +32,9 @@ use mod_booking\local\wizard\booking_option_preview_renderer;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 abstract class booking_skill_base extends base_skill {
+    /** @var int How many booking activities the preview pane lists at most. */
+    protected const PREVIEW_INSTANCE_LIMIT = 50;
+
     /** @var booking_skill_support|null */
     private static ?booking_skill_support $sharedsupport = null;
 
@@ -287,7 +290,8 @@ abstract class booking_skill_base extends base_skill {
         // for it (thread-206: the inherited changes envelope was silently ignored at execution).
         'mod_booking.configure_booking_instance' => [
             'action' => 'update',
-            'changes' => [['field' => 'limitanswers', 'value' => '1']],
+            // A real configurable field (the constructor copies the example verbatim, #2411).
+            'changes' => [['field' => 'cancancelbook', 'value' => '0']],
         ],
         'mod_booking.create_option' => [
             'text' => 'Birthday ANON_USER_1',
@@ -319,6 +323,7 @@ abstract class booking_skill_base extends base_skill {
         'mod_booking.create_rule_from_template' => [
             'templatequery' => 'booking confirmation',
             'rulename' => 'Birthday reminder',
+            'days' => 2,
         ],
         'mod_booking.create_user' => [
             'userquery' => 'Anna Example',
@@ -331,6 +336,12 @@ abstract class booking_skill_base extends base_skill {
         'mod_booking.diagnose_cancellation_issue' => [
             'question' => 'Why can I not cancel my booking?',
             'optionquery' => 'Birthday ANON_USER_1',
+        ],
+        // A named option focuses the report incl. the received messages (#2423, DUB-2).
+        'mod_booking.diagnose_user_booking' => [
+            'userquery' => 'ANON_USER_1',
+            'optionquery' => 'Welding seminar',
+            'includemessages' => true,
         ],
         'mod_booking.diagnose_waitinglist' => [
             'optionquery' => 'Birthday ANON_USER_1',
@@ -367,9 +378,15 @@ abstract class booking_skill_base extends base_skill {
             'optionquery' => 'Birthday ANON_USER_1',
             'text' => 'Birthday ANON_USER_1',
         ],
+        // Option and trainer by name — the constructor copies these values (#2423, UOT-2/3).
+        'mod_booking.update_option_trainer' => [
+            'optionquery' => 'Friday pilates',
+            'teacherquery' => 'ANON_USER_1',
+        ],
         'mod_booking.update_rule_from_template' => [
             'rulequery' => 'Birthday reminder',
             'rulename' => 'Updated reminder',
+            'days' => 5,
         ],
         'mod_booking.core_get_user_profile' => [
             'userquery' => 'current',
@@ -956,9 +973,45 @@ abstract class booking_skill_base extends base_skill {
      * @param int $resolvedcmid result of resolve_cmid_from_context_or_cmid()
      * @return array<string,mixed>|null primitive invalid result, or null when a booking instance is in scope
      */
-    protected function require_booking_instance_scope(int $resolvedcmid): ?array {
+    protected function require_booking_instance_scope(int $resolvedcmid, array $input = []): ?array {
         if ($resolvedcmid > 0) {
             return null;
+        }
+
+        // Option-aware first (#2334 residual): ambiguous -> candidates, nowhere -> honest
+        // not-found. Only a truly unnamed target gets the generic scope clarification.
+        $optionquery = trim((string)($input['optionquery'] ?? ''));
+        if ($optionquery !== '' && empty($input['optionid'])) {
+            $resolved = booking_skill_support::activity_for_option_query(
+                $optionquery,
+                trim((string)($input['optionwhen'] ?? ''))
+            );
+            if (($resolved['status'] ?? '') === 'ambiguous') {
+                $labels = [];
+                foreach ((array)($resolved['candidates'] ?? []) as $candidate) {
+                    $labels[] = booking_skill_support::build_option_link_for_output(
+                        (int)$candidate->cmid,
+                        (int)$candidate->optionid
+                    ) . ' (' . format_string($candidate->coursename) . ')';
+                }
+                return $this->invalid([[
+                    'code' => 'CONTEXT_TARGET_UNRESOLVED',
+                    'severity' => 'needs_clarification',
+                    'message' => $this->localized_string('agent_booking_option_target_ambiguous', s($optionquery), '')
+                        . ' ' . implode('; ', $labels),
+                    'repair' => 'Retry with the optionid of the intended candidate, or name the '
+                        . 'booking activity via activityquery.',
+                ]]);
+            }
+            if (($resolved['status'] ?? '') === 'not_found') {
+                return $this->invalid([[
+                    'code' => 'OPTION_NOT_FOUND',
+                    'severity' => 'needs_clarification',
+                    'message' => get_string('agent_booking_option_query_notfound_anywhere', 'mod_booking', s($optionquery)),
+                    'repair' => 'No option matched anywhere. Retry with a different optionquery, '
+                        . 'an optionid, or name the booking activity via activityquery.',
+                ]]);
+            }
         }
 
         return $this->invalid([[
@@ -980,9 +1033,50 @@ abstract class booking_skill_base extends base_skill {
      * @param int $resolvedcmid result of resolve_cmid_from_context_or_cmid()
      * @return array<string,mixed>|null null when a booking instance is in scope
      */
-    protected function build_no_instance_scope_result(int $resolvedcmid): ?array {
+    protected function build_no_instance_scope_result(int $resolvedcmid, array $input = []): ?array {
         if ($resolvedcmid > 0) {
             return null;
+        }
+
+        // Option-aware first (#2334 residual): a NAMED option that is ambiguous across
+        // activities gets its candidates listed; one matching nothing gets the honest
+        // not-found - never the generic open-an-activity text.
+        $optionquery = trim((string)($input['optionquery'] ?? ''));
+        if ($optionquery !== '' && empty($input['optionid'])) {
+            $resolved = booking_skill_support::activity_for_option_query(
+                $optionquery,
+                trim((string)($input['optionwhen'] ?? ''))
+            );
+            if (($resolved['status'] ?? '') === 'ambiguous') {
+                $labels = [];
+                foreach ((array)($resolved['candidates'] ?? []) as $candidate) {
+                    $labels[] = booking_skill_support::build_option_link_for_output(
+                        (int)$candidate->cmid,
+                        (int)$candidate->optionid
+                    ) . ' (' . format_string($candidate->coursename) . ')';
+                }
+                $message = $this->localized_string('agent_booking_option_target_ambiguous', s($optionquery), '')
+                    . ' ' . implode('; ', $labels);
+                return [
+                    'status' => 'error',
+                    'detail' => $message,
+                    'usermessage' => $message,
+                    'resultid' => null,
+                    'observation_full' => $message,
+                    'debugmessage' => 'Ambiguous option across activities: ' . s($optionquery),
+                ];
+            }
+            if (($resolved['status'] ?? '') === 'not_found') {
+                $message = get_string('agent_booking_option_query_notfound_anywhere', 'mod_booking', s($optionquery));
+                return [
+                    'status' => 'error',
+                    'detail' => $message,
+                    'usermessage' => $message,
+                    'resultid' => null,
+                    'observation_full' => $message,
+                    'debugmessage' => 'Option query matched nothing anywhere: ' . s($optionquery),
+                ];
+            }
         }
 
         $instances = $this->list_accessible_booking_instances();
@@ -993,10 +1087,12 @@ abstract class booking_skill_base extends base_skill {
                 . 'site. Tell the user that — do NOT retry this skill and do NOT invent results.';
         } else {
             $shown = array_slice($instances, 0, 10);
+            $totaloptions = array_sum(array_column($instances, 'optioncount'));
             $lines = [];
             foreach ($shown as $instance) {
-                $lines[] = '- [' . $instance['name'] . '](' . $instance['url'] . ') — '
-                    . get_string('course') . ': ' . $instance['coursename'];
+                $lines[] = '- [' . $instance['name'] . '](' . $instance['url'] . ') '
+                    . self::instance_facts_label($instance) . ' — '
+                    . get_string('course') . ': [' . $instance['coursename'] . '](' . $instance['courseurl'] . ')';
             }
             $list = implode("\n", $lines);
             if (count($instances) > count($shown)) {
@@ -1008,16 +1104,24 @@ abstract class booking_skill_base extends base_skill {
             }
 
             $message = get_string('agent_booking_no_instance_in_scope_courses', 'booking')
-                . "\n\n" . $list;
+                . "\n\n" . $list
+                . "\n\n" . get_string('agent_booking_no_instance_totals', 'booking', (object)[
+                    'options' => $totaloptions,
+                    'instances' => count($instances),
+                ]);
             $observation = 'SCOPE NOTE (about this one call only, not about the site): this call ran without a '
                 . 'target booking activity, so nothing was searched yet — it does NOT mean the site has no '
-                . 'booking activities or options. The user CAN access these booking activities (cmid in '
-                . 'brackets): '
+                . 'booking activities or options. The site holds ' . $totaloptions . ' booking options the user '
+                . 'can see, spread over ' . count($instances) . ' booking activities. The user CAN access these '
+                . 'booking activities (cmid and the number of options they hold, most first): '
                 . implode('; ', array_map(
-                    static fn(array $i): string => $i['name'] . ' [cmid ' . $i['cmid'] . '] in course ' . $i['coursename'],
+                    static fn(array $i): string => $i['name'] . ' [cmid ' . $i['cmid'] . '] in course '
+                        . $i['coursename'] . ' holds ' . $i['optioncount'] . ' options',
                     $shown
                 ))
-                . '. If the request (or an earlier message) already names one of these activities or a concrete '
+                . '. An activity holding 0 options has nothing to offer - do not propose it unless the user asks '
+                . 'to create something there. If the request (or an earlier message) already names one of these '
+                . 'activities or a concrete '
                 . 'booking option, retry the skill now with that target (optionid/optionquery, or '
                 . 'activityquery/cmid when the skill schema offers it). Otherwise ask the user which booking '
                 . 'activity to use. Never invent results.';
@@ -1029,11 +1133,26 @@ abstract class booking_skill_base extends base_skill {
             'usermessage' => $message,
             'resultid' => null,
             'issue_codes' => ['RECOVERABLE_INPUT_ERROR'],
+            // The chat text shows ten entries; the preview pane has room for the whole list.
+            'previewinstances' => $instances,
             'observation_full' => $observation,
             // Navigational metadata (course/instance names) + instructions: treated as
             // engine text, exempt from privacy anonymization like moodle_context names.
             'observation_engine_static' => true,
         ];
+    }
+
+    /**
+     * The facts that decide whether an activity is worth naming, in brackets behind its name.
+     *
+     * @param array $instance One entry of {@see self::list_accessible_booking_instances()}.
+     * @return string
+     */
+    protected static function instance_facts_label(array $instance): string {
+        return get_string('agent_booking_no_instance_facts', 'booking', (object)[
+            'cmid' => (int)($instance['cmid'] ?? 0),
+            'options' => (int)($instance['optioncount'] ?? 0),
+        ]);
     }
 
     /**
@@ -1044,7 +1163,7 @@ abstract class booking_skill_base extends base_skill {
      * and instances the user cannot see are filtered out via get_fast_modinfo's
      * uservisible flag.
      *
-     * @return array<int,array{cmid:int,name:string,url:string,courseid:int,coursename:string}>
+     * @return array
      */
     protected function list_accessible_booking_instances(): array {
         global $DB;
@@ -1055,6 +1174,16 @@ abstract class booking_skill_base extends base_skill {
                JOIN {course} c ON c.id = b.course
               ORDER BY c.fullname",
             []
+        );
+
+        // How many options each instance holds, in ONE grouped query - the list is only useful if
+        // it says where there is something to find, and the caller shows at most ten entries.
+        $counts = $DB->get_records_sql(
+            "SELECT bookingid,
+                    COUNT(1) AS alloptions,
+                    SUM(CASE WHEN invisible = 1 THEN 1 ELSE 0 END) AS hiddenoptions
+               FROM {booking_options}
+           GROUP BY bookingid"
         );
 
         $instances = [];
@@ -1068,12 +1197,24 @@ abstract class booking_skill_base extends base_skill {
                     if (!$cm->uservisible) {
                         continue;
                     }
+                    $count = $counts[(int)$cm->instance] ?? null;
+                    $all = (int)($count->alloptions ?? 0);
+                    $hidden = (int)($count->hiddenoptions ?? 0);
+                    // Count what THIS user may see, the same way the option tables filter them
+                    // (invisible = 1 is hidden without the capability; invisible = 2 stays visible).
+                    $mayseehidden = has_capability(
+                        'mod/booking:canseeinvisibleoptions',
+                        \context_module::instance((int)$cm->id)
+                    );
+
                     $instances[] = [
                         'cmid' => (int)$cm->id,
                         'name' => format_string($cm->name),
                         'url' => (new \moodle_url('/mod/booking/view.php', ['id' => (int)$cm->id]))->out(false),
                         'courseid' => (int)$course->id,
                         'coursename' => format_string($course->fullname),
+                        'courseurl' => (new \moodle_url('/course/view.php', ['id' => (int)$course->id]))->out(false),
+                        'optioncount' => $mayseehidden ? $all : max(0, $all - $hidden),
                     ];
                 }
             } catch (\Throwable $e) {
@@ -1081,6 +1222,13 @@ abstract class booking_skill_base extends base_skill {
                 continue;
             }
         }
+
+        // Most to find first: the caller shows only the first ten, and an alphabetical order can
+        // push every populated activity out of that window.
+        usort($instances, static function (array $a, array $b): int {
+            return [$b['optioncount'], $a['coursename'], $a['name']]
+                <=> [$a['optioncount'], $b['coursename'], $b['name']];
+        });
 
         return $instances;
     }
@@ -1107,9 +1255,10 @@ abstract class booking_skill_base extends base_skill {
             // hold the capability). Mirrors how the course skills clarify a missing course context.
             return $this->invalid([[
                 'severity' => 'needs_clarification',
-                'message' => 'This action needs a target booking activity. Please open a booking activity, '
-                    . 'or tell me which booking activity (and course) it should apply to.',
+                'message' => get_string('agent_booking_missing_target_activity', 'mod_booking'),
                 'code' => 'MISSING_TARGET_ACTIVITY',
+                'repair' => 'No target activity resolved. Retry with optionid, a sharper optionquery, '
+                    . 'or name the booking activity via activityquery.',
             ]]);
         }
         if (!has_capability($capability, \context_module::instance($cmid), $userid)) {
@@ -1160,6 +1309,21 @@ abstract class booking_skill_base extends base_skill {
                     $optionquery,
                     trim((string)($input['optionwhen'] ?? ''))
                 );
+                if (($resolved['status'] ?? '') === 'not_found') {
+                    // Not-found stays a not-found (#2334): the old fallback blamed the missing
+                    // ambient activity and dead-ended API clients on "open a booking activity".
+                    return ['clarification' => $this->invalid([[
+                        'severity' => 'needs_clarification',
+                        'code' => 'OPTION_NOT_FOUND',
+                        'message' => $this->localized_string(
+                            'agent_booking_option_query_notfound_anywhere',
+                            s($optionquery),
+                            $lang
+                        ),
+                        'repair' => 'No option matched anywhere. Retry with a different optionquery, '
+                            . 'an optionid, or name the booking activity via activityquery.',
+                    ]])];
+                }
                 if (($resolved['status'] ?? '') === 'ambiguous') {
                     $labels = [];
                     foreach ($resolved['candidates'] as $candidate) {
@@ -1377,9 +1541,15 @@ abstract class booking_skill_base extends base_skill {
      * @param array $resultentry One executed skill result entry.
      * @param int $contextid
      * @param int $userid
-     * @return array{type:string,html:string,payload:array}|null
+     * @return array|null
      */
     public function get_result_preview(array $resultentry, int $contextid, int $userid): ?array {
+        // The "which booking activity do you mean" answer previews the activities themselves:
+        // the whole list, linked, ordered by how much each one holds.
+        if (!empty($resultentry['previewinstances']) && is_array($resultentry['previewinstances'])) {
+            return self::build_instance_list_preview($resultentry['previewinstances']);
+        }
+
         $optionids = [];
         if (isset($resultentry['previewoptionids']) && is_array($resultentry['previewoptionids'])) {
             foreach ($resultentry['previewoptionids'] as $id) {
@@ -1394,15 +1564,129 @@ abstract class booking_skill_base extends base_skill {
             return null;
         }
 
-        $html = (new booking_option_preview_renderer())->render(['optionids' => $optionids], $contextid, $userid);
+        $rendered = (new booking_option_preview_renderer())->render(['optionids' => $optionids], $contextid, $userid);
+        $html = (string)($rendered['html'] ?? '');
         if (trim($html) === '') {
             return null;
         }
 
+        // The card's behaviour (booking button, prepage pages) lives in the templates' render-time
+        // JS, which the client has to execute after injecting the HTML. Shipping the markup alone
+        // would hand the preview pane a booking button that no handler listens to.
         return [
             'type' => 'booking_option',
             'html' => $html,
+            'js' => (string)($rendered['js'] ?? ''),
             'payload' => ['optionids' => $optionids],
         ];
+    }
+
+    /**
+     * Preview block for the list of accessible booking activities.
+     *
+     * Plain server-rendered markup (links only, no behaviour), so it needs no render-time JS.
+     *
+     * @param array $instances Entries of {@see self::list_accessible_booking_instances()}.
+     * @return array|null The preview descriptor, or null when there is nothing to show.
+     */
+    protected static function build_instance_list_preview(array $instances): ?array {
+        $shown = array_slice($instances, 0, self::PREVIEW_INSTANCE_LIMIT);
+        if (empty($shown)) {
+            return null;
+        }
+
+        $items = '';
+        foreach ($shown as $instance) {
+            $items .= \html_writer::tag(
+                'li',
+                \html_writer::link((string)$instance['url'], (string)$instance['name'])
+                . ' ' . \html_writer::tag(
+                    'span',
+                    self::instance_facts_label((array)$instance),
+                    ['class' => 'text-muted small']
+                )
+                . ' — ' . get_string('course') . ': '
+                . \html_writer::link((string)$instance['courseurl'], (string)$instance['coursename']),
+                ['class' => 'mb-1']
+            );
+        }
+
+        $html = \html_writer::tag(
+            'h5',
+            get_string('agent_booking_no_instance_in_scope_courses', 'booking'),
+            ['class' => 'mb-2']
+        ) . \html_writer::tag('ul', $items, ['class' => 'list-unstyled']);
+
+        if (count($instances) > count($shown)) {
+            $html .= \html_writer::tag(
+                'p',
+                get_string('agent_booking_no_instance_more', 'booking', count($instances) - count($shown)),
+                ['class' => 'text-muted small mb-0']
+            );
+        }
+
+        return [
+            'type' => 'booking_instance_list',
+            'html' => \html_writer::div($html, 'booking-ai-preview-item'),
+            'payload' => ['cmids' => array_map(static fn(array $i): int => (int)$i['cmid'], $shown)],
+        ];
+    }
+
+    /**
+     * Resolve a diagnose-family option strictly within the current instance.
+     *
+     * @param array $input
+     * @param int $cmid
+     * @param int $userid
+     * @param string $lang
+     * @return array{status:string,optionid?:int,message?:string,issue_code?:string}
+     */
+    protected function resolve_diagnose_option(array $input, int $cmid, int $userid, string $lang = ''): array {
+        global $DB;
+
+        $optionid = (int)($input['optionid'] ?? 0);
+        $optionquery = trim((string)($input['optionquery'] ?? ''));
+        if ($optionid > 0) {
+            $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
+            if ($DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])) {
+                return ['status' => 'ok', 'optionid' => $optionid];
+            }
+
+            // Stale or foreign optionid: prefer resolving a given title over failing hard.
+            if ($optionquery !== '') {
+                return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
+            }
+
+            return [
+                'status' => 'error',
+                'message' => $this->localized_string('agent_booking_diagnose_error_option_not_in_instance', null, $lang),
+            ];
+        }
+
+        if ($optionquery === '') {
+            return [
+                'status' => 'ambiguity',
+                'message' => $this->localized_string('agent_booking_diagnose_ambiguity_option_title_or_id', null, $lang),
+            ];
+        }
+
+        if (booking_skill_support::is_last_option_reference($optionquery)) {
+            $lastids = booking_skill_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
+            if (count($lastids) === 1) {
+                return ['status' => 'ok', 'optionid' => (int)$lastids[0]];
+            }
+            if (count($lastids) > 1) {
+                return [
+                    'status' => 'ambiguity',
+                    'message' => $this->localized_string('agent_booking_diagnose_ambiguity_last_preview_multiple', null, $lang),
+                ];
+            }
+            return [
+                'status' => 'error',
+                'message' => $this->localized_string('agent_booking_diagnose_error_last_preview_none', null, $lang),
+            ];
+        }
+
+        return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
     }
 }

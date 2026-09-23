@@ -78,9 +78,10 @@ class update_option_field_skill extends booking_skill_base {
         return [
             'version' => 1,
             // First 240 characters = selector/constructor window.
-            'description' => 'Change an existing booking option field: its name, shortname, category, default value, '
-                . 'selectable values or whether it is required. Identify the field by its current shortname. Not a '
-                . 'value on one option (mod_booking.update_option).',
+            'description' => 'Change an existing booking option field: its name, shortname, category, default value, selectable '
+                . 'values or whether it is required. Identify the field by its current shortname.',
+            'is' => 'The field definition itself.',
+            'not' => 'A value on one option (update_option).',
             'readonly' => $this->is_read_only(),
             'properties' => [
                 'currentshortname' => [

@@ -79,10 +79,10 @@ class create_option_field_skill extends booking_skill_base {
         return [
             'version' => 1,
             // First 240 characters = selector/constructor window.
-            'description' => 'Create a new booking option field: a custom field that every booking option on this '
-                . 'site can then be given a value for, such as a room, a level or a distance marker. Not a value on '
-                . 'one option (mod_booking.update_option) and not a price category '
-                . '(mod_booking.add_price_category).',
+            'description' => 'Create a new booking option field: a custom field that every booking option on this site can then be '
+                . 'given a value for, such as a room, a level or a distance marker.',
+            'is' => 'The field definition itself.',
+            'not' => 'A value on one option (update_option); a price category (add_price_category).',
             'readonly' => $this->is_read_only(),
             'properties' => [
                 'shortname' => [

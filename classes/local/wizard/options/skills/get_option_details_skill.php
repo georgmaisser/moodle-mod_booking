@@ -95,7 +95,10 @@ class get_option_details_skill extends booking_skill_base implements skill_trigg
     public function get_schema(): array {
         $schema = [
             'version' => 1,
-            'description' => 'Get detailed information for one or more booking options via booking option APIs.',
+            'description' => 'Full details of ONE named booking option (optionquery or optionid): dates, seats, price, teachers, '
+                . 'description, link. Reads via the booking option APIs.',
+            'is' => 'One named booking option: dates, seats, price, teachers.',
+            'not' => 'A list of options (search_options); a taskflow rule of the same name (local_taskflow.get_rule_details).',
             'readonly' => $this->is_read_only(),
             'example_utterances' => [
                 'Show me the full details of the Spring Workshop',
@@ -117,7 +120,9 @@ class get_option_details_skill extends booking_skill_base implements skill_trigg
                 ],
                 'optionquery' => [
                     'type' => 'string',
-                    'description' => 'Option title/query to resolve when optionid is unknown.',
+                    'description' => 'Pass the user\'s wording VERBATIM, even when it is vague ("that autumn '
+                        . 'hiking thing"): this skill resolves it and reports candidates itself, so never ask the '
+                        . 'user for a name or id first. Used when optionid is unknown.',
                     'required' => false,
                 ],
                 'includesessions' => [
@@ -160,8 +165,14 @@ class get_option_details_skill extends booking_skill_base implements skill_trigg
         ];
 
         $schema['prompt_meta'] = [
-            'input_fields_for_prompt' => ['optionquery (or optionid / optionids)'],
+            'input_fields_for_prompt' => ['optionquery'],
             'anchor_fields' => ['optionquery', 'optionid'],
+            // Mirrors check_structure(): one of the three option references must be present. The array
+            // type checks there (optionids, requested_fields, customfield_keys) only fire when those
+            // fields are set and are therefore no requirement of an empty input.
+            'required_groups' => [
+                ['optionid', 'optionids', 'optionquery'],
+            ],
         ];
 
         return $this->enrich_schema_with_prompt_meta($schema);
@@ -290,6 +301,9 @@ class get_option_details_skill extends booking_skill_base implements skill_trigg
 
             return [
                 'status' => 'error',
+                // The user can fix this by naming the option differently, so the turn must not be stamped as a
+                // failed run: the planner's own honest answer stands (see agent_runtime, run 17/18 UTP-3/TDP-4).
+                'issue_codes' => ['RECOVERABLE_INPUT_ERROR'],
                 'detail' => $this->localized_string($stringkey, null, $outputlang),
                 'resultid' => null,
                 'optiondetails' => [],
@@ -353,6 +367,7 @@ class get_option_details_skill extends booking_skill_base implements skill_trigg
         if (empty($details)) {
             return [
                 'status' => 'error',
+                'issue_codes' => ['RECOVERABLE_INPUT_ERROR'],
                 'detail' => $this->localized_string('agent_booking_diagnose_error_option_resolve', null, $outputlang),
                 'resultid' => null,
                 'optiondetails' => [],

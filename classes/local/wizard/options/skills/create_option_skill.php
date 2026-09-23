@@ -19,6 +19,7 @@ namespace mod_booking\local\wizard\options\skills;
 use mod_booking\local\wizard\booking\booking_skill_mutation_execute_service;
 use mod_booking\local\wizard\booking\booking_skill_support;
 use mod_booking\local\wizard\booking\support\booking_mutation_validation;
+use mod_booking\local\wizard\booking\support\entity_location;
 use mod_booking\local\wizard\engine\queue_identity_provider_interface;
 use mod_booking\local\wizard\engine\skill_trigger_provider_interface;
 use mod_booking\local\wizard\engine\module_targeted_skill;
@@ -139,6 +140,13 @@ class create_option_skill extends booking_skill_base implements
                 'description' => 'Optional language code override for the user-facing summary, e.g. de or en.',
                 'required' => false,
             ],
+            'cmid' => [
+                'type' => 'integer',
+                'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                    . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                    . 'activityquery; use it to pick one of several activities that share a name.',
+                'required' => false,
+            ],
             'activityquery' => [
                 'type' => 'string',
                 'description' => 'The booking activity the user named as the target, if any. If the user names a '
@@ -179,26 +187,25 @@ class create_option_skill extends booking_skill_base implements
                 'text', 'description', 'coursestarttime', 'courseendtime', 'optiondates', 'optiondatesmode',
                 'maxanswers', 'teacherquery', 'teacheremail', 'prices',
                 'bookingopeningtime', 'bookingclosingtime', 'maxoverbooking',
-                'override', 'outputlang', 'activityquery', 'linkedcoursequery', 'headerimage_token',
+                'override', 'outputlang', 'activityquery', 'cmid', 'linkedcoursequery', 'headerimage_token',
             ]);
             $properties = array_intersect_key($properties, $allowed);
         }
 
         $schema = [
             'version' => 1,
-            'description' => 'Create a new booking option in the current booking activity. '
-                . 'Canonical keys for normal dated options are text, coursestarttime, courseendtime, '
-                . 'maxanswers and optiondates; to target a named booking activity use activityquery '
-                . '(never invent keys like coursequery; to LINK a Moodle course that participants enter '
-                . 'after booking use linkedcoursequery). '
-                . 'Do not use non-canonical keys like day/date/start/end for this task. '
-                . 'Use this general create task when the user asks for a standard dated option '
-                . '(for example "create a workshop next Tuesday from 10:00 to 12:00"). '
-                . 'Also use this task for recurring weekday event series with fixed start/end times, '
-                . 'numbered titles (for example "Lecture 1, Lecture 2, ..."), trainer assignment, and capacity. '
-                . 'Use the specialized slot-booking task for appointment-slot availability and '
-                . 'the specialized self-learning task for duration-based self-learning offers. '
-                . 'New options are created as invisible by default and can be made visible later via update.',
+            'description' => 'Create a new DATED booking option (single event or session series) in the current booking activity. '
+                . 'Canonical keys for normal dated options are text, coursestarttime, courseendtime, maxanswers and optiondates; '
+                . 'to target a named booking activity use activityquery (never invent keys like coursequery; to LINK a Moodle '
+                . 'course that participants enter after booking use linkedcoursequery). Do not use non-canonical keys like '
+                . 'day/date/start/end for this task. Use this general create task when the user asks for a standard dated option '
+                . '(for example "create a workshop next Tuesday from 10:00 to 12:00"). Also use this task for recurring weekday '
+                . 'event series with fixed start/end times, numbered titles (for example "Lecture 1, Lecture 2, ..."), trainer '
+                . 'assignment, and capacity. New options are created as invisible by default and can be made visible later via '
+                . 'update.',
+            'is' => 'Options with fixed dates and times, including recurring series.',
+            'not' => 'Slots (create_slotbooking_option); self-paced offers (create_selflearning_option); a price category '
+                . '(add_price_category); a course (course.create_course).',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_create_option',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_create_option',
@@ -860,7 +867,12 @@ class create_option_skill extends booking_skill_base implements
 
         $overrides = self::normalize_overrides(is_array($input['override'] ?? null) ? $input['override'] : []);
 
-        // Duplicate-title check.
+        // Duplicate-title check. The issues are COLLECTED, not returned early:
+        // DUPLICATE_TITLE_* is a prevalidation-confirmable soft block, so it must reach the
+        // confirmable() tail below — it keeps the prepared input, which is what lets the
+        // engine stamp the execution guard token onto the staged confirmation. An early
+        // invalid() dropped the prepared input and every confirm looped on
+        // EXECUTION_GUARD_MISSING.
         $duplicatecheck = booking_skill_support::find_existing_options_by_exact_title($cmid, (string)$input['text']);
         $allowduplicatetitle = in_array('duplicate_title', $overrides, true);
         if (!$allowduplicatetitle && ($duplicatecheck['status'] ?? '') === 'single') {
@@ -871,12 +883,11 @@ class create_option_skill extends booking_skill_base implements
                 'message'        => $this->localized_string('agent_booking_create_option_exists_single', $existingid, $lang),
                 'user_question'  => $this->localized_string(
                     'agent_booking_create_option_duplicate_exists_single_question',
-                    null,
+                    $existingid,
                     $lang
                 ),
                 'remedy_options' => ['CONFIRM_CREATE_WITH_DUPLICATE_TITLE', 'UPDATE_EXISTING_INSTEAD'],
             ];
-            return $this->invalid($issues);
         } else if (!$allowduplicatetitle && ($duplicatecheck['status'] ?? '') === 'multiple') {
             $issues[] = [
                 'code'           => 'DUPLICATE_TITLE_MULTI_CONFIRM_REQUIRED',
@@ -893,7 +904,6 @@ class create_option_skill extends booking_skill_base implements
                 ),
                 'remedy_options' => ['CONFIRM_CREATE_WITH_DUPLICATE_TITLE', 'SELECT_EXISTING_OPTION_TO_UPDATE'],
             ];
-            return $this->invalid($issues);
         }
 
         // Duplicate-signature check: same title plus same normalized start/end window.
@@ -960,9 +970,20 @@ class create_option_skill extends booking_skill_base implements
             }
         }
 
-        // Location soft-confirmation.
+        // Location: with local_entities the location IS an entity — resolve it here so the card and the
+        // save carry the entity link (the form clears location/address without it, #2417); an unknown
+        // name is a clarification with the entities as remedies. Without local_entities the free-text
+        // location keeps its soft-confirmation.
         $allowemptylocation = in_array('location', $overrides, true) || in_array('address', $overrides, true);
-        if (!$allowemptylocation && isset($input['location']) && trim((string)$input['location']) !== '') {
+        if (entity_location::installed()) {
+            $entityissue = entity_location::preflight_issue(
+                $input,
+                fn(string $id, $a): string => $this->localized_string($id, $a, $lang)
+            );
+            if ($entityissue !== null) {
+                $issues[] = $entityissue;
+            }
+        } else if (!$allowemptylocation && isset($input['location']) && trim((string)$input['location']) !== '') {
             $issues[] = [
                 'code'           => 'LOCATION_NOT_FOUND_POSSIBLE',
                 'severity'       => 'needs_confirmation',
@@ -1126,10 +1147,6 @@ class create_option_skill extends booking_skill_base implements
         $errors = [];
 
         if ($resolvedtype === 'normal') {
-            if (!array_key_exists('maxanswers', $input)) {
-                $errors[] = get_string('agent_booking_create_normal_missing_maxanswers', 'booking');
-            }
-
             $hasoptiondates = self::has_any_key($input, ['optiondates']);
             $hassinglestart = self::has_any_key($input, ['coursestarttime']);
 
@@ -1155,10 +1172,6 @@ class create_option_skill extends booking_skill_base implements
         }
 
         if ($resolvedtype === 'selflearning') {
-            if (!array_key_exists('maxanswers', $input)) {
-                $errors[] = get_string('agent_booking_create_selflearning_missing_maxanswers', 'booking');
-            }
-
             if (!array_key_exists('duration', $input)) {
                 $errors[] = get_string('agent_booking_create_selflearning_missing_duration', 'booking');
             }
@@ -1299,9 +1312,8 @@ class create_option_skill extends booking_skill_base implements
             ['teacherquery', 'teacheremail'],
         ];
 
-        if ($resolvedtype !== 'slotbooking') {
-            $fieldpairs[] = 'maxanswers';
-        }
+        // Capacity is never a placeholder gate: a missing or zero maxanswers means "unlimited"
+        // (execute normalises to 0). Demanding it made the model invent seat numbers (W3/W4, #2413).
 
         // Field labels for friendly messages.
         $labels = [
@@ -1313,7 +1325,6 @@ class create_option_skill extends booking_skill_base implements
             'address' => 'address',
             'teacherquery' => 'teacher',
             'teacheremail' => 'teacher email',
-            'maxanswers' => 'max participants',
         ];
 
         foreach ($fieldpairs as $pair) {
@@ -1504,6 +1515,9 @@ class create_option_skill extends booking_skill_base implements
                 ],
                 'guidance' => [
                     '- For mutating intent, prepare booking.create_option and use confirmation_request first.',
+                    '- Resolve relative date phrases (e.g. "next Thursday") against now_iso and the timezone',
+                    '  from the runtime context; state the resolved date as ISO (YYYY-MM-DD, weekday) in your',
+                    '  message and keep it consistent with the timestamps you send.',
                     '- booking.create_option always creates options as invisible.',
                     '- If the user explicitly wants the option visible, first create it, then run booking.update_option '
                         . 'to set visibility/invisible.',
@@ -1519,7 +1533,8 @@ class create_option_skill extends booking_skill_base implements
                     '- If validation asks for confirmation, do not invent new wording; follow the issue question.',
                     '- To proceed after explicit user confirmation of exceptions, retry with matching override tokens.',
                     '- Known override tokens in create flow include: duplicate_title, coursestarttime, duration,'
-                        . ' location, address, teacherquery, teacheremail, maxanswers.',
+                        . ' location, address, teacherquery, teacheremail.',
+                    '- Capacity (maxanswers) is optional: omit it or send 0 for unlimited, never invent a number.',
                     '- Prefer concise clarification questions; avoid technical text in user-facing message.',
                 ],
             ],

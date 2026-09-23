@@ -55,6 +55,15 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
     }
 
     /**
+     * Free-text queries here may arrive masked as anonymized person tokens.
+     *
+     * @return bool
+     */
+    public function is_person_centric_readonly(): bool {
+        return true;
+    }
+
+    /**
      * Return task name.
      *
      * @return string
@@ -71,10 +80,14 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Diagnose why the current user (or a specified target user) is not booked, cannot book, '
-                . 'or did not receive email for a booking option or have any other issue regarding a booking option. '
-                . 'PATTERN: If user asks "why can [Name] not book [Option]", extract Name→userquery, Option→optionquery. '
-                . 'Do NOT ask for clarification if both are identifiable in the user message; supply them directly.',
+            // First 240 characters = selector window (#2423, DBI-1 "cannot get into the pottery class").
+            'description' => 'Diagnose WHY a person (userquery) cannot BOOK or get into one booking option (optionquery). Covers '
+                . 'not booked, no mail, blocking conditions and settings. PATTERN: If user asks "why can [Name] not book '
+                . '[Option]", extract Name→userquery, Option→optionquery and supply them directly whenever both are identifiable '
+                . 'in the user message.',
+            'is' => 'One person against one option.',
+            'not' => 'History (diagnose_user_booking); cancelling (diagnose_cancellation_issue); '
+                . 'course.diagnose_user_in_course; local_taskflow.diagnose_user_assignments.',
             'readonly' => $this->is_read_only(),
             'example_utterances' => [
                 'Why is this person stuck on the waiting list?',
@@ -92,6 +105,12 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
                         . 'Omit only when the issue type is passed explicitly via the issue field.',
                     'required' => false,
                     'from_user_message' => true,
+                ],
+                'activityquery' => [
+                    'type' => 'string',
+                    'description' => 'Optional: name of the target booking activity when it is not the current one'
+                        . ' (e.g. over MCP, which runs at the system context). Names only - never a course.',
+                    'required' => false,
                 ],
                 'optionquery' => [
                     'type' => 'string',
@@ -127,6 +146,19 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
                     'type' => 'string',
                     'description' => 'Optional language code for localized task strings, e.g. de or en.',
                     'required' => false,
+                ],
+            ],
+            'prompt_meta' => [
+                // The prompt_meta block keeps its established shape even where only the group is declared: the
+                // contract test asserts both keys on every skill that carries prompt_meta at all, and an
+                // empty list is what the readers saw before this block existed.
+                'input_fields_for_prompt' => [],
+                'anchor_fields' => [],
+                // Mirrors check_structure(): the skill only fails hard when neither the question text nor
+                // any option reference nor an explicit issue is present. Each of these alone is enough,
+                // so the requirement is a group of alternatives, not a required schema field.
+                'required_groups' => [
+                    ['question', 'optionid', 'optionquery', 'issue'],
                 ],
             ],
         ];
@@ -224,7 +256,7 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
      */
     protected function run_preflight(array $input, int $cmid, int $userid): array {
         $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
-        if ($guard = $this->require_booking_instance_scope($cmid)) {
+        if ($guard = $this->require_booking_instance_scope($cmid, $input)) {
             return $guard;
         }
         $lang = $this->get_output_language($input);
@@ -299,7 +331,7 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
      */
     public function execute(array $preparedinput, int $cmid, int $userid): array {
         $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
-        if ($scoperesult = $this->build_no_instance_scope_result($cmid)) {
+        if ($scoperesult = $this->build_no_instance_scope_result($cmid, $preparedinput)) {
             return $scoperesult;
         }
         global $DB;
@@ -364,6 +396,11 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
 
         // Step 5b: Load booking instance settings (needed for instance-level restriction checks).
         $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($cmid);
+
+        // Step 5b2: Which booking rules does this option actually apply? An opt-in restriction with
+        // an empty or incomplete list silently switches off the mail rules of the surrounding
+        // contexts, which is a frequent cause of "booked, but no confirmation mail".
+        $notificationrules = option_rules_diagnostics::describe($optionid);
 
         // Step 5c: Check course enrollment.
         // Only enrolled users can book; non-enrollment is a fundamental blocker.
@@ -443,12 +480,31 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
             $settings,
             $isselfdiagnosis,
             $outputlang,
-            $instancecontext
+            $instancecontext,
+            $notificationrules
         );
         $supplementary = $this->build_supplementary_context_lines(
             $isselfdiagnosis,
             $outputlang,
-            $instancecontext
+            $instancecontext,
+            $notificationrules
+        );
+
+        // Step 7b: The same facts as a checklist, for the preview pane. One row per thing that can
+        // stand between a person and a booking — including whether the option's rule setting lets
+        // the booking-confirmation rules run at all.
+        $checklistrows = diagnose_checklist_builder::build(
+            [
+                'cmid' => $cmid,
+                'optionid' => $optionid,
+                'userstatus' => $userstatus,
+                'invisiblevalue' => $invisiblevalue,
+                'instancechecks' => $instancecontext,
+                'stats' => $optionstats,
+                'conditions' => self::collect_blocking_condition_descriptions($conditionresults, $settings),
+                'notificationrules' => $notificationrules,
+            ],
+            $outputlang
         );
 
         $introk = $isselfdiagnosis
@@ -466,12 +522,25 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
             'usermessage' => $usermessage,
             'resultid' => $optionid,
             'previewoptionids' => [$optionid],
+            // The generic observation summarizer caps a contributed summary at 220 characters, which
+            // cuts the findings off mid-sentence before they reach the synchronizer. observation_full
+            // is the engine's documented channel for verbatim list content.
+            'observation_full' => $this->build_observation_full(
+                $optionname,
+                $issuetype,
+                $userstatus,
+                $reasons,
+                $supplementary
+            ),
+            'checklist_rows' => $checklistrows,
+            'checklist_title' => $usermessage,
             'requested_userid' => (int)($preparedinput['targetuserid'] ?? 0),
             'requested_optionid' => (int)($preparedinput['optionid'] ?? 0),
             'requested_userquery' => trim((string)($preparedinput['userquery'] ?? '')),
             'requested_optionquery' => trim((string)($preparedinput['optionquery'] ?? '')),
             'diagnosis' => [
                 'issue' => $issuetype,
+                'outputlang' => $outputlang,
                 'userid' => $diagnosticuserid,
                 'isselfdiagnosis' => $isselfdiagnosis,
                 'optionid' => $optionid,
@@ -479,6 +548,7 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
                 'userstatus' => $userstatus,
                 'stats' => $optionstats,
                 'instance_checks' => $instancecontext,
+                'notification_rules' => $notificationrules,
                 'reasons' => $reasons,
                 'supplementary_context' => $supplementary,
                 'consistency' => $consistency,
@@ -492,6 +562,8 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
                     'Issue: ' . $issuetype,
                     'User status: ' . $userstatus,
                     'Reasons: ' . count($reasons),
+                    'Rule restriction active: ' . (!empty($notificationrules['restrictionactive']) ? 'yes' : 'no'),
+                    'Skipped mail rules: ' . count((array)($notificationrules['skippedmailrules'] ?? [])),
                     'Supplementary context lines: ' . count($supplementary),
                     'Consistency user mismatch: ' . (!empty($consistency['user_mismatch']) ? 'yes' : 'no'),
                     'Consistency option mismatch: ' . (!empty($consistency['option_mismatch']) ? 'yes' : 'no'),
@@ -796,53 +868,7 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
      * @return array
      */
     private function resolve_option_id(array $input, int $cmid, int $userid, string $lang = ''): array {
-        global $DB;
-
-        $optionid = (int)($input['optionid'] ?? 0);
-        $optionquery = trim((string)($input['optionquery'] ?? ''));
-        if ($optionid > 0) {
-            $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
-            if ($DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])) {
-                return ['status' => 'ok', 'optionid' => $optionid];
-            }
-
-            // If a model provided a stale/wrong optionid but also a concrete title,
-            // prefer resolving by query over failing hard.
-            if ($optionquery !== '') {
-                return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
-            }
-
-            return [
-                'status' => 'error',
-                'message' => $this->localized_string('agent_booking_diagnose_error_option_not_in_instance', null, $lang),
-            ];
-        }
-
-        if ($optionquery === '') {
-            return [
-                'status' => 'ambiguity',
-                'message' => $this->localized_string('agent_booking_diagnose_ambiguity_option_title_or_id', null, $lang),
-            ];
-        }
-
-        if (booking_skill_support::is_last_option_reference($optionquery)) {
-            $lastids = booking_skill_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
-            if (count($lastids) === 1) {
-                return ['status' => 'ok', 'optionid' => (int)$lastids[0]];
-            }
-            if (count($lastids) > 1) {
-                return [
-                    'status' => 'ambiguity',
-                    'message' => $this->localized_string('agent_booking_diagnose_ambiguity_last_preview_multiple', null, $lang),
-                ];
-            }
-            return [
-                'status' => 'error',
-                'message' => $this->localized_string('agent_booking_diagnose_error_last_preview_none', null, $lang),
-            ];
-        }
-
-        return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
+        return $this->resolve_diagnose_option($input, $cmid, $userid, $lang);
     }
 
     /**
@@ -855,6 +881,7 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
      * @param bool $isselfdiagnosis
      * @param string $lang
      * @param array $instancecontext Optional instance-level and enrollment context from execute().
+     * @param array $notificationrules Per-option booking-rule restriction from option_rules_diagnostics.
      * @return array
      */
     private function build_reason_lines(
@@ -864,7 +891,8 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
         $settings,
         bool $isselfdiagnosis,
         string $lang = '',
-        array $instancecontext = []
+        array $instancecontext = [],
+        array $notificationrules = []
     ): array {
         $reasons = [];
         $userstatus = (string)($optionstats['userstatus'] ?? 'notbooked');
@@ -1029,45 +1057,51 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
                 }
             }
 
-            foreach ($conditionresults as $condition) {
-                $classname = $condition['classname'] ?? '';
-
-                // Instantiate the condition class to inspect its properties.
-                try {
-                    $class = $classname::instance();
-                } catch (\Throwable $e) {
-                    try {
-                        $class = new $classname();
-                    } catch (\Throwable $e2) {
-                        $class = null;
-                    }
-                }
-
-                // Skip UI-only / hardcoded conditions that are not configurable
-                // restrictions (e.g. the "Book it" button display control).
-                // is_shown_in_mform() === false means the condition is purely internal.
-                if ($class !== null && method_exists($class, 'is_shown_in_mform') && !$class->is_shown_in_mform()) {
-                    continue;
-                }
-
-                if ($class !== null && method_exists($class, 'get_description_string') && $settings !== null) {
-                    $description = $class->get_description_string(false, true, $settings);
-                } else {
-                    $description = $condition['description'] ?? '';
-                }
-                $description = trim(strip_tags((string)($description)));
-
-                // Skip empty descriptions.
-                if ($description === '') {
-                    continue;
-                }
-
-                // Add the human-readable description only — no class names in user-facing strings.
+            // Add the human-readable descriptions only — no class names in user-facing strings.
+            foreach (self::collect_blocking_condition_descriptions($conditionresults, $settings) as $description) {
                 $reasons[] = $description;
             }
         }
 
         if ($issuetype === 'missing_email') {
+            // Only a rule that reacts to the booking itself would have produced the confirmation
+            // mail. Reminders, cancellation notices and evaluation mails are switched off by the
+            // same setting, but naming them as the cause would be untrue, so they stay a count.
+            $skippedconfirmationrules = (array)($notificationrules['skippedconfirmationrules'] ?? []);
+            $otherskippedmailrules = count((array)($notificationrules['skippedmailrules'] ?? []))
+                - count($skippedconfirmationrules);
+
+            if (!empty($skippedconfirmationrules)) {
+                $reasons[] = $this->localized_string(
+                    $isselfdiagnosis
+                        ? 'agent_booking_diagnose_reason_rules_mail_skipped'
+                        : 'agent_booking_diagnose_reason_rules_mail_skipped_other',
+                    option_rules_diagnostics::rule_names($skippedconfirmationrules, $lang),
+                    $lang
+                );
+                $reasons[] = $this->localized_string(
+                    'agent_booking_diagnose_reason_rules_mail_skipped_concrete',
+                    (object)[
+                        'setting' => $this->localized_string('skipbookingrulesmode', null, $lang),
+                        'mode' => $this->localized_string(
+                            (int)($notificationrules['mode'] ?? 0) === 1
+                                ? 'skipbookingrulesoptin'
+                                : 'skipbookingrulesoptout',
+                            null,
+                            $lang
+                        ),
+                    ],
+                    $lang
+                );
+            }
+
+            if ($otherskippedmailrules > 0) {
+                $reasons[] = $this->localized_string(
+                    'agent_booking_diagnose_reason_rules_othermail_skipped',
+                    $otherskippedmailrules,
+                    $lang
+                );
+            }
             if ($userstatus === 'booked') {
                 $reasons[] = $this->localized_string(
                     $isselfdiagnosis
@@ -1111,14 +1145,30 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
      * @param bool $isselfdiagnosis
      * @param string $lang
      * @param array $instancecontext
+     * @param array $notificationrules Per-option booking-rule restriction from option_rules_diagnostics.
      * @return array<int,string>
      */
     private function build_supplementary_context_lines(
         bool $isselfdiagnosis,
         string $lang = '',
-        array $instancecontext = []
+        array $instancecontext = [],
+        array $notificationrules = []
     ): array {
         $lines = [];
+
+        // A rule restriction is worth knowing for every issue type, but it only becomes a decisive
+        // reason when it actually switched a mail rule off (handled in build_reason_lines()).
+        if (!empty($notificationrules['restrictionactive'])) {
+            $applied = count((array)($notificationrules['applied'] ?? []));
+            $lines[] = $this->localized_string(
+                'agent_booking_diagnose_context_rules_restricted',
+                (object)[
+                    'applied' => $applied,
+                    'total' => $applied + count((array)($notificationrules['skipped'] ?? [])),
+                ],
+                $lang
+            );
+        }
 
         // Course enrollment is useful context but intentionally non-decisive.
         if (isset($instancecontext['isenrolled']) && !$instancecontext['isenrolled']) {
@@ -1142,5 +1192,169 @@ class diagnose_booking_issue_skill extends booking_skill_base implements skill_t
         }
 
         return array_values(array_unique(array_filter(array_map('trim', $lines))));
+    }
+
+    /**
+     * Human-readable descriptions of the availability conditions that currently block this option.
+     *
+     * Shared by the reason lines and the diagnosis checklist so both count the same conditions.
+     * UI-only conditions (is_shown_in_mform() === false, e.g. the "Book it" button control) are
+     * not configurable restrictions and never appear.
+     *
+     * @param array $conditionresults Result of bo_info::get_condition_results().
+     * @param mixed $settings booking_option_settings instance, or null.
+     * @return array<int,string>
+     */
+    private static function collect_blocking_condition_descriptions(array $conditionresults, $settings): array {
+        $descriptions = [];
+
+        foreach ($conditionresults as $condition) {
+            $classname = $condition['classname'] ?? '';
+
+            // Instantiate the condition class to inspect its properties.
+            try {
+                $class = $classname::instance();
+            } catch (\Throwable $e) {
+                try {
+                    $class = new $classname();
+                } catch (\Throwable $e2) {
+                    $class = null;
+                }
+            }
+
+            if ($class !== null && method_exists($class, 'is_shown_in_mform') && !$class->is_shown_in_mform()) {
+                continue;
+            }
+
+            if ($class !== null && method_exists($class, 'get_description_string') && $settings !== null) {
+                $description = $class->get_description_string(false, true, $settings);
+            } else {
+                $description = $condition['description'] ?? '';
+            }
+            $description = trim(strip_tags((string)($description)));
+
+            if ($description === '') {
+                continue;
+            }
+
+            $descriptions[] = $description;
+        }
+
+        return array_values(array_unique($descriptions));
+    }
+
+    /**
+     * Build the verbatim observation the synchronizer receives.
+     *
+     * Mirrors the shape of the generic diagnosis summary, but is exempt from its 220-character cap,
+     * so no finding is cut off before it reaches the final answer.
+     *
+     * @param string $optionname
+     * @param string $issuetype
+     * @param string $userstatus
+     * @param array<int,string> $reasons
+     * @param array<int,string> $supplementary
+     * @return string
+     */
+    private function build_observation_full(
+        string $optionname,
+        string $issuetype,
+        string $userstatus,
+        array $reasons,
+        array $supplementary
+    ): string {
+        $header = 'Diagnosis';
+        if (trim($optionname) !== '') {
+            $header .= ' for option "' . trim($optionname) . '"';
+        }
+        if (trim($issuetype) !== '') {
+            $header .= ' (issue: ' . trim($issuetype) . ')';
+        }
+        $lines = [$header . '.'];
+
+        if (trim($userstatus) !== '') {
+            $lines[] = 'User booking status: ' . trim($userstatus) . '.';
+        }
+
+        if (!empty($reasons)) {
+            $lines[] = 'Findings:';
+            foreach ($reasons as $reason) {
+                $lines[] = '- ' . trim((string)$reason);
+            }
+        }
+
+        if (!empty($supplementary)) {
+            $lines[] = 'Secondary context:';
+            foreach ($supplementary as $line) {
+                $lines[] = '- ' . trim((string)$line);
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Option card preview, followed by the diagnosis checklist.
+     *
+     * The checklist is the visual counterpart of the findings: one row per check, with the rule
+     * row answering "which confirmation rule would have sent that mail, and why did it not run"
+     * without a trip to the option settings form.
+     *
+     * @param array $resultentry
+     * @param int $contextid
+     * @param int $userid
+     * @return array|null
+     */
+    public function get_result_preview(array $resultentry, int $contextid, int $userid): ?array {
+        $preview = parent::get_result_preview($resultentry, $contextid, $userid);
+
+        $block = $this->build_checklist_block(
+            (array)($resultentry['checklist_rows'] ?? []),
+            trim((string)($resultentry['checklist_title'] ?? ''))
+        );
+        if ($block === '') {
+            return $preview;
+        }
+
+        if ($preview === null) {
+            return [
+                'type' => 'booking_option',
+                'html' => $block,
+                'js' => '',
+                'payload' => ['optionids' => []],
+            ];
+        }
+
+        $preview['html'] = (string)($preview['html'] ?? '') . $block;
+
+        return $preview;
+    }
+
+    /**
+     * Markup for the diagnosis checklist, rendered by the engine's shared checklist preview.
+     *
+     * Reached through the alias layer's engine_resolver, so the same skill class works under either
+     * engine plugin without vendoring the renderer. If the engine does not offer it, the preview
+     * degrades to the option card alone rather than to a second, diverging checklist of our own.
+     *
+     * @param array $rows Rows from diagnose_checklist_builder::build().
+     * @param string $title Heading above the list.
+     * @return string Empty string when there is nothing to render.
+     */
+    private function build_checklist_block(array $rows, string $title): string {
+        if (empty($rows)) {
+            return '';
+        }
+
+        $rendererclass = \mod_booking\local\wizard\engine\engine_resolver::fqcn(
+            'diagnostics\\diagnostic_checklist_preview'
+        );
+        if (!class_exists($rendererclass)) {
+            return '';
+        }
+
+        $rendered = (new $rendererclass())->render($rows, $title);
+
+        return \html_writer::div((string)($rendered['html'] ?? ''), 'booking-ai-preview-item mb-3');
     }
 }

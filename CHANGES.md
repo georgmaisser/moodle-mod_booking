@@ -1,3 +1,14 @@
+## Version 9.7.10 (2026092105)
+* Improvement: The courses in the agent's booking activity list are linked, in the preview and in the chat text. (Wunderbyte-GmbH/Wunderbyte-GmbH#2448)
+
+## Version 9.7.10 (2026092104)
+* Improvement: Asked without a booking activity in context, the agent previews the whole list of accessible booking activities, linked and with the cmid and the number of options behind each name. (Wunderbyte-GmbH/Wunderbyte-GmbH#2448)
+* Improvement: Clicking the magic wand in the navbar puts the cursor straight into the agent input, also when the panel opens in the modal. (Wunderbyte-GmbH/Wunderbyte-GmbH#2449)
+
+## Version 9.7.10 (2026092103)
+* Bugfix: The option card in the agent preview ships the render-time JS of the booking templates, so its booking button works outside a booking page as well; without it the card arrived with a button no handler listened to. (Wunderbyte-GmbH/Wunderbyte-GmbH#2446)
+* Improvement: Asked without a booking activity in context, the agent lists the accessible booking activities with the number of options each one holds, ordered by that number and with the totals, so empty activities are no longer proposed. (Wunderbyte-GmbH/Wunderbyte-GmbH#2447)
+
 ## Version 9.7.10 (2026092101)
 * New feature: Three agent skills for the booking option fields (custom fields of the booking options): mod_booking.list_option_fields shows all fields or one of them with type, category, configuration and the number of options holding a value; mod_booking.create_option_field creates a field for every customfield type installed on the site; mod_booking.update_option_field changes name, shortname, category, default value, selectable values and the required/unique flags. All three run at the system context and are gated by the new capability mod/booking:managecustomfields (manager by default), because a booking option field affects every option on the site. A shortname that would shadow a booking option property or that another field already uses is refused before the write and ends as a question - the rule the custom field management page only warned about after the fact now lives once on booking_handler and is shared by the page and the skills. (Wunderbyte-GmbH/Wunderbyte-GmbH#2441)
 

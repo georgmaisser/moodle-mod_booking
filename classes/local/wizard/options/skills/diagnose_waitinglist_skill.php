@@ -56,6 +56,15 @@ class diagnose_waitinglist_skill extends booking_skill_base {
     }
 
     /**
+     * Free-text queries here may arrive masked as anonymized person tokens.
+     *
+     * @return bool
+     */
+    public function is_person_centric_readonly(): bool {
+        return true;
+    }
+
+    /**
      * Return the task name.
      *
      * @return string
@@ -72,11 +81,10 @@ class diagnose_waitinglist_skill extends booking_skill_base {
     public function get_schema(): array {
         $schema = [
             'version' => 1,
-            'description' => 'Diagnose why the waiting list of a booking option did or did not move: why nobody '
-                . 'was promoted after a cancellation, or - most commonly - why reducing the number of seats '
-                . '(maxanswers) did not move any booked user to the waiting list. Reports the exact blocking '
-                . 'gate and settings. PATTERN: extract the option reference into optionquery; do not ask for '
-                . 'clarification if the option is identifiable in the user message.',
+            'description' => 'Diagnose why the waiting list of a booking option did or did not move: why nobody was promoted after '
+                . 'a cancellation, or - most commonly - why reducing the number of seats (maxanswers) did not move any booked user '
+                . 'to the waiting list. Reports the exact blocking gate and settings. PATTERN: extract the option reference into '
+                . 'optionquery whenever the option is identifiable in the user message.',
             'readonly' => $this->is_read_only(),
             'example_utterances' => [
                 'I reduced the seats from 16 to 9 but all 16 are still booked, why?',
@@ -93,8 +101,10 @@ class diagnose_waitinglist_skill extends booking_skill_base {
                 ],
                 'optionquery' => [
                     'type' => 'string',
-                    'description' => 'Booking option title, id-like reference, or "last option" when referring to '
-                        . 'the last shown option.',
+                    'description' => 'Pass the user\'s wording VERBATIM, even when it is vague ("l\'atelier '
+                        . 'photo"): this skill resolves it and reports candidates itself, so never ask the user for '
+                        . 'a name or id first. Booking option title, id-like reference, or "last option" when '
+                        . 'referring to the last shown option.',
                     'required' => false,
                 ],
                 'outputlang' => [
@@ -106,8 +116,13 @@ class diagnose_waitinglist_skill extends booking_skill_base {
         ];
 
         $schema['prompt_meta'] = [
-            'input_fields_for_prompt' => ['optionquery (or optionid)'],
+            'input_fields_for_prompt' => ['optionquery'],
             'anchor_fields' => ['optionquery', 'optionid'],
+            // Mirrors check_structure(): the option whose waiting list is examined must be named,
+            // either by id or by query — one of the two, never both mandatory.
+            'required_groups' => [
+                ['optionid', 'optionquery'],
+            ],
         ];
 
         return $this->enrich_schema_with_prompt_meta($schema);
@@ -171,7 +186,7 @@ class diagnose_waitinglist_skill extends booking_skill_base {
         global $DB;
 
         $cmid = $this->resolve_cmid_from_context_or_cmid($contextid);
-        if ($scoperesult = $this->build_no_instance_scope_result($cmid)) {
+        if ($scoperesult = $this->build_no_instance_scope_result($cmid, $input)) {
             return $scoperesult;
         }
 
@@ -254,48 +269,6 @@ class diagnose_waitinglist_skill extends booking_skill_base {
      * @return array
      */
     private function resolve_option_id(array $input, int $cmid, int $userid, string $lang = ''): array {
-        global $DB;
-
-        $optionid = (int)($input['optionid'] ?? 0);
-        $optionquery = trim((string)($input['optionquery'] ?? ''));
-        if ($optionid > 0) {
-            $cm = get_coursemodule_from_id('booking', $cmid, 0, false, MUST_EXIST);
-            if ($DB->record_exists('booking_options', ['id' => $optionid, 'bookingid' => (int)$cm->instance])) {
-                return ['status' => 'ok', 'optionid' => $optionid];
-            }
-            if ($optionquery !== '') {
-                return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
-            }
-            return [
-                'status' => 'error',
-                'message' => $this->localized_string('agent_booking_diagnose_error_option_not_in_instance', null, $lang),
-            ];
-        }
-
-        if ($optionquery === '') {
-            return [
-                'status' => 'ambiguity',
-                'message' => $this->localized_string('agent_booking_diagnose_ambiguity_option_title_or_id', null, $lang),
-            ];
-        }
-
-        if (booking_skill_support::is_last_option_reference($optionquery)) {
-            $lastids = booking_skill_support::resolve_last_preview_option_ids_for_user_for_execute($cmid, $userid);
-            if (count($lastids) === 1) {
-                return ['status' => 'ok', 'optionid' => (int)$lastids[0]];
-            }
-            if (count($lastids) > 1) {
-                return [
-                    'status' => 'ambiguity',
-                    'message' => $this->localized_string('agent_booking_diagnose_ambiguity_last_preview_multiple', null, $lang),
-                ];
-            }
-            return [
-                'status' => 'error',
-                'message' => $this->localized_string('agent_booking_diagnose_error_last_preview_none', null, $lang),
-            ];
-        }
-
-        return booking_skill_support::resolve_single_option($cmid, $optionquery, '');
+        return $this->resolve_diagnose_option($input, $cmid, $userid, $lang);
     }
 }

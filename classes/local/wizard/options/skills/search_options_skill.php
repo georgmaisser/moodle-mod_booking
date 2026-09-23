@@ -71,12 +71,16 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
     public function get_schema(): array {
         $schema = [
             'version' => 1,
-            'description' => 'Search and list the bookable OPTIONS (events, workshops, sessions) '
-                . 'available in this booking instance.'
-                . ' Use this when the user asks what they can book, register for, or attend'
-                . ' — e.g. "show all options", "what can I book?", "list available bookings", '
-                . '"show a list of all options", "list all bookings", "show all bookings". '
-                . 'This lists bookable offerings, not Moodle course containers (use search_courses for those).',
+            // First 240 characters = selector window (#2418, #2423): read-only, names the change skills (BU-1).
+            // Reverted to the wording of run 10 (#2423): both rewrites of wave 7/8 pulled SO-4 ("was im Herbst
+            // angeboten wird") to the course skills — the description is also the embeddings anchor, so naming
+            // course.search_courses in it makes the skill more course-like, not less.
+            'description' => 'Search and list the bookable OPTIONS (events, workshops, sessions) available in this booking '
+                . 'instance. Use this when the user asks what they can book, register for, or attend — e.g. "show all options", '
+                . '"what can I book?", "list available bookings", "show a list of all options", "list all bookings", "show all '
+                . 'bookings".',
+            'is' => 'Bookable offerings inside a booking activity.',
+            'not' => 'Moodle course containers (course.search_courses); full details of one named option (get_option_details).',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_booking_search_options',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_booking_search_options',
@@ -93,7 +97,8 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
             'properties' => [
                 'query' => [
                     'type' => 'string',
-                    'description' => 'Optional search text (title/description/location), e.g. "next monday". '
+                    'description' => 'Optional search text matching title/description/location, e.g. "yoga". '
+                        . 'A time reference NEVER belongs here - it goes into "when". '
                         . 'If omitted, returns a short list of options in this booking instance.',
                     'required' => false,
                 ],
@@ -109,7 +114,17 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
                 ],
                 'when' => [
                     'type' => 'string',
-                    'description' => 'Optional temporal hint (e.g. "next monday").',
+                    'description' => 'Optional single day the user asks about, as a concrete date, '
+                        . 'e.g. "2026-09-08". Resolve relative phrases ("next monday") to the concrete '
+                        . 'date using the current date. Leave EMPTY for vague phrases like "soon" or '
+                        . '"demnaechst" - upcoming options are already the default.',
+                    'required' => false,
+                ],
+                'cmid' => [
+                    'type' => 'integer',
+                    'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                        . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                        . 'activityquery; use it to pick one of several activities that share a name.',
                     'required' => false,
                 ],
                 'activityquery' => [
@@ -163,6 +178,8 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
                 ],
                 'guidance' => [
                     '- If the user asks to find booking options, use booking.search_options.',
+                    '- Time reference -> {"when": "2026-09-08"}; text match -> {"query": "yoga"};'
+                        . ' vague "soon"-style phrases -> leave both empty.',
                     '- Prefer exact title matches when the user mentions a quoted title or the word "title".',
                     '- Return a short structured list with id, name and link for preview.',
                     '- If the follow-up asks for specific option fields (trainer/teacher, sessions, times),',
@@ -280,7 +297,14 @@ class search_options_skill extends booking_skill_base implements skill_trigger_p
             }
         }
 
-        $rows = booking_skill_support::search_option_candidates_for_preview($cmid, $effectivequery, $limit, $when);
+        // Browsing without a search text never offers what is already over (#2318).
+        $rows = booking_skill_support::search_option_candidates_for_preview(
+            $cmid,
+            $effectivequery,
+            $limit,
+            $when,
+            $effectivequery === ''
+        );
         if ($exacttitlequery !== '' && !empty($rows)) {
             $rows = array_values(array_filter($rows, static function (array $row) use ($exacttitlequery): bool {
                 $title = trim((string)($row['text'] ?? ''));

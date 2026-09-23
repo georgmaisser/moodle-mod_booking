@@ -69,7 +69,13 @@ class list_option_properties_skill extends booking_skill_base implements skill_t
     public function get_schema(): array {
         return [
             'version' => 1,
+            // Reverted to the proven wording (#2423): the longer "field list … not documentation" window of the
+            // wave-8 rewrite pulled LOP-1/2/3 to wizard.explain_docs in two consecutive Nachläufe (2026-09-17),
+            // while this short description reached the skill in runs 8 and 10. LOP-4 stays open (see the ledger).
             'description' => 'List booking option properties derived from create/update task schemas.',
+            'is' => 'The built-in fields of a booking option and their types.',
+            'not' => 'Custom option fields an administrator defined (list_option_fields); the written documentation '
+                . '(wizard.explain_docs).',
             'readonly' => $this->is_read_only(),
             'properties' => [
                 'question' => [
@@ -86,6 +92,13 @@ class list_option_properties_skill extends booking_skill_base implements skill_t
                 'outputlang' => [
                     'type' => 'string',
                     'description' => 'Optional language code override for the user-facing summary, e.g. de or en.',
+                    'required' => false,
+                ],
+                'cmid' => [
+                    'type' => 'integer',
+                    'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                        . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                        . 'activityquery; use it to pick one of several activities that share a name.',
                     'required' => false,
                 ],
                 'activityquery' => [

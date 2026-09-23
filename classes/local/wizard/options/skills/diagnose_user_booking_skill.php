@@ -122,6 +122,15 @@ class diagnose_user_booking_skill extends booking_skill_base implements skill_tr
     }
 
     /**
+     * A person is this skill's direct object and it executes without confirmation (#2226 R3).
+     *
+     * @return bool
+     */
+    public function is_person_centric_readonly(): bool {
+        return true;
+    }
+
+    /**
      * Native capability required to read other users' booking responses (Gate 2).
      *
      * @return string[]
@@ -138,15 +147,20 @@ class diagnose_user_booking_skill extends booking_skill_base implements skill_tr
     public function get_schema(): array {
         $schema = [
             'version' => 1,
-            'description' => 'Diagnose a person\'s booking status and history and return a detailed status report. '
-                . 'Use this when the user asks about ONE specific person: whether/when they booked, whether they '
-                . 'completed, their waiting-list/cancelled/previous bookings, their submitted booking form data, and '
-                . 'which notification messages they received. If a specific booking option is named, the report focuses '
-                . 'on that option (including the full received-message history); if no option is named, it returns an '
-                . 'instance-wide overview of all the person\'s bookings (e.g. "how many options has Billy completed"). '
-                . 'The report also includes the certificates (tool_certificate) issued to the person, including whether '
-                . 'the focused option\'s certificate was actually issued. Every reported option carries the host course '
+            // First 240 characters = selector window (#2423, DUB-2 "did the reminder reach him?").
+            'description' => 'ONE person\'s BOOKINGS (userquery): status, waiting list, cancellations, certificates; for a named '
+                . 'option (optionquery) also received messages (includemessages). The report covers booked and completed bookings '
+                . 'too. The report also covers submitted booking form data. Use this when the user asks about ONE specific person: '
+                . 'whether/when they booked, whether they completed, their waiting-list/cancelled/previous bookings, their '
+                . 'submitted booking form data, and which notification messages they received. If a specific booking option is '
+                . 'named, the report focuses on that option (including the full received-message history); if no option is named, '
+                . 'it returns an instance-wide overview of all the person\'s bookings (e.g. "how many options has Billy '
+                . 'completed"). The report also includes the certificates (tool_certificate) issued to the person, including '
+                . 'whether the focused option\'s certificate was actually issued. Every reported option carries the host course '
                 . '(id and name) and booking instance the option lives in.',
+            'is' => 'One person\'s booking history.',
+            'not' => 'WHY someone cannot book (diagnose_booking_issue); course progress or grades '
+                . '(course.diagnose_user_in_course); mail plumbing (core.diagnose_notifications).',
             'readonly' => $this->is_read_only(),
             'example_utterances' => [
                 'what is the booking status of this user',
@@ -194,8 +208,13 @@ class diagnose_user_booking_skill extends booking_skill_base implements skill_tr
         ];
 
         $schema['prompt_meta'] = [
-            'input_fields_for_prompt' => ['userquery (or userid)', 'optionquery (or optionid, optional)'],
+            'input_fields_for_prompt' => ['userquery'],
             'anchor_fields' => ['userquery', 'userid', 'optionquery', 'optionid'],
+            // Mirrors check_structure(): the person to look at must be named, as userid or as userquery.
+            // Declared as a group because neither field is required on its own.
+            'required_groups' => [
+                ['userid', 'userquery'],
+            ],
         ];
 
         return $this->enrich_schema_with_prompt_meta($schema);
@@ -439,17 +458,15 @@ class diagnose_user_booking_skill extends booking_skill_base implements skill_tr
      * @return int 0 when no option focus is requested or it could not be resolved.
      */
     private function resolve_focus_optionid(array $input, int $cmid, int $actinguserid): int {
-        $optionid = (int)($input['optionid'] ?? 0);
-        if ($optionid > 0) {
-            return $optionid;
+        if ($cmid <= 0) {
+            return 0;
         }
-
-        $query = trim((string)($input['optionquery'] ?? ''));
-        if ($query === '' || $cmid <= 0) {
+        if ((int)($input['optionid'] ?? 0) <= 0 && trim((string)($input['optionquery'] ?? '')) === '') {
             return 0;
         }
 
-        $resolved = booking_skill_support::resolve_single_option($cmid, $query, '');
+        // Instance-scoped: a foreign or stale optionid degrades to the instance-wide report.
+        $resolved = $this->resolve_diagnose_option($input, $cmid, $actinguserid);
         if (($resolved['status'] ?? '') === 'ok') {
             return (int)($resolved['optionid'] ?? 0);
         }

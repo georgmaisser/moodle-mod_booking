@@ -65,9 +65,10 @@ class list_option_fields_skill extends booking_skill_base {
         return [
             'version' => 1,
             // First 240 characters = selector/constructor window.
-            'description' => 'Show the booking option fields (custom fields for booking options) of this site: '
-                . 'all of them, or one selected by shortname, with its type, category, configuration and how many '
-                . 'options hold a value. Not the built-in option properties (mod_booking.list_option_properties).',
+            'description' => 'Show the booking option fields (custom fields for booking options) of this site: all of them, or one '
+                . 'selected by shortname, with its type, category, configuration and how many options hold a value.',
+            'is' => 'Custom fields an administrator defined for booking options.',
+            'not' => 'The built-in properties of a booking option (list_option_properties).',
             'readonly' => $this->is_read_only(),
             'properties' => [
                 'shortname' => [

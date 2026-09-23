@@ -20,6 +20,7 @@ use context_module;
 use context_user;
 use mod_booking\booking_option;
 use mod_booking\local\wizard\booking\support\booking_mutation_validation;
+use mod_booking\local\wizard\booking\support\entity_location;
 use mod_booking\local\wizard\options\skills\bulk_update_options_skill;
 use mod_booking\local\wizard\options\skills\create_option_skill;
 use mod_booking\local\wizard\options\skills\option_input_verification;
@@ -691,7 +692,13 @@ class booking_skill_mutation_execute_service {
             }
 
             if (!empty($parsedoptiondates)) {
-                $datesmode = strtolower(trim((string)($input['optiondatesmode'] ?? 'append')));
+                $datesmode = strtolower(trim((string)($input['optiondatesmode'] ?? '')));
+                if ($datesmode === '') {
+                    // No explicit mode: decided by shape (W1, #2415). One existing session and exactly
+                    // one date in the input is a MOVE of that session (replace); everything else adds.
+                    $existing = (array)(singleton_service::get_instance_of_booking_option_settings((int)$data->id)->sessions ?? []);
+                    $datesmode = (count($existing) === 1 && count($parsedoptiondates) === 1) ? 'replace' : 'append';
+                }
                 if ($datesmode === 'append') {
                     $parsedoptiondates = booking_skill_support::merge_existing_optiondates_with_new_for_execute(
                         (int)$data->id,
@@ -877,6 +884,16 @@ class booking_skill_mutation_execute_service {
         try {
             $outcome = $this->persist_and_verify_single_option($taskname, $data, (int)$data->id, $input, $context);
             $newoptionid = $outcome['optionid'];
+            if ((int)$newoptionid <= 0) {
+                // Nothing was written (e.g. a location that resolves to no entity on the create path, #2417).
+                return [
+                    'status' => 'error',
+                    'detail' => implode(' ', $outcome['warnings']),
+                    'resultid' => null,
+                    'warnings' => $outcome['warnings'],
+                    'persisted_fields' => [],
+                ];
+            }
 
             if ($taskname === create_option_skill::TASK_NAME || $this->is_update_option_style_task($taskname)) {
                 booking_skill_support::remember_last_option_for_user_for_execute(
@@ -888,13 +905,39 @@ class booking_skill_mutation_execute_service {
             }
 
             $createdtitle = trim((string)($data->text ?? $input['text'] ?? ''));
+            // Report the STORED core values (read back from the DB, not the request) so the
+            // reply is grounded in what was actually saved.
+            global $DB;
+            $stored = $DB->get_record(
+                'booking_options',
+                ['id' => (int)$newoptionid],
+                'coursestarttime, courseendtime, maxanswers'
+            );
+            $storedparts = [];
+            if (!empty($stored->coursestarttime)) {
+                $storedparts[] = 'start=' . userdate(
+                    (int)$stored->coursestarttime,
+                    get_string('strftimedaydatetime', 'langconfig')
+                );
+            }
+            if (!empty($stored->courseendtime)) {
+                $storedparts[] = 'end=' . userdate(
+                    (int)$stored->courseendtime,
+                    get_string('strftimedaydatetime', 'langconfig')
+                );
+            }
+            if (isset($stored->maxanswers)) {
+                $storedparts[] = 'seats=' . (int)$stored->maxanswers;
+            }
+            $storedsuffix = empty($storedparts) ? '' : ', ' . implode(', ', $storedparts);
             if ($taskname === create_option_skill::TASK_NAME && $createdtitle !== '') {
-                $detail = 'Booking option created (title="' . $createdtitle . '", id=' . (int)$newoptionid . ', link='
+                $detail = 'Booking option created (title="' . $createdtitle . '", id=' . (int)$newoptionid
+                    . $storedsuffix . ', link='
                     . booking_skill_support::build_option_link_for_output($cmid, (int)$newoptionid)
                     . ').';
             } else {
                 $detail = 'Booking option ' . ($taskname === create_option_skill::TASK_NAME ? 'created' : 'updated')
-                    . ' (id=' . (int)$newoptionid . ', link='
+                    . ' (id=' . (int)$newoptionid . $storedsuffix . ', link='
                     . booking_skill_support::build_option_link_for_output($cmid, (int)$newoptionid)
                     . ').';
             }
@@ -1034,6 +1077,34 @@ class booking_skill_mutation_execute_service {
     ): array {
         $itemdata = clone $data;
         $itemdata->id = $optionid;
+
+        // With local_entities the option form derives location/address from the entity key and
+        // clears both without it (W12, #2414; create path #2417): carry the resolved or the existing
+        // entity, and never write (or create) with a location that resolves to no entity.
+        if (entity_location::installed()) {
+            $entityid = (int)($input['entityid'] ?? 0);
+            $location = trim((string)($input['location'] ?? ''));
+            if ($entityid <= 0 && $location !== '') {
+                $matches = entity_location::resolve($location);
+                if (count($matches) !== 1) {
+                    return [
+                        'optionid' => $optionid,
+                        'warnings' => [get_string('agent_booking_location_entity_not_found', 'booking', $location)],
+                    ];
+                }
+                $entityid = (int)$matches[0]['id'];
+            }
+            if ($entityid <= 0 && $optionid > 0) {
+                $entityid = entity_location::existing_entityid($optionid);
+            }
+            if ($entityid > 0) {
+                $itemdata->{entity_location::form_key()} = $entityid;
+                if ($location !== '') {
+                    // The form stores the entity's filter name; verify against that.
+                    $input['location'] = entity_location::name_for($entityid);
+                }
+            }
+        }
 
         $newoptionid = (int)booking_option::update($itemdata, $context);
 
@@ -1446,6 +1517,13 @@ class booking_skill_mutation_execute_service {
         }
         foreach (['maxanswers', 'maxoverbooking'] as $field) {
             if (array_key_exists($field, $input)) {
+                $checked[] = $field;
+            }
+        }
+        // Date writes are persisted through the option form as well (W1, #2415): a date-only update
+        // must not read as "Saved: none".
+        foreach (['optiondates', 'coursestarttime', 'courseendtime'] as $field) {
+            if (!empty($input[$field])) {
                 $checked[] = $field;
             }
         }

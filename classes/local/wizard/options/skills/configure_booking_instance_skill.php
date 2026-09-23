@@ -187,6 +187,40 @@ class configure_booking_instance_skill extends booking_skill_base {
     }
 
     /**
+     * The configurable identifiers with their labels as structured remedies for a clarification.
+     *
+     * @return array<int,array{id:string,label:string}>
+     */
+    private static function field_remedies(): array {
+        $remedies = [];
+        foreach (self::CONFIGURABLE_FIELDS as $identifier => $meta) {
+            $remedies[] = ['id' => (string)$identifier, 'label' => (string)$meta['label']];
+        }
+        return $remedies;
+    }
+
+    /**
+     * Construction hint: the constructor never sees the property schema, only example values and
+     * guidance, so the configurable identifiers are handed over here (data-derived, #2411).
+     *
+     * @param int $contextid Context id.
+     * @param int $userid Acting user.
+     * @return array
+     */
+    public function get_dynamic_construction_hints(int $contextid, int $userid): array {
+        $fields = [];
+        foreach (self::CONFIGURABLE_FIELDS as $identifier => $meta) {
+            $fields[] = $identifier . ' (' . $meta['label'] . ')';
+        }
+        return [
+            'guidance' => [
+                '- changes[].field MUST be one of these EXACT identifiers: ' . implode(', ', $fields)
+                    . '. Map the user\'s wording to the closest identifier; NEVER invent field names.',
+            ],
+        ];
+    }
+
+    /**
      * Constructor — this task is mutating (requires confirmation).
      */
     public function __construct() {
@@ -224,12 +258,13 @@ class configure_booking_instance_skill extends booking_skill_base {
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'UPDATE the current booking activity instance settings (write-only).'
-                . ' Use action=update with a changes array to apply concrete changes ("change X to Y").'
-                . ' This skill does NOT list settings: for read requests like "what can I configure"'
-                . ' or "show the current settings", call the read-only skill'
-                . ' mod_booking.list_instance_settings instead — it returns the field catalog with'
-                . ' current values and needs no confirmation.',
+            // The selector sees only the first 240 characters (sentence-aware): mode, input and the
+            // read-only sibling come first (#2411, run 9 CBI-2).
+            'description' => 'CHANGE settings of the booking activity instance (write): action=update with a changes'
+                . ' array, e.g. confirmation mails, cancellation, bookings per user.',
+            'is' => 'Writing a setting of a booking activity, including its name.',
+            'not' => 'Reading settings (list_instance_settings); generic activity edits like hiding or moving '
+                . '(course.update_activity).',
             'readonly' => $this->is_read_only(),
             'fallback_confirm_string_key' => 'ai_status_confirm_configure_booking_instance',
             'fallback_taskcall_string_key' => 'ai_status_taskcall_configure_booking_instance',
@@ -240,6 +275,13 @@ class configure_booking_instance_skill extends booking_skill_base {
                 'Rename the booking activity and adjust its defaults',
             ],
             'properties' => [
+                'cmid' => [
+                    'type' => 'integer',
+                    'description' => 'Course-module id of the booking activity, when it is known — e.g. from a '
+                        . 'candidate list that names "cmid <id>" or from a link. Takes precedence over '
+                        . 'activityquery; use it to pick one of several activities that share a name.',
+                    'required' => false,
+                ],
                 'activityquery' => [
                     'type' => 'string',
                     'description' => 'Optional: the name of the target booking activity, when it is not the '
@@ -257,7 +299,8 @@ class configure_booking_instance_skill extends booking_skill_base {
                 'changes' => [
                     'type' => 'array',
                     'description' => 'For action=update: array of {field, value} objects to apply.'
-                        . ' Use action=list_fields first to discover valid field names.',
+                        . ' Use the read-only skill mod_booking.list_instance_settings first to'
+                        . ' discover valid field names.',
                     'required' => false,
                     'items' => [
                         'type' => 'object',
@@ -295,7 +338,9 @@ class configure_booking_instance_skill extends booking_skill_base {
             if (!is_array($changes) || empty($changes)) {
                 $errors[] = 'action=update requires a non-empty "changes" array.';
             } else {
-                $validfields = array_keys(self::CONFIGURABLE_FIELDS);
+                // Shape only. An unknown field NAME is a recoverable input error handled in preflight
+                // (clarification with the configurable identifiers as remedies, #2411): as a structural
+                // error it made the engine retry the constructor until the loop budget was exhausted.
                 foreach ($changes as $idx => $change) {
                     if (!is_array($change)) {
                         $errors[] = "changes[$idx]: must be an object with \"field\" and \"value\".";
@@ -304,9 +349,6 @@ class configure_booking_instance_skill extends booking_skill_base {
                     $field = trim((string)($change['field'] ?? ''));
                     if ($field === '') {
                         $errors[] = "changes[$idx]: \"field\" is required.";
-                    } else if (!in_array($field, $validfields, true)) {
-                        $errors[] = "changes[$idx]: unknown field \"$field\"."
-                            . ' Use action=list_fields to see valid field names.';
                     }
                     if (!array_key_exists('value', $change)) {
                         $errors[] = "changes[$idx]: \"value\" is required.";
@@ -340,8 +382,8 @@ class configure_booking_instance_skill extends booking_skill_base {
             // and not a place to call context_module::instance() (which would throw) — ask which one.
             return $this->invalid([[
                 'severity' => 'needs_clarification',
-                'message' => 'This action needs a target booking activity. Please open a booking activity, '
-                    . 'or tell me which booking activity (and course) it should apply to.',
+                'message' => get_string('agent_booking_missing_target_activity', 'mod_booking'),
+                'repair' => 'Name the booking activity via activityquery.',
                 'code' => 'MISSING_TARGET_ACTIVITY',
             ]]);
         }
@@ -372,15 +414,25 @@ class configure_booking_instance_skill extends booking_skill_base {
         // (option_preview_builder::target_rows). Execute ignores this key.
         $input['targetcmid'] = $cmid;
 
-        // For update: validate field types.
+        // For update: unknown field names are a clarification (with the configurable identifiers as
+        // structured remedies), known fields are type-checked.
         $changes = (array)($input['changes'] ?? []);
         $issues = [];
+        $lang = $this->get_output_language($input);
         foreach ($changes as $idx => $change) {
             if (!is_array($change)) {
                 continue;
             }
             $field = trim((string)($change['field'] ?? ''));
             if (!isset(self::CONFIGURABLE_FIELDS[$field])) {
+                $issues[] = [
+                    'severity' => 'needs_clarification',
+                    'code' => 'CONFIGURE_INSTANCE_UNKNOWN_FIELD',
+                    'field' => 'changes',
+                    'message' => $this->localized_string('agent_booking_configure_unknown_field', $field, $lang),
+                    'user_question' => $this->localized_string('agent_booking_configure_unknown_field_question', $field, $lang),
+                    'remedy_options' => self::field_remedies(),
+                ];
                 continue;
             }
             $meta = self::CONFIGURABLE_FIELDS[$field];

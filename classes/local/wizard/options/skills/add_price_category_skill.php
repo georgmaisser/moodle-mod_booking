@@ -28,12 +28,17 @@ use mod_booking\local\pricecategories_handler;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class add_price_category_skill extends booking_skill_base implements skill_trigger_provider_interface {
+    /** @var string Capability that allows maintaining the site-wide price category list. */
+    private const CAPABILITY = 'mod/booking:managepricecategories';
+
     /** Task name constant. */
     public const TASK_NAME = 'mod_booking.add_price_category';
 
     /**
-     * Price categories are a site-wide configuration (moodle/site:config), not activity-scoped, so
-     * this skill operates at the system context and needs no booking-activity target. Declaring this
+     * Price categories are a site-wide list, not activity-scoped, so this skill operates at the
+     * system context and needs no booking-activity target. It is gated by its own capability since
+     * run 23: moodle/site:config guarded it before, which no manager holds, so the role that owns
+     * the booking area could never reach it. Declaring this
      * keeps it correct over MCP (which runs at the system context) and exempt from the module/option
      * target contract required of activity-scoped mutating skills.
      *
@@ -47,7 +52,7 @@ class add_price_category_skill extends booking_skill_base implements skill_trigg
      * Constructor.
      */
     public function __construct() {
-        parent::__construct(false, \mod_booking\local\wizard\engine\skill_risk_class::R2, ['moodle/site:config']);
+        parent::__construct(false, \mod_booking\local\wizard\engine\skill_risk_class::R2, [self::CAPABILITY]);
     }
 
     /**
@@ -98,9 +103,12 @@ class add_price_category_skill extends booking_skill_base implements skill_trigg
     public function get_schema(): array {
         return [
             'version' => 1,
-            'description' => 'Create a new price category (for example student, member, external) '
-                . 'that can be used in booking option pricing. Use this when users ask to add '
-                . 'or manage named price types. Requires site-level configuration capability.',
+            // First 240 characters = selector/constructor window (#2423, APC-1 "tariff for apprentices").
+            'description' => 'Create a new price category — a tariff or price group such as students, members or apprentices '
+                . '(identifier + name) used in option prices. Use this when users ask to add or manage named price types. Requires '
+                . 'site-level configuration capability.',
+            'is' => 'A tariff or price group used in option prices.',
+            'not' => 'A booking option (create_option); a custom option field (create_option_field).',
             'readonly' => $this->is_read_only(),
             'properties' => [
                 'identifier' => [
@@ -191,7 +199,10 @@ class add_price_category_skill extends booking_skill_base implements skill_trigg
         }
 
         $lang = $this->get_output_language($input);
-        if (!has_capability('moodle/site:config', context_system::instance(), $userid)) {
+        // Maintaining the price category list is booking work, so it has its own capability since
+        // run 23. moodle/site:config gated it before, which no manager holds - the role that owns
+        // this area could never reach it (all four APC prompts refused, correctly and uselessly).
+        if (!has_capability(self::CAPABILITY, context_system::instance(), $userid)) {
             return $this->invalid([[
                 'code' => 'PRICE_CATEGORY_CAPABILITY_REQUIRED',
                 'severity' => 'needs_clarification',
@@ -262,7 +273,7 @@ class add_price_category_skill extends booking_skill_base implements skill_trigg
      */
     public function execute(array $input, int $cmid, int $userid): array {
         $cmid = $this->resolve_cmid_from_context_or_cmid($cmid);
-        if (!has_capability('moodle/site:config', context_system::instance())) {
+        if (!has_capability(self::CAPABILITY, context_system::instance())) {
             return [
                 'status' => 'error',
                 'detail' => get_string('agent_booking_add_pricecat_capability_required', 'booking'),
