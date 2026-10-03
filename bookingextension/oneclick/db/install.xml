@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="mod/booking/bookingextension/oneclick/db" VERSION="2026061200" COMMENT="XMLDB file for bookingextension_oneclick"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../../../lib/xmldb/xmldb.xsd"
+>
+    <TABLES>
+        <TABLE NAME="bookingextension_oneclick_jobs" COMMENT="Trial Moodle provisioning jobs requested through the one-click agent skill.">
+            <FIELDS>
+                <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+                <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Moodle user who requested the trial."/>
+                <FIELD NAME="jobid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="job_id returned by the provisioner /spawn call."/>
+                <FIELD NAME="sitename" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="User-supplied site name."/>
+                <FIELD NAME="templateid" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="Provisioner template id used."/>
+                <FIELD NAME="targetrelease" TYPE="char" LENGTH="63" NOTNULL="true" SEQUENCE="false"/>
+                <FIELD NAME="targetnamespace" TYPE="char" LENGTH="63" NOTNULL="true" SEQUENCE="false"/>
+                <FIELD NAME="targethost" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+                <FIELD NAME="status" TYPE="char" LENGTH="30" NOTNULL="true" DEFAULT="pending" SEQUENCE="false" COMMENT="Last known provisioner status."/>
+                <FIELD NAME="reviewstatus" TYPE="char" LENGTH="30" NOTNULL="true" DEFAULT="not_required" SEQUENCE="false"/>
+                <FIELD NAME="errorsummary" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+                <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+                <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+            </FIELDS>
+            <KEYS>
+                <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+                <KEY NAME="userid_fk" TYPE="foreign" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
+            </KEYS>
+            <INDEXES>
+                <INDEX NAME="jobid_idx" UNIQUE="false" FIELDS="jobid"/>
+                <INDEX NAME="targetrelease_uix" UNIQUE="true" FIELDS="targetrelease"/>
+            </INDEXES>
+        </TABLE>
+    </TABLES>
+</XMLDB>
