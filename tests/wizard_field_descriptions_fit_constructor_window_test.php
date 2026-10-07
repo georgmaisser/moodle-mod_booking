@@ -18,18 +18,23 @@ namespace mod_booking;
 
 use advanced_testcase;
 use bookingextension_agent\local\wizard\core\skills\diagnose_permissions_skill;
+use bookingextension_agent\local\wizard\course\skills\add_activity_skill;
 use bookingextension_agent\local\wizard\course\skills\create_course_skill;
 use bookingextension_agent\local\wizard\course\skills\diagnose_user_in_course_skill;
 use bookingextension_agent\local\wizard\course\skills\enrol_user_skill;
 use bookingextension_agent\local\wizard\course\skills\update_activity_skill;
 use bookingextension_agent\local\wizard\wizard\skills\explain_docs_skill;
 use bookingextension_agent\local\wizard\wizard\skills\list_skills_skill;
+use bookingextension_agent\local\wizard\wizard\skills\remember_skill;
 use mod_booking\local\wizard\engine_component;
 use mod_booking\local\wizard\options\skills\book_users_skill;
 use mod_booking\local\wizard\options\skills\configure_booking_instance_skill;
+use mod_booking\local\wizard\options\skills\create_option_skill;
+use mod_booking\local\wizard\options\skills\diagnose_booking_issue_skill;
 use mod_booking\local\wizard\options\skills\diagnose_cancellation_issue_skill;
 use mod_booking\local\wizard\options\skills\diagnose_user_booking_skill;
 use mod_booking\local\wizard\options\skills\get_option_details_skill;
+use mod_booking\local\wizard\options\skills\list_option_properties_skill;
 use mod_booking\local\wizard\options\skills\search_options_skill;
 
 /**
@@ -56,6 +61,11 @@ use mod_booking\local\wizard\options\skills\search_options_skill;
  * @covers     \bookingextension_agent\local\wizard\course\skills\diagnose_user_in_course_skill
  * @covers     \bookingextension_agent\local\wizard\course\skills\update_activity_skill
  * @covers     \bookingextension_agent\local\wizard\wizard\skills\explain_docs_skill
+ * @covers     \bookingextension_agent\local\wizard\wizard\skills\remember_skill
+ * @covers     \bookingextension_agent\local\wizard\course\skills\add_activity_skill
+ * @covers     \mod_booking\local\wizard\options\skills\diagnose_booking_issue_skill
+ * @covers     \mod_booking\local\wizard\options\skills\list_option_properties_skill
+ * @covers     \mod_booking\local\wizard\options\skills\create_option_skill
  */
 final class wizard_field_descriptions_fit_constructor_window_test extends advanced_testcase {
     use \mod_booking\tests\agent_extension_test_trait;
@@ -102,6 +112,26 @@ final class wizard_field_descriptions_fit_constructor_window_test extends advanc
                     get_class($skill) . '.' . $field . ': ' . $text
                 );
             }
+        }
+    }
+
+    /**
+     * Single fields shortened in round 3, in skills whose other long fields were kept (A/B on Gemma, #2582).
+     */
+    public function test_shortened_single_fields_fit_the_constructor_window(): void {
+        $fields = [
+            [new remember_skill(), 'relevant_for'],
+            [new add_activity_skill(), 'section'],
+            [new diagnose_booking_issue_skill(), 'userquery'],
+            [new list_option_properties_skill(), 'cmid'],
+            [new create_option_skill(), 'headerimage_token'],
+        ];
+        foreach ($fields as [$skill, $field]) {
+            $properties = (array)($skill->get_schema()['properties'] ?? []);
+            $this->assertArrayHasKey($field, $properties, get_class($skill));
+            $text = trim((string)preg_replace('/\s+/u', ' ', (string)($properties[$field]['description'] ?? '')));
+            $this->assertNotSame('', $text, get_class($skill) . '.' . $field);
+            $this->assertLessThanOrEqual(self::WINDOW, \core_text::strlen($text), get_class($skill) . '.' . $field . ': ' . $text);
         }
     }
 }
