@@ -177,9 +177,8 @@ class diagnose_user_booking_skill extends booking_skill_base implements skill_tr
                     // L48 DBI-4 (thread 16682): the constructor sent "me" and the resolver knows no such person (the
                     // word list went in wave 26). A/B at the recorded call, planner action: "me" in 12/20 runs; with
                     // this text 0/20, the field omitted (= the requester) 20/20.
-                    'description' => 'Name, e-mail or numeric id of the person to diagnose; omit it when the person is '
-                        . 'the requester. If only a name is known and it is ambiguous, provide a more specific name '
-                        . 'or e-mail address instead.',
+                    'description' => 'Name, e-mail or numeric id of the person to diagnose; omit it when the person '
+                        . 'is the requester. If a name is ambiguous, give a more specific one.',
                     'required' => false,
                 ],
                 'userid' => [
