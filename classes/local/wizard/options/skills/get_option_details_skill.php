@@ -98,7 +98,8 @@ class get_option_details_skill extends booking_skill_base implements skill_trigg
             'description' => 'Full details of ONE named booking option (optionquery or optionid): dates, seats, price, teachers, '
                 . 'description, link. Reads via the booking option APIs.',
             'is' => 'One named booking option: dates, seats, price, teachers.',
-            'not' => 'A list of options (search_options); a taskflow rule of the same name (local_taskflow.get_rule_details).',
+            'not' => 'A list of options (search_options); a taskflow rule of this name (local_taskflow.get_rule_details); '
+                . 'a course\'s contents (course.analyze_course_structure).',
             'readonly' => $this->is_read_only(),
             'example_utterances' => [
                 'Show me the full details of the Spring Workshop',
