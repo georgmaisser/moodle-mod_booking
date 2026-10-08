@@ -160,8 +160,11 @@ class diagnose_user_booking_skill extends booking_skill_base implements skill_tr
                 . 'whether the focused option\'s certificate was actually issued. Every reported option carries the host course '
                 . '(id and name) and booking instance the option lives in.',
             'is' => 'One person\'s booking history.',
-            'not' => 'WHY someone cannot book (diagnose_booking_issue); course progress or grades '
-                . '(course.diagnose_user_in_course); mail plumbing (core.diagnose_notifications).',
+            // The taskflow message diagnosis reads the same mail question; both cards name each other.
+            'not' => 'cannot book (diagnose_booking_issue); course.diagnose_user_in_course; core.diagnose_notifications; '
+                . 'taskflow mails (local_taskflow.diagnose_message_delivery).',
+            'when' => 'The user asks whether one person booked or completed an option, about their history or certificates, '
+                . 'or whether the confirmation or reminder mails of an option reached them.',
             'readonly' => $this->is_read_only(),
             'example_utterances' => [
                 'what is the booking status of this user',
