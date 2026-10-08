@@ -178,8 +178,8 @@ class book_users_skill extends booking_skill_base implements
                 ],
                 'bookusersquery' => [
                     'type' => 'string',
-                    'description' => 'Comma-separated names, e-mails or ids to book. OMIT the field (no empty '
-                        . 'string) to book the CURRENT user - "book me in" needs no name.',
+                    'description' => 'Comma-separated list of user names, e-mails or ids to book. OMIT this field '
+                        . 'entirely (do NOT send an empty string) to book the CURRENT user - self-referencing.',
                     'required' => false,
                 ],
                 'bookuserstimebooked' => [
