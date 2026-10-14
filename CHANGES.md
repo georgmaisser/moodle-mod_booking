@@ -1,3 +1,15 @@
+## Version 10.0.4 (2026101400)
+* Improvement: Tables are purged on refresh. (Wunderbyte-GmbH/Wunderbyte-GmbH#1962)
+* Improvement: Teachers who may manage bookings without course login now have the correct access in the bookings tracker (report2.php). (Wunderbyte-GmbH/moodle-taskflowadapter_tuines#166)
+* Improvement: The certificate date format is an own string. (Wunderbyte-GmbH/moodle-taskflowadapter_tuines#175)
+* New feature: Certificate field "dateswithduration" - the period with its calculated hours.
+* Bugfix: A legacy enrolment status no longer fires an option_update trigger when nothing changed. (Wunderbyte-GmbH/Wunderbyte-GmbH#2264)
+* Bugfix: Teachers manage the answers of their own booking options in the bookings tracker (report2.php) with managebookingsownoption, and report2 checks the IDs it acts on.
+* Bugfix: Events and history work again. (Wunderbyte-GmbH/moodle-taskflowadapter_tuines#166)
+* Bugfix: The option detail view works without course access. (Wunderbyte-GmbH/moodle-taskflowadapter_tuines#171)
+* Bugfix: Certificate conditions are triggered context sensitive, and all saved conditions are shown.
+* Bugfix: Multiple bookings work as cashier. (Wunderbyte-GmbH/Wunderbyte-GmbH#2483)
+
 ## Version 10.0.3 (2026101300)
 * Improvement: The booking wizard is off by default on new installations; an admin switches it on with "Enable Booking Wizard". Sites that already have the setting stored keep it. All wizard settings now keep their defaults while the wizard is off and are only hidden. (Wunderbyte-GmbH/Wunderbyte-GmbH#2605)
 * Improvement: Once the standalone Wizard plugin (local_wizard) is installed, the bundled booking wizard shows no settings pages any more; its settings live in the Wizard plugin. (Wunderbyte-GmbH/Wunderbyte-GmbH#2605)
