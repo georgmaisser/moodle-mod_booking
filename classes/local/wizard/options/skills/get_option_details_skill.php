@@ -265,9 +265,54 @@ class get_option_details_skill extends booking_skill_base implements skill_trigg
         ];
     }
 
-    // Preflight is intentionally NOT overridden: base_skill::run_preflight() already maps
-    // check_structure() onto the DTO-free pass/invalid result (structure is validated
-    // independently of context scope; this skill resolves its context eagerly in execute()).
+    /**
+     * Resolve a named option before anything runs, so a miss or several hits offer options to choose from.
+     *
+     * Session suite SES10, S12-3 (threads 32449, 32468, 32487): the option was resolved only in execute(), and a
+     * query that matched nothing or several options ended alike as "could not be resolved" with nothing to choose
+     * from. The planner asked for the same thing again and the turn ran into the repeat loop. A miss now offers the
+     * options of the activity, several hits offer the hits first, as the update and diagnose skills do.
+     *
+     * Left to execute() as before: the system context (its own site-wide lookup), ids given directly, the reference
+     * to the last shown option, and the number of an option in another activity (the answer names that activity).
+     *
+     * @param array $input
+     * @param int $contextid
+     * @param int $userid
+     * @return array{status:string,prepared_input:array,issues:array}
+     */
+    protected function run_preflight(array $input, int $contextid, int $userid): array {
+        $structure = parent::run_preflight($input, $contextid, $userid);
+        if (($structure['status'] ?? 'pass') === 'invalid') {
+            return $structure;
+        }
+        $cmid = $this->resolve_cmid_from_context_or_cmid($contextid);
+        $query = trim((string)($input['optionquery'] ?? ''));
+        $hasdirectids = (int)($input['optionid'] ?? 0) > 0 || !empty($input['optionids']);
+        if (
+            $cmid <= 0
+            || $query === ''
+            || $hasdirectids
+            || booking_skill_support::is_last_option_reference($query)
+            || $this->input_names_only_out_of_scope_ids($input, $cmid)
+        ) {
+            return $structure;
+        }
+
+        $resolved = booking_skill_support::resolve_single_option($cmid, $query, '');
+        $status = (string)($resolved['status'] ?? '');
+        if ($status === 'ok' && (int)($resolved['optionid'] ?? 0) > 0) {
+            $prepared = (array)($structure['prepared_input'] ?? $input);
+            $prepared['optionid'] = (int)$resolved['optionid'];
+            return $this->pass($prepared);
+        }
+        if ($status === 'error' || $status === 'ambiguity') {
+            return $this->invalid([
+                $this->option_resolution_issue($resolved, $cmid, $query, '', $this->get_output_language($input)),
+            ]);
+        }
+        return $structure;
+    }
 
     /**
      * Execute task.
